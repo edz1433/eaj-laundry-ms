@@ -40,28 +40,37 @@
 
         <div class="bg-white dark:bg-gray-900 border border-border dark:border-gray-800 rounded-lg shadow-sm overflow-hidden">
             <div class="flex gap-1 overflow-x-auto border-b border-border bg-smoke p-2 dark:border-gray-800 dark:bg-gray-950">
-                @if($canManageGlobal)
-                    <button type="button" @click="tab = 'business'" class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition" :class="tab === 'business' ? 'bg-white text-primary shadow-sm dark:bg-gray-900' : 'text-muted hover:bg-white/70 dark:hover:bg-gray-900'">
-                        <span data-lucide="store" class="h-4 w-4"></span> Global
-                    </button>
-                @endif
+                {{-- Global tab - visible to both Admin and Super Admin --}}
+                <button type="button" @click="tab = 'business'" class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition" :class="tab === 'business' ? 'bg-white text-primary shadow-sm dark:bg-gray-900' : 'text-muted hover:bg-white/70 dark:hover:bg-gray-900'">
+                    <span data-lucide="store" class="h-4 w-4"></span> Global
+                </button>
+                
+                {{-- Pricing tab - visible to both Admin and Super Admin --}}
                 <button type="button" @click="tab = 'pricing'" class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition" :class="tab === 'pricing' ? 'bg-white text-primary shadow-sm dark:bg-gray-900' : 'text-muted hover:bg-white/70 dark:hover:bg-gray-900'">
                     <span data-lucide="dollar" class="h-4 w-4"></span> Pricing
                 </button>
+                
+                {{-- Branch tab - visible to both Admin and Super Admin --}}
                 <button type="button" @click="tab = 'branch'" class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition" :class="tab === 'branch' ? 'bg-white text-primary shadow-sm dark:bg-gray-900' : 'text-muted hover:bg-white/70 dark:hover:bg-gray-900'">
                     <span data-lucide="building" class="h-4 w-4"></span> Branch
                 </button>
+                
+                {{-- Receipt tab - visible to both Admin and Super Admin --}}
                 <button type="button" @click="tab = 'receipt'" class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition" :class="tab === 'receipt' ? 'bg-white text-primary shadow-sm dark:bg-gray-900' : 'text-muted hover:bg-white/70 dark:hover:bg-gray-900'">
                     <span data-lucide="receipt" class="h-4 w-4"></span> Receipt
                 </button>
+                
+                {{-- SMS tab - ONLY for Super Admin --}}
                 @if($canManageGlobal)
                     <button type="button" @click="tab = 'sms'" class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition" :class="tab === 'sms' ? 'bg-white text-primary shadow-sm dark:bg-gray-900' : 'text-muted hover:bg-white/70 dark:hover:bg-gray-900'">
                         <span data-lucide="sms" class="h-4 w-4"></span> SMS/API
                     </button>
-                    <button type="button" @click="tab = 'theme'" class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition" :class="tab === 'theme' ? 'bg-white text-primary shadow-sm dark:bg-gray-900' : 'text-muted hover:bg-white/70 dark:hover:bg-gray-900'">
-                        <span data-lucide="sparkles" class="h-4 w-4"></span> Theme
-                    </button>
                 @endif
+                
+                {{-- Theme tab - visible to both Admin and Super Admin --}}
+                <button type="button" @click="tab = 'theme'" class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition" :class="tab === 'theme' ? 'bg-white text-primary shadow-sm dark:bg-gray-900' : 'text-muted hover:bg-white/70 dark:hover:bg-gray-900'">
+                    <span data-lucide="sparkles" class="h-4 w-4"></span> Theme
+                </button>
             </div>
 
             <div class="p-4">
@@ -82,7 +91,7 @@
                     <input type="hidden" name="branch_id" value="{{ $branch->id }}">
                 @endif
 
-                @if($canManageGlobal)
+                {{-- Global/Business Tab - Visible to both Admin and Super Admin --}}
                 <div x-show="tab === 'business'" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium mb-2">Business Name</label>
@@ -139,8 +148,8 @@
                         </div>
                     </div>
                 </div>
-                @endif
 
+                {{-- Pricing Tab - Visible to both Admin and Super Admin --}}
                 <div x-show="tab === 'pricing'" class="grid grid-cols-1 lg:grid-cols-3 gap-4">
                     <div>
                         <label class="block text-sm font-medium mb-2">Default Price Per Kilo</label>
@@ -157,7 +166,7 @@
                         <input type="number" step="0.01" name="default_price_per_piece" value="{{ old('default_price_per_piece', $branchSetting->default_price_per_piece) }}" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
                     </div>
 
-                    @if($canManageGlobal)
+                    {{-- VAT settings - Visible to both Admin and Super Admin --}}
                     <div class="lg:col-span-3">
                         <label class="flex items-center gap-3">
                             <input type="checkbox" name="vat_enabled" value="1" x-model="vatEnabled" class="rounded border-border text-primary">
@@ -169,9 +178,9 @@
                         <label class="block text-sm font-medium mb-2">VAT Rate (%)</label>
                         <input type="number" step="0.01" name="vat_rate" value="{{ old('vat_rate', $settings->vat_rate) }}" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
                     </div>
-                    @endif
                 </div>
 
+                {{-- Branch Tab - Visible to both Admin and Super Admin --}}
                 <div x-show="tab === 'branch'" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium mb-2">Branch Name</label>
@@ -209,6 +218,7 @@
                     </div>
                 </div>
 
+                {{-- Receipt Tab - Visible to both Admin and Super Admin --}}
                 <div x-show="tab === 'receipt'" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium mb-2">Receipt Header</label>
@@ -231,6 +241,7 @@
                     </div>
                 </div>
 
+                {{-- SMS Tab - ONLY for Super Admin --}}
                 @if($canManageGlobal)
                 <div x-show="tab === 'sms'" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div class="lg:col-span-2">
@@ -250,7 +261,9 @@
                         <input name="sms_api_key" value="{{ old('sms_api_key', $settings->sms_api_key) }}" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
                     </div>
                 </div>
+                @endif
 
+                {{-- Theme Tab - Visible to both Admin and Super Admin --}}
                 <div x-show="tab === 'theme'" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium mb-2">Primary Color</label>
@@ -264,7 +277,6 @@
                         </label>
                     </div>
                 </div>
-                @endif
             </div>
 
             <div class="px-4 py-3 border-t border-border dark:border-gray-800 flex justify-end">
@@ -277,4 +289,3 @@
     </form>
 </div>
 @endsection
-
