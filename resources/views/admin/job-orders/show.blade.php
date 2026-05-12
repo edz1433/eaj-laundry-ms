@@ -1,0 +1,93 @@
+@extends('layouts.app')
+
+@section('page_title', 'Job Order Details')
+
+@section('content')
+<div class="space-y-4">
+    <div class="flex flex-col gap-3 rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+            <div class="mb-2 inline-flex items-center gap-1.5 rounded-md border border-border bg-smoke px-2.5 py-1 text-xs font-medium text-muted dark:border-gray-800 dark:bg-gray-950">
+                <span data-lucide="jobOrders" class="h-3.5 w-3.5"></span>
+                {{ $order->job_order_number }}
+            </div>
+            <h1 class="text-xl font-semibold tracking-normal">{{ $order->customer?->name }}</h1>
+            <p class="text-sm text-muted">{{ $order->branch?->name }} - {{ $order->created_at->format('M d, Y h:i A') }}</p>
+        </div>
+
+        <div class="flex gap-2">
+            <a href="{{ route('admin.job-orders.index') }}" class="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">Back</a>
+            <a href="{{ route('admin.job-orders.receipt', $order) }}" target="_blank" class="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-white hover:opacity-90">
+                <span data-lucide="receipt" class="h-4 w-4"></span>
+                Receipt
+            </a>
+        </div>
+    </div>
+
+    <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div class="space-y-4">
+            <div class="overflow-hidden rounded-lg border border-border bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <table class="w-full text-left text-sm">
+                    <thead class="border-b border-border bg-smoke text-xs uppercase text-muted dark:border-gray-800 dark:bg-gray-950">
+                        <tr>
+                            <th class="px-4 py-3">Service</th>
+                            <th class="px-4 py-3 text-right">Qty</th>
+                            <th class="px-4 py-3 text-right">Price</th>
+                            <th class="px-4 py-3 text-right">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border dark:divide-gray-800">
+                        @foreach($order->items as $item)
+                            <tr>
+                                <td class="px-4 py-3 font-medium">{{ $item->description }}</td>
+                                <td class="px-4 py-3 text-right">{{ number_format((float) $item->quantity, 2) }}</td>
+                                <td class="px-4 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $item->unit_price, 2) }}</td>
+                                <td class="px-4 py-3 text-right font-medium">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $item->total, 2) }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <h2 class="mb-3 text-sm font-semibold">Payments</h2>
+                <div class="space-y-2">
+                    @forelse($order->payments as $payment)
+                        <div class="flex items-center justify-between rounded-md border border-border p-3 text-sm dark:border-gray-800">
+                            <div>
+                                <p class="font-medium">{{ $payment->payment_number }}</p>
+                                <p class="text-xs text-muted">{{ str_replace('_', ' ', ucfirst($payment->payment_type)) }} - {{ $payment->paid_at?->format('M d, Y h:i A') }}</p>
+                            </div>
+                            <span class="font-semibold">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $payment->amount, 2) }}</span>
+                        </div>
+                    @empty
+                        <p class="text-sm text-muted">No payments recorded.</p>
+                    @endforelse
+                </div>
+            </div>
+        </div>
+
+        <aside class="space-y-4">
+            <div class="rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <h2 class="mb-3 text-sm font-semibold">Summary</h2>
+                <div class="space-y-2 text-sm">
+                    <div class="flex justify-between"><span class="text-muted">Status</span><span class="font-medium">{{ str_replace('_', ' ', ucfirst($order->status)) }}</span></div>
+                    <div class="flex justify-between"><span class="text-muted">Loads</span><span>{{ $order->load_count }}</span></div>
+                    <div class="flex justify-between"><span class="text-muted">Dry Cycles</span><span>{{ $order->drying_cycles }}x @if($order->drying_extension_minutes) +{{ $order->drying_extension_minutes }}m @endif</span></div>
+                    <div class="h-px bg-border dark:bg-gray-800"></div>
+                    <div class="flex justify-between"><span class="text-muted">Subtotal</span><span>{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $order->subtotal, 2) }}</span></div>
+                    <div class="flex justify-between"><span class="text-muted">Discount</span><span>{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $order->discount, 2) }}</span></div>
+                    <div class="flex justify-between"><span class="text-muted">VAT</span><span>{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $order->tax, 2) }}</span></div>
+                    <div class="flex justify-between font-semibold"><span>Total</span><span>{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $order->total, 2) }}</span></div>
+                    <div class="flex justify-between"><span class="text-muted">Paid</span><span>{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $order->paid_amount, 2) }}</span></div>
+                    <div class="flex justify-between font-semibold"><span>Balance</span><span>{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $order->balance, 2) }}</span></div>
+                </div>
+            </div>
+
+            <div class="rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <h2 class="mb-2 text-sm font-semibold">Notes</h2>
+                <p class="text-sm text-muted">{{ $order->notes ?: 'No notes.' }}</p>
+            </div>
+        </aside>
+    </div>
+</div>
+@endsection
