@@ -17,28 +17,35 @@
             <p class="text-sm text-muted">Sales, receivables, inventory usage, customer ledger, and audit logs.</p>
         </div>
 
-        <form method="GET" action="{{ route('admin.reports.index') }}" class="grid grid-cols-1 gap-2 sm:grid-cols-[12rem_16rem_auto]">
-            @if($canChooseBranch)
-                <select name="branch_id" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
-                    <option value="">All branches</option>
-                    @foreach($branches as $branch)
-                        <option value="{{ $branch->id }}" @selected((int) $selectedBranchId === (int) $branch->id)>{{ $branch->name }}</option>
-                    @endforeach
-                </select>
-            @else
-                <input type="hidden" name="branch_id" value="{{ auth()->user()->branch_id }}">
-            @endif
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <form method="GET" action="{{ route('admin.reports.index') }}" class="grid grid-cols-1 gap-2 sm:grid-cols-[12rem_16rem_auto]">
+                @if($canChooseBranch)
+                    <select name="branch_id" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
+                        <option value="">All branches</option>
+                        @foreach($branches as $branch)
+                            <option value="{{ $branch->id }}" @selected((int) $selectedBranchId === (int) $branch->id)>{{ $branch->name }}</option>
+                        @endforeach
+                    </select>
+                @else
+                    <input type="hidden" name="branch_id" value="{{ auth()->user()->branch_id }}">
+                @endif
 
-            <div class="flex h-9 items-center gap-2 rounded-md border border-border bg-white px-3 dark:border-gray-800 dark:bg-gray-950">
-                <span data-lucide="calendar" class="h-4 w-4 text-muted"></span>
-                <input x-ref="dateRange" x-model="dateRange" name="date_range" class="w-full bg-transparent text-sm outline-none" autocomplete="off">
-            </div>
+                <div class="flex h-9 items-center gap-2 rounded-md border border-border bg-white px-3 dark:border-gray-800 dark:bg-gray-950">
+                    <span data-lucide="calendar" class="h-4 w-4 text-muted"></span>
+                    <input x-ref="dateRange" x-model="dateRange" name="date_range" class="w-full bg-transparent text-sm outline-none" autocomplete="off">
+                </div>
 
-            <button class="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-white hover:opacity-90">
-                <span data-lucide="search" class="h-4 w-4"></span>
-                Apply
-            </button>
-        </form>
+                <button class="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-white hover:opacity-90">
+                    <span data-lucide="search" class="h-4 w-4"></span>
+                    Apply
+                </button>
+            </form>
+
+            <a href="{{ route('admin.reports.pdf', request()->query()) }}" target="_blank" class="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium hover:bg-smoke dark:border-gray-800 dark:bg-gray-950 dark:hover:bg-gray-900">
+                <span data-lucide="file-text" class="h-4 w-4"></span>
+                View PDF
+            </a>
+        </div>
     </div>
 
     <div class="flex gap-1 overflow-x-auto rounded-lg border border-border bg-white p-1 shadow-sm dark:border-gray-800 dark:bg-gray-900">

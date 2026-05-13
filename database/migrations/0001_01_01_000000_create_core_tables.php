@@ -107,25 +107,10 @@ return new class extends Migration
             });
         }
 
-        if (! Schema::hasTable('developer_settings')) {
-            Schema::create('developer_settings', function (Blueprint $table) {
-                $table->id();
-                $table->enum('subscription_status', ['active', 'trial', 'unpaid', 'expired', 'suspended'])->default('trial');
-                $table->timestamp('trial_ends_at')->nullable();
-                $table->timestamp('due_at')->nullable();
-                $table->unsignedInteger('grace_period_days')->default(7);
-                $table->boolean('maintenance_mode')->default(false);
-                $table->text('maintenance_message')->nullable();
-                $table->boolean('system_suspended')->default(false);
-                $table->timestamp('activated_at')->nullable();
-                $table->timestamps();
-            });
-        }
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('developer_settings');
         Schema::dropIfExists('system_settings');
         Schema::dropIfExists('sessions');
         Schema::dropIfExists('password_reset_tokens');

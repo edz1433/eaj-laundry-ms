@@ -98,9 +98,6 @@ class JobOrderController extends Controller
             'discount' => ['nullable', 'numeric', 'min:0'],
             'paid_amount' => ['nullable', 'numeric', 'min:0'],
             'payment_type' => ['nullable', Rule::in(['cash', 'credit', 'po', 'monthly_billing'])],
-            'load_count' => ['nullable', 'integer', 'min:0'],
-            'drying_cycles' => ['nullable', 'integer', 'min:0'],
-            'drying_extension_minutes' => ['nullable', 'integer', 'min:0'],
             'notes' => ['nullable', 'string'],
         ]);
 
@@ -147,9 +144,6 @@ class JobOrderController extends Controller
                 'created_by' => $user->id,
                 'job_order_number' => $this->nextJobOrderNumber((int) $validated['branch_id']),
                 'status' => 'pending',
-                'load_count' => $validated['load_count'] ?? 0,
-                'drying_cycles' => $validated['drying_cycles'] ?? 0,
-                'drying_extension_minutes' => $validated['drying_extension_minutes'] ?? 0,
                 'subtotal' => $subtotal,
                 'discount' => $discount,
                 'tax' => $tax,
@@ -170,17 +164,6 @@ class JobOrderController extends Controller
             }
 
             $this->deductInventoryForOrder($order, $validated['items'], $user->id);
-
-            for ($cycle = 1; $cycle <= (int) ($validated['drying_cycles'] ?? 0); $cycle++) {
-                $order->cycles()->create([
-                    'user_id' => $user->id,
-                    'cycle_type' => 'dry',
-                    'cycle_number' => $cycle,
-                    'notes' => $cycle === (int) ($validated['drying_cycles'] ?? 0) && ($validated['drying_extension_minutes'] ?? 0) > 0
-                        ? 'Includes '.$validated['drying_extension_minutes'].' minute drying extension.'
-                        : null,
-                ]);
-            }
 
             $running = (float) CustomerLedger::where('customer_id', $order->customer_id)->latest()->value('running_balance');
             CustomerLedger::create([

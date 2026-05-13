@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - {{ $appBusinessName }}</title>
+    <link rel="icon" href="{{ $appBusinessLogo }}">
+    <link rel="apple-touch-icon" href="{{ $appBusinessLogo }}">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     <script>
         window.appDarkModeDefault = @js($appDarkModeDefault);
@@ -110,6 +112,7 @@
                     </span>
                 </button>
             </form>
+
         </div>
     </main>
 

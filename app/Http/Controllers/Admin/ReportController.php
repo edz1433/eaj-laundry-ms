@@ -10,13 +10,34 @@ use App\Models\InventoryMovement;
 use App\Models\JobOrder;
 use App\Models\Payment;
 use App\Models\SystemSetting;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 
 class ReportController extends Controller
 {
     public function index(Request $request)
+    {
+        return view('admin.reports.index', $this->reportData($request));
+    }
+
+    public function pdf(Request $request)
+    {
+        $data = $this->reportData($request);
+        $branchName = $data['selectedBranchId']
+            ? $data['branches']->firstWhere('id', $data['selectedBranchId'])?->name
+            : 'All branches';
+
+        $pdf = Pdf::loadView('admin.reports.pdf', [
+            ...$data,
+            'branchName' => $branchName,
+            'generatedAt' => now(),
+        ])->setPaper('a4', 'landscape');
+
+        return $pdf->stream('reports-'.$data['dateFrom'].'-to-'.$data['dateTo'].'.pdf');
+    }
+
+    private function reportData(Request $request): array
     {
         $user = $request->user();
         $canChooseBranch = $user->isAdmin();
@@ -90,12 +111,14 @@ class ReportController extends Controller
             ->limit(40)
             ->get();
 
-        return view('admin.reports.index', [
+        return [
             'activityLogs' => $activityLogs,
             'branches' => $branches,
             'canChooseBranch' => $canChooseBranch,
             'customerLedger' => $customerLedger,
+            'dateFrom' => $dateFrom,
             'dateRangeValue' => $dateFrom.' to '.$dateTo,
+            'dateTo' => $dateTo,
             'inventoryUsage' => $inventoryUsage,
             'paymentTypes' => $paymentTypes,
             'receivables' => $receivables,
@@ -103,7 +126,7 @@ class ReportController extends Controller
             'salesByDate' => $salesByDate,
             'selectedBranchId' => $branchId,
             'settings' => SystemSetting::current(),
-        ]);
+        ];
     }
 
     private function dateRange(Request $request): array

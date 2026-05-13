@@ -71,9 +71,6 @@
                 <h2 class="mb-3 text-sm font-semibold">Summary</h2>
                 <div class="space-y-2 text-sm">
                     <div class="flex justify-between"><span class="text-muted">Status</span><span class="font-medium">{{ str_replace('_', ' ', ucfirst($order->status)) }}</span></div>
-                    <div class="flex justify-between"><span class="text-muted">Loads</span><span>{{ $order->load_count }}</span></div>
-                    <div class="flex justify-between"><span class="text-muted">Dry Cycles</span><span>{{ $order->drying_cycles }}x @if($order->drying_extension_minutes) +{{ $order->drying_extension_minutes }}m @endif</span></div>
-                    <div class="h-px bg-border dark:bg-gray-800"></div>
                     <div class="flex justify-between"><span class="text-muted">Subtotal</span><span>{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $order->subtotal, 2) }}</span></div>
                     <div class="flex justify-between"><span class="text-muted">Discount</span><span>{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $order->discount, 2) }}</span></div>
                     <div class="flex justify-between"><span class="text-muted">VAT</span><span>{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $order->tax, 2) }}</span></div>

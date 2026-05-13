@@ -45,7 +45,7 @@ class UserSeeder extends Seeder
                 'email' => 'admin@laundry.test',
                 'role' => 'admin',
                 'branch_id' => null,
-                'access' => array_values(array_diff(Menu::keys(), ['developer_settings'])),
+                'access' => Menu::keys(),
             ],
             [
                 'name' => 'Branch Manager',
@@ -53,7 +53,7 @@ class UserSeeder extends Seeder
                 'email' => 'manager@laundry.test',
                 'role' => 'branch_manager',
                 'branch_id' => $branchId,
-                'access' => ['dashboard', 'customers', 'services', 'job_orders', 'cycles', 'payments', 'receivables', 'inventory', 'attendance', 'reports', 'sms_logs', 'settings'],
+                'access' => ['dashboard', 'customers', 'services', 'job_orders', 'cycles', 'employees', 'payments', 'receivables', 'inventory', 'attendance', 'reports', 'sms_logs', 'settings'],
             ],
             [
                 'name' => 'Cashier User',

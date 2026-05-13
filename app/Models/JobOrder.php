@@ -9,7 +9,7 @@ class JobOrder extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = ['branch_id', 'customer_id', 'created_by', 'job_order_number', 'status', 'load_count', 'drying_cycles', 'drying_extension_minutes', 'subtotal', 'discount', 'tax', 'total', 'paid_amount', 'balance', 'notes', 'completed_at'];
+    protected $fillable = ['branch_id', 'customer_id', 'created_by', 'job_order_number', 'status', 'subtotal', 'discount', 'tax', 'total', 'paid_amount', 'balance', 'notes', 'completed_at'];
 
     protected $casts = ['subtotal' => 'decimal:2', 'discount' => 'decimal:2', 'tax' => 'decimal:2', 'total' => 'decimal:2', 'paid_amount' => 'decimal:2', 'balance' => 'decimal:2', 'completed_at' => 'datetime'];
 

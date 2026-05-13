@@ -22,8 +22,12 @@ class User extends Authenticatable
         'branch_id',
         'access',
         'status',
+        'monthly_salary',
         'last_login_at',
         'profile_photo',
+        'face_image_path',
+        'face_descriptors',
+        'face_enrolled_at',
     ];
 
     protected $hidden = [
@@ -38,6 +42,9 @@ class User extends Authenticatable
             'last_login_at' => 'datetime',
             'password' => 'hashed',
             'access' => 'array',
+            'monthly_salary' => 'decimal:2',
+            'face_descriptors' => 'array',
+            'face_enrolled_at' => 'datetime',
         ];
     }
 

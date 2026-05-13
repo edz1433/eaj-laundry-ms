@@ -13,101 +13,6 @@
 
     <section class="min-w-0 space-y-4">
         <div class="rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div class="mb-3 flex items-center justify-between">
-                <div>
-                    <h1 class="text-lg font-semibold">New Job Order</h1>
-                    <p class="text-sm text-muted">Select a customer, add services, then collect payment.</p>
-                </div>
-                <a href="{{ route('admin.job-orders.index') }}" class="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
-                    Orders
-                </a>
-            </div>
-
-            <div class="grid gap-3 md:grid-cols-2">
-                <div>
-                    <label class="mb-1.5 block text-sm font-medium">Branch</label>
-                    @if(in_array(auth()->user()->role, ['super_admin', 'admin'], true))
-                        <select name="branch_id" x-model="branchId" class="h-10 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950" required>
-                            @foreach($branches as $branch)
-                                <option value="{{ $branch->id }}" @selected($branchId == $branch->id)>{{ $branch->name }}</option>
-                            @endforeach
-                        </select>
-                    @else
-                        <input type="hidden" name="branch_id" value="{{ $branchId }}">
-                        <input value="{{ auth()->user()->branch?->name }}" disabled class="h-10 w-full rounded-md border border-border bg-smoke px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
-                    @endif
-                </div>
-
-                <div>
-                    <label class="mb-1.5 block text-sm font-medium">Customer</label>
-                    <div class="relative" @click.outside="customerOpen = false">
-                        <input type="hidden" name="customer_id" :value="selectedCustomerId">
-                        <div class="flex h-10 items-center gap-2 rounded-md border border-border bg-white px-3 dark:border-gray-800 dark:bg-gray-950">
-                            <span data-lucide="search" class="h-4 w-4 text-muted"></span>
-                            <input
-                                type="search"
-                                x-model="customerSearch"
-                                @focus="customerOpen = true"
-                                @input="selectedCustomerId = ''; customerOpen = true"
-                                placeholder="Search customer name, phone, billing..."
-                                class="w-full bg-transparent text-sm outline-none"
-                                autocomplete="off"
-                            >
-                            <button type="button" x-show="selectedCustomerId" @click="clearCustomer()" title="Clear customer" aria-label="Clear customer" class="inline-flex h-6 w-6 items-center justify-center rounded-md hover:bg-smoke dark:hover:bg-gray-900">
-                                <span data-lucide="x" class="h-3.5 w-3.5"></span>
-                            </button>
-                        </div>
-
-                        <div
-                            x-cloak
-                            x-show="customerOpen"
-                            x-transition
-                            class="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-border bg-white p-1 shadow-lg dark:border-gray-800 dark:bg-gray-950"
-                        >
-                            <template x-for="customer in filteredCustomers" :key="customer.id">
-                                <button
-                                    type="button"
-                                    @click="selectCustomer(customer)"
-                                    class="flex w-full items-center justify-between gap-3 rounded-sm px-3 py-2 text-left text-sm hover:bg-smoke dark:hover:bg-gray-900"
-                                >
-                                    <span class="min-w-0">
-                                        <span class="block truncate font-medium" x-text="customer.name"></span>
-                                        <span class="block truncate text-xs text-muted" x-text="`${customer.phone || 'No phone'} - ${formatBilling(customer.billing_type)}`"></span>
-                                    </span>
-                                    <span x-show="String(selectedCustomerId) === String(customer.id)" data-lucide="check" class="h-4 w-4 shrink-0 text-primary"></span>
-                                </button>
-                            </template>
-
-                            <div x-show="filteredCustomers.length === 0" class="px-3 py-6 text-center text-sm text-muted">
-                                No customers found for this branch.
-                            </div>
-                        </div>
-                    </div>
-                    <p x-show="!selectedCustomerId && customerSearch" class="mt-1.5 text-xs text-amber-600 dark:text-amber-300">
-                        Select a customer from the list before saving.
-                    </p>
-                </div>
-            </div>
-
-            <div class="mt-3 grid gap-3 md:grid-cols-3">
-                <label class="text-sm font-medium">
-                    Loads Used
-                    <input name="load_count" type="number" min="0" value="0" class="mt-1.5 h-10 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
-                </label>
-
-                <label class="text-sm font-medium">
-                    Dry Cycles
-                    <input name="drying_cycles" type="number" min="0" value="0" class="mt-1.5 h-10 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
-                </label>
-
-                <label class="text-sm font-medium">
-                    Extra Dry Minutes
-                    <input name="drying_extension_minutes" type="number" min="0" value="0" class="mt-1.5 h-10 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
-                </label>
-            </div>
-        </div>
-
-        <div class="rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <div class="mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
                     <h2 class="font-semibold">Service Catalog</h2>
@@ -156,12 +61,87 @@
                 </div>
             </div>
         </div>
-
-        <textarea name="notes" rows="3" placeholder="Notes / instructions" class="w-full rounded-md border border-border bg-white px-3 py-2 text-sm shadow-sm dark:border-gray-800 dark:bg-gray-950"></textarea>
     </section>
 
     <aside class="w-full lg:sticky lg:top-[4.5rem] lg:w-80 lg:self-start xl:w-[22rem] xl:justify-self-end">
         <div class="w-full min-w-0 overflow-hidden rounded-lg border border-border bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div class="space-y-3 border-b border-border p-3 dark:border-gray-800">
+                <div class="flex items-center justify-between gap-3">
+                    <div class="min-w-0">
+                        <h1 class="truncate text-sm font-semibold">New Job Order</h1>
+                        <p class="text-[11px] text-muted">Customer and cart</p>
+                    </div>
+                    <a href="{{ route('admin.job-orders.index') }}" class="inline-flex h-8 shrink-0 items-center rounded-md border border-border px-2.5 text-xs font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
+                        Orders
+                    </a>
+                </div>
+
+                @if(in_array(auth()->user()->role, ['super_admin', 'admin'], true))
+                    <div>
+                        <label class="mb-1.5 block text-xs font-medium text-muted">Branch</label>
+                        <select name="branch_id" x-model="branchId" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950" required>
+                            @foreach($branches as $branch)
+                                <option value="{{ $branch->id }}" @selected($branchId == $branch->id)>{{ $branch->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                @else
+                    <input type="hidden" name="branch_id" value="{{ $branchId }}">
+                @endif
+
+                <div>
+                    <label class="mb-1.5 block text-xs font-medium text-muted">Customer</label>
+                    <div class="relative" @click.outside="customerOpen = false">
+                        <input type="hidden" name="customer_id" :value="selectedCustomerId">
+                        <div class="flex h-9 items-center gap-2 rounded-md border border-border bg-white px-3 dark:border-gray-800 dark:bg-gray-950">
+                            <span data-lucide="search" class="h-4 w-4 shrink-0 text-muted"></span>
+                            <input
+                                type="search"
+                                x-model="customerSearch"
+                                @focus="customerOpen = true"
+                                @input="selectedCustomerId = ''; customerOpen = true"
+                                placeholder="Search customer..."
+                                class="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                                autocomplete="off"
+                            >
+                            <button type="button" x-show="selectedCustomerId" @click="clearCustomer()" title="Clear customer" aria-label="Clear customer" class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md hover:bg-smoke dark:hover:bg-gray-900">
+                                <span data-lucide="x" class="h-3.5 w-3.5"></span>
+                            </button>
+                        </div>
+
+                        <div
+                            x-cloak
+                            x-show="customerOpen"
+                            x-transition
+                            class="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-border bg-white p-1 shadow-lg dark:border-gray-800 dark:bg-gray-950"
+                        >
+                            <template x-for="customer in filteredCustomers" :key="customer.id">
+                                <button
+                                    type="button"
+                                    @click="selectCustomer(customer)"
+                                    class="flex w-full items-center justify-between gap-3 rounded-sm px-3 py-2 text-left text-sm hover:bg-smoke dark:hover:bg-gray-900"
+                                >
+                                    <span class="min-w-0">
+                                        <span class="block truncate font-medium" x-text="customer.name"></span>
+                                        <span class="block truncate text-xs text-muted" x-text="`${customer.phone || 'No phone'} - ${formatBilling(customer.billing_type)}`"></span>
+                                    </span>
+                                    <span x-show="String(selectedCustomerId) === String(customer.id)" data-lucide="check" class="h-4 w-4 shrink-0 text-primary"></span>
+                                </button>
+                            </template>
+
+                            <div x-show="filteredCustomers.length === 0" class="px-3 py-6 text-center text-sm text-muted">
+                                No customers found for this branch.
+                            </div>
+                        </div>
+                    </div>
+                    <p x-show="!selectedCustomerId && customerSearch" class="mt-1.5 text-xs text-amber-600 dark:text-amber-300">
+                        Select a customer from the list before saving.
+                    </p>
+                </div>
+
+                <textarea name="notes" rows="2" placeholder="Notes / instructions" class="w-full rounded-md border border-border bg-white px-3 py-2 text-sm shadow-sm dark:border-gray-800 dark:bg-gray-950"></textarea>
+            </div>
+
             <div class="flex h-12 items-center justify-between border-b border-border px-3 dark:border-gray-800">
                 <div>
                     <h2 class="text-sm font-semibold">Cart</h2>

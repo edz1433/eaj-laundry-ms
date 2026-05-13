@@ -9,6 +9,8 @@ use App\Http\Controllers\Admin\JobOrderController;
 use App\Http\Controllers\Admin\CycleController;
 use App\Http\Controllers\Admin\ReceivableController;
 use App\Http\Controllers\Admin\PaymentController;
+use App\Http\Controllers\Admin\EmployeeController;
+use App\Http\Controllers\Admin\AttendanceController;
 use App\Http\Controllers\Admin\InventoryController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\ReportController;
@@ -24,6 +26,10 @@ Route::middleware('guest')->group(function () {
 Route::post('/logout', [LoginController::class, 'logout'])
     ->middleware('auth')
     ->name('logout');
+
+Route::get('/time-clock', [AttendanceController::class, 'kiosk'])->name('attendance.kiosk');
+Route::post('/time-clock/time-in', [AttendanceController::class, 'publicTimeIn'])->name('attendance.public-time-in');
+Route::post('/time-clock/time-out', [AttendanceController::class, 'publicTimeOut'])->name('attendance.public-time-out');
 
 Route::middleware(['auth', 'settings.completed'])->group(function () {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
@@ -59,10 +65,22 @@ Route::middleware(['auth', 'settings.completed'])->group(function () {
             Route::post('/cycles/job-orders/{jobOrder}', [CycleController::class, 'storeCycle'])->name('cycles.store');
             Route::patch('/cycles/{cycle}/end', [CycleController::class, 'endCycle'])->name('cycles.end');
         });
+        Route::middleware('menu.access:employees')->group(function () {
+            Route::get('/employees', [EmployeeController::class, 'index'])->name('employees.index');
+            Route::put('/employees/{employee}', [EmployeeController::class, 'update'])->name('employees.update');
+        });
+        Route::middleware('menu.access:attendance')->group(function () {
+            Route::get('/attendance', [AttendanceController::class, 'index'])->name('attendance.index');
+            Route::post('/attendance/time-in', [AttendanceController::class, 'timeIn'])->name('attendance.time-in');
+            Route::post('/attendance/time-out', [AttendanceController::class, 'timeOut'])->name('attendance.time-out');
+        });
 
         Route::get('/reports', [ReportController::class, 'index'])
             ->middleware('menu.access:reports')
             ->name('reports.index');
+        Route::get('/reports/pdf', [ReportController::class, 'pdf'])
+            ->middleware('menu.access:reports')
+            ->name('reports.pdf');
 
         Route::get('/sms-logs', [SmsLogController::class, 'index'])
             ->middleware('menu.access:sms_logs')

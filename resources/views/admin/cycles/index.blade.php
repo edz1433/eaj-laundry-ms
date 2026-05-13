@@ -40,21 +40,6 @@
                     </span>
                 </div>
 
-                <div class="mb-3 grid grid-cols-3 gap-2 text-sm">
-                    <div class="rounded-md border border-border p-2 dark:border-gray-800">
-                        <p class="text-xs text-muted">Loads</p>
-                        <p class="font-medium">{{ $order->load_count }}</p>
-                    </div>
-                    <div class="rounded-md border border-border p-2 dark:border-gray-800">
-                        <p class="text-xs text-muted">Dry Cycles</p>
-                        <p class="font-medium">{{ $order->drying_cycles }}</p>
-                    </div>
-                    <div class="rounded-md border border-border p-2 dark:border-gray-800">
-                        <p class="text-xs text-muted">Extra Dry</p>
-                        <p class="font-medium">{{ $order->drying_extension_minutes }}m</p>
-                    </div>
-                </div>
-
                 <div class="mb-3 flex flex-wrap gap-2">
                     @foreach(['wash' => 'Washing', 'dry' => 'Drying', 'fold' => 'Folding', 'iron' => 'Ironing'] as $type => $label)
                         <form method="POST" action="{{ route('admin.cycles.store', $order) }}">

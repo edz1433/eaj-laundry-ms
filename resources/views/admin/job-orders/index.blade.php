@@ -36,7 +36,7 @@
         <table class="w-full text-left text-sm">
             <thead class="border-b border-border bg-smoke text-xs uppercase text-muted dark:border-gray-800 dark:bg-gray-950">
                 <tr>
-                    <th class="px-4 py-3">JO #</th><th class="px-4 py-3">Customer</th><th class="px-4 py-3">Branch</th><th class="px-4 py-3">Loads</th><th class="px-4 py-3">Dry</th><th class="px-4 py-3">Total</th><th class="px-4 py-3">Balance</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th>
+                    <th class="px-4 py-3">JO #</th><th class="px-4 py-3">Customer</th><th class="px-4 py-3">Branch</th><th class="px-4 py-3">Total</th><th class="px-4 py-3">Balance</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-border dark:divide-gray-800">
@@ -45,8 +45,6 @@
                         <td class="px-4 py-3 font-medium">{{ $order->job_order_number }}</td>
                         <td class="px-4 py-3">{{ $order->customer?->name }}</td>
                         <td class="px-4 py-3">{{ $order->branch?->name }}</td>
-                        <td class="px-4 py-3">{{ $order->load_count }}</td>
-                        <td class="px-4 py-3">{{ $order->drying_cycles }}x @if($order->drying_extension_minutes) +{{ $order->drying_extension_minutes }}m @endif</td>
                         <td class="px-4 py-3">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $order->total, 2) }}</td>
                         <td class="px-4 py-3">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $order->balance, 2) }}</td>
                         <td class="px-4 py-3"><span class="rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">{{ str_replace('_', ' ', $order->status) }}</span></td>
@@ -68,7 +66,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="9" class="px-4 py-10 text-center text-muted">No job orders found.</td></tr>
+                    <tr><td colspan="7" class="px-4 py-10 text-center text-muted">No job orders found.</td></tr>
                 @endforelse
             </tbody>
         </table>

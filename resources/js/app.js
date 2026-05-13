@@ -7,7 +7,6 @@ import Swal from 'sweetalert2';
 import {
     Activity,
     Bell,
-    BriefcaseBusiness,
     Building2,
     CalendarCheck,
     ChevronDown,
@@ -18,8 +17,8 @@ import {
     Eye,
     EyeOff,
     FileBarChart2,
-    FolderCog,
     HandCoins,
+    IdCard,
     LayoutDashboard,
     Loader2,
     LogIn,
@@ -48,6 +47,13 @@ window.Alpine = Alpine;
 window.Swal = Swal;
 window.flatpickr = flatpickr;
 window.Chart = Chart;
+window.loadFaceApi = async () => {
+    if (!window.faceapi) {
+        window.faceapi = await import('@vladmandic/face-api');
+    }
+
+    return window.faceapi;
+};
 window.toast = Swal.mixin({
     toast: true,
     position: 'bottom-end',
@@ -67,13 +73,11 @@ window.toast = Swal.mixin({
 const icons = {
     activity: Activity,
     bell: Bell,
-    briefcase: BriefcaseBusiness,
     building: Building2,
     calendar: CalendarCheck,
     chevronDown: ChevronDown,
     cycles: Activity,
     dashboard: LayoutDashboard,
-    developerSettings: ShieldCheck,
     dollar: CircleDollarSign,
     eye: Eye,
     eyeOff: EyeOff,
@@ -106,7 +110,7 @@ const icons = {
     branches: Building2,
     customers: Users,
     attendance: CalendarCheck,
-    payroll: BriefcaseBusiness,
+    employees: IdCard,
     smsLogs: Bell,
 };
 
