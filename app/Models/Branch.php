@@ -14,10 +14,16 @@ class Branch extends Model
         'code',
         'address',
         'contact_number',
+        'latitude',
+        'longitude',
+        'attendance_radius_meters',
         'is_active',
     ];
 
     protected $casts = [
+        'latitude' => 'decimal:7',
+        'longitude' => 'decimal:7',
+        'attendance_radius_meters' => 'integer',
         'is_active' => 'boolean',
     ];
 

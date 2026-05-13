@@ -31,6 +31,22 @@
             <label class="mb-1.5 block text-sm font-medium">Address</label>
             <textarea name="address" rows="3" class="w-full rounded-md border border-border bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950">{{ old('address', $branch->address) }}</textarea>
         </div>
+
+        <div>
+            <label class="mb-1.5 block text-sm font-medium">Attendance Latitude</label>
+            <input type="number" step="0.0000001" name="latitude" value="{{ old('latitude', $branch->latitude) }}" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
+        </div>
+
+        <div>
+            <label class="mb-1.5 block text-sm font-medium">Attendance Longitude</label>
+            <input type="number" step="0.0000001" name="longitude" value="{{ old('longitude', $branch->longitude) }}" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
+        </div>
+
+        <div class="md:col-span-2">
+            <label class="mb-1.5 block text-sm font-medium">Allowed Attendance Radius (meters)</label>
+            <input type="number" min="25" max="5000" name="attendance_radius_meters" value="{{ old('attendance_radius_meters', $branch->attendance_radius_meters) }}" placeholder="150" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
+            <p class="mt-1 text-xs text-muted">Leave location blank to disable geofence for this branch.</p>
+        </div>
     </div>
 
     @if($errors->any())

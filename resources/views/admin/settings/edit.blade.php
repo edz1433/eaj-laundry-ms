@@ -202,6 +202,22 @@
                         <input name="branch_address" value="{{ old('branch_address', $branch->address) }}" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
                     </div>
 
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Attendance Latitude</label>
+                        <input type="number" step="0.0000001" name="branch_latitude" value="{{ old('branch_latitude', $branch->latitude) }}" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Attendance Longitude</label>
+                        <input type="number" step="0.0000001" name="branch_longitude" value="{{ old('branch_longitude', $branch->longitude) }}" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
+                    </div>
+
+                    <div class="lg:col-span-2">
+                        <label class="block text-sm font-medium mb-2">Allowed Attendance Radius (meters)</label>
+                        <input type="number" min="25" max="5000" name="attendance_radius_meters" value="{{ old('attendance_radius_meters', $branch->attendance_radius_meters) }}" placeholder="150" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
+                        <p class="mt-1 text-xs text-muted">Set branch coordinates to require employee time clock records inside this radius.</p>
+                    </div>
+
                     <div class="lg:col-span-2">
                         <p class="mb-3 text-sm font-medium">Operating Hours</p>
                         <div class="grid grid-cols-1 gap-3 md:grid-cols-2">

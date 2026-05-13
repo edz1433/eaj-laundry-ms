@@ -97,6 +97,9 @@ class BranchController extends Controller
             ],
             'address' => ['nullable', 'string', 'max:255'],
             'contact_number' => ['nullable', 'string', 'max:50'],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'attendance_radius_meters' => ['nullable', 'integer', 'min:25', 'max:5000'],
             'is_active' => ['nullable', 'boolean'],
         ];
     }

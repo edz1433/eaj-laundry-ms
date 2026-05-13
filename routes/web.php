@@ -28,6 +28,7 @@ Route::post('/logout', [LoginController::class, 'logout'])
     ->name('logout');
 
 Route::get('/time-clock', [AttendanceController::class, 'kiosk'])->name('attendance.kiosk');
+Route::get('/time-clock/challenge', [AttendanceController::class, 'challenge'])->name('attendance.challenge');
 Route::post('/time-clock/time-in', [AttendanceController::class, 'publicTimeIn'])->name('attendance.public-time-in');
 Route::post('/time-clock/time-out', [AttendanceController::class, 'publicTimeOut'])->name('attendance.public-time-out');
 

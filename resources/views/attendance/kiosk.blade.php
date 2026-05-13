@@ -51,9 +51,9 @@
                         <div class="rounded-lg bg-black/65 p-3 text-white shadow-lg backdrop-blur">
                             <p class="text-sm font-medium" x-text="message"></p>
                             <div class="mt-2 grid grid-cols-3 gap-1.5 text-[11px]">
-                                <div class="rounded-md px-2 py-1 text-center" :class="liveness.blink ? 'bg-green-500 text-white' : 'bg-white/15 text-white/75'">Blink</div>
-                                <div class="rounded-md px-2 py-1 text-center" :class="liveness.left ? 'bg-green-500 text-white' : 'bg-white/15 text-white/75'">Left</div>
-                                <div class="rounded-md px-2 py-1 text-center" :class="liveness.right ? 'bg-green-500 text-white' : 'bg-white/15 text-white/75'">Right</div>
+                                <template x-for="(step, index) in challengeSequence" :key="`${challengeNonce}-${index}`">
+                                    <div class="rounded-md px-2 py-1 text-center capitalize" :class="index < challengeResult.length ? 'bg-green-500 text-white' : (index === challengeIndex ? 'bg-primary text-white' : 'bg-white/15 text-white/75')" x-text="step"></div>
+                                </template>
                             </div>
                         </div>
 
@@ -84,15 +84,20 @@
                 faceImage: '',
                 latitude: '',
                 longitude: '',
+                locationAccuracy: null,
+                locationWatchId: null,
                 submitting: false,
                 lastResult: '',
                 currentTime: '',
                 message: 'Opening live camera...',
-                liveness: { blink: false, left: false, right: false },
+                challengeNonce: '',
+                challengeSequence: [],
+                challengeResult: [],
+                challengeIndex: 0,
                 eyesWereOpen: false,
                 monitorId: null,
                 get canSubmit() {
-                    return this.descriptor && this.latitude && this.longitude && this.liveness.blink && this.liveness.left && this.liveness.right;
+                    return this.descriptor && this.latitude && this.longitude && this.challengeSequence.length && this.challengeResult.length === this.challengeSequence.length;
                 },
                 init() {
                     this.startClock();
@@ -110,6 +115,17 @@
                     update();
                     setInterval(update, 1000);
                 },
+                async fetchChallenge() {
+                    const response = await fetch(@js(route('attendance.challenge')), {
+                        headers: { 'Accept': 'application/json' },
+                    });
+                    const data = await response.json();
+                    this.challengeNonce = data.nonce;
+                    this.challengeSequence = data.sequence || [];
+                    this.challengeResult = [];
+                    this.challengeIndex = 0;
+                    this.eyesWereOpen = false;
+                },
                 async loadModels() {
                     if (this.modelsLoaded) return;
                     this.message = 'Loading face recognition models...';
@@ -123,13 +139,14 @@
                 },
                 async start() {
                     try {
+                        await this.fetchChallenge();
                         await this.loadModels();
                         this.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
                         this.$refs.video.srcObject = this.stream;
                         this.locate();
                         clearInterval(this.monitorId);
                         this.monitorId = setInterval(() => this.checkLiveFace(), 450);
-                        this.message = 'Blink, turn left, then turn right.';
+                        this.message = this.nextChallengeMessage();
                     } catch (error) {
                         this.message = 'Camera permission is required.';
                     }
@@ -140,18 +157,49 @@
                         return;
                     }
 
-                    navigator.geolocation.getCurrentPosition(
+                    if (this.locationWatchId) {
+                        navigator.geolocation.clearWatch(this.locationWatchId);
+                    }
+
+                    this.locationWatchId = navigator.geolocation.watchPosition(
                         position => {
                             this.latitude = position.coords.latitude.toFixed(7);
                             this.longitude = position.coords.longitude.toFixed(7);
+                            this.locationAccuracy = position.coords.accuracy ? Math.round(position.coords.accuracy) : null;
                         },
                         () => this.message = 'Location permission is required.',
-                        { enableHighAccuracy: true, timeout: 12000 }
+                        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
                     );
                 },
                 eyeAspectRatio(points) {
                     const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
                     return (distance(points[1], points[5]) + distance(points[2], points[4])) / (2 * distance(points[0], points[3]));
+                },
+                nextChallengeMessage() {
+                    const step = this.challengeSequence[this.challengeIndex];
+                    if (!step) return 'Face verified. Choose Time In or Time Out.';
+
+                    return {
+                        blink: 'Blink once for the live face check.',
+                        left: 'Turn your face to the left.',
+                        right: 'Turn your face to the right.',
+                    }[step] || 'Complete the live face check.';
+                },
+                completeCurrentChallenge(action) {
+                    const expected = this.challengeSequence[this.challengeIndex];
+                    if (expected !== action) return;
+
+                    this.challengeResult.push(action);
+                    this.challengeIndex += 1;
+                    this.eyesWereOpen = false;
+                    this.message = this.nextChallengeMessage();
+                },
+                faceQualityIsOk(result) {
+                    const video = this.$refs.video;
+                    const box = result.detection.box;
+                    const faceWidthRatio = box.width / video.videoWidth;
+
+                    return result.detection.score >= 0.7 && faceWidthRatio >= 0.18 && faceWidthRatio <= 0.75;
                 },
                 async checkLiveFace() {
                     const video = this.$refs.video;
@@ -168,22 +216,30 @@
                         return;
                     }
 
+                    if (!this.faceQualityIsOk(result)) {
+                        this.descriptor = null;
+                        this.message = 'Move closer with good lighting and keep one clear face in frame.';
+                        return;
+                    }
+
                     const landmarks = result.landmarks;
                     const leftEye = landmarks.getLeftEye();
                     const rightEye = landmarks.getRightEye();
                     const ear = (this.eyeAspectRatio(leftEye) + this.eyeAspectRatio(rightEye)) / 2;
 
                     if (ear > 0.28) this.eyesWereOpen = true;
-                    if (this.eyesWereOpen && ear < 0.22) this.liveness.blink = true;
+                    if (this.eyesWereOpen && ear < 0.22) this.completeCurrentChallenge('blink');
 
                     const box = result.detection.box;
                     const nose = landmarks.getNose()[3];
                     const noseRatio = (nose.x - box.x) / box.width;
-                    if (noseRatio < 0.43) this.liveness.left = true;
-                    if (noseRatio > 0.57) this.liveness.right = true;
+                    if (noseRatio < 0.43) this.completeCurrentChallenge('left');
+                    if (noseRatio > 0.57) this.completeCurrentChallenge('right');
 
                     this.descriptor = Array.from(result.descriptor);
-                    this.message = this.canSubmit ? 'Face verified. Choose Time In or Time Out.' : 'Complete blink, left turn, right turn, and GPS.';
+                    if (!this.canSubmit) {
+                        this.message = this.latitude && this.longitude ? this.nextChallengeMessage() : 'Allow GPS and complete the live face check.';
+                    }
                 },
                 capture() {
                     const video = this.$refs.video;
@@ -198,7 +254,7 @@
                     canvas.getContext('2d').drawImage(video, 0, 0);
                     this.faceImage = canvas.toDataURL('image/jpeg', 0.88);
                     this.locate();
-                    this.message = this.canSubmit ? 'Ready to time in or time out.' : 'Finish the liveness challenge.';
+                    this.message = this.canSubmit ? 'Ready to time in or time out.' : 'Finish the live face challenge.';
                 },
                 captureFaceImage() {
                     const video = this.$refs.video;
@@ -240,7 +296,8 @@
                             latitude: this.latitude,
                             longitude: this.longitude,
                             face_image: this.faceImage,
-                            liveness_token: 'passed',
+                            challenge_nonce: this.challengeNonce,
+                            challenge_result: this.challengeResult,
                         }),
                     });
 
@@ -249,11 +306,13 @@
 
                     if (!response.ok) {
                         this.message = Object.values(data.errors || {})[0]?.[0] || 'Attendance failed.';
+                        await this.fetchChallenge();
                         return;
                     }
 
                     this.lastResult = data.message;
                     this.message = `${data.employee} recorded at ${data.time}.`;
+                    await this.fetchChallenge();
                 },
             };
         }

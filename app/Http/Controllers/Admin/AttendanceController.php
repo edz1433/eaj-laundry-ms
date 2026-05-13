@@ -7,7 +7,9 @@ use App\Models\Attendance;
 use App\Models\Branch;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class AttendanceController extends Controller
@@ -15,6 +17,23 @@ class AttendanceController extends Controller
     public function kiosk()
     {
         return view('attendance.kiosk');
+    }
+
+    public function challenge()
+    {
+        $sequence = collect(['blink', 'left', 'right'])
+            ->shuffle()
+            ->values()
+            ->all();
+        $nonce = (string) Str::uuid();
+
+        Cache::put($this->challengeCacheKey($nonce), $sequence, now()->addMinutes(2));
+
+        return response()->json([
+            'nonce' => $nonce,
+            'sequence' => $sequence,
+            'expires_in' => 120,
+        ]);
     }
 
     public function index(Request $request)
@@ -61,6 +80,7 @@ class AttendanceController extends Controller
     {
         $validated = $this->validateAttendanceRequest($request);
         $employee = $this->employeeForAttendance($request, (int) $validated['user_id']);
+        $this->assertWithinBranchGeofence($employee, (float) $validated['latitude'], (float) $validated['longitude']);
 
         $attendance = Attendance::firstOrCreate(
             [
@@ -93,6 +113,7 @@ class AttendanceController extends Controller
     {
         $validated = $this->validateAttendanceRequest($request);
         $employee = $this->employeeForAttendance($request, (int) $validated['user_id']);
+        $this->assertWithinBranchGeofence($employee, (float) $validated['latitude'], (float) $validated['longitude']);
 
         $attendance = Attendance::query()
             ->where('user_id', $employee->id)
@@ -120,7 +141,9 @@ class AttendanceController extends Controller
     public function publicTimeIn(Request $request)
     {
         $validated = $this->validatePublicAttendanceRequest($request);
-        $employee = $this->matchEmployeeByFace($validated['descriptor']);
+        $this->verifyChallenge($validated);
+        $branch = $this->branchForLocation((float) $validated['latitude'], (float) $validated['longitude']);
+        $employee = $this->matchEmployeeByFace($validated['descriptor'], $branch);
 
         $attendance = Attendance::firstOrCreate(
             [
@@ -156,7 +179,9 @@ class AttendanceController extends Controller
     public function publicTimeOut(Request $request)
     {
         $validated = $this->validatePublicAttendanceRequest($request);
-        $employee = $this->matchEmployeeByFace($validated['descriptor']);
+        $this->verifyChallenge($validated);
+        $branch = $this->branchForLocation((float) $validated['latitude'], (float) $validated['longitude']);
+        $employee = $this->matchEmployeeByFace($validated['descriptor'], $branch);
 
         $attendance = Attendance::query()
             ->where('user_id', $employee->id)
@@ -203,16 +228,60 @@ class AttendanceController extends Controller
             'latitude' => ['required', 'numeric', 'between:-90,90'],
             'longitude' => ['required', 'numeric', 'between:-180,180'],
             'face_image' => ['required', 'string'],
-            'liveness_token' => ['required', 'string', 'in:passed'],
+            'challenge_nonce' => ['required', 'string'],
+            'challenge_result' => ['required', 'array', 'size:3'],
+            'challenge_result.*' => ['required', 'string', 'in:blink,left,right'],
         ]);
     }
 
-    private function matchEmployeeByFace(array $descriptor): User
+    private function verifyChallenge(array $validated): void
+    {
+        $expected = Cache::pull($this->challengeCacheKey($validated['challenge_nonce']));
+
+        if (! $expected || array_values($validated['challenge_result']) !== array_values($expected)) {
+            throw ValidationException::withMessages([
+                'face' => 'Live face challenge expired or was not completed correctly. Please try again.',
+            ]);
+        }
+    }
+
+    private function branchForLocation(float $latitude, float $longitude): Branch
+    {
+        $branch = Branch::query()
+            ->where('is_active', true)
+            ->whereNotNull('latitude')
+            ->whereNotNull('longitude')
+            ->get()
+            ->map(function (Branch $branch) use ($latitude, $longitude) {
+                $radius = (int) ($branch->attendance_radius_meters ?: 150);
+
+                return [
+                    'branch' => $branch,
+                    'distance' => $this->distanceInMeters((float) $branch->latitude, (float) $branch->longitude, $latitude, $longitude),
+                    'radius' => $radius,
+                ];
+            })
+            ->filter(fn (array $result) => $result['distance'] <= $result['radius'])
+            ->sortBy('distance')
+            ->first();
+
+        if (! $branch) {
+            throw ValidationException::withMessages([
+                'location' => 'This device is not inside any configured branch attendance area.',
+            ]);
+        }
+
+        return $branch['branch'];
+    }
+
+    private function matchEmployeeByFace(array $descriptor, ?Branch $branch = null): User
     {
         $match = User::query()
+            ->with('branch')
             ->where('status', 'active')
             ->whereNotNull('branch_id')
             ->whereNotNull('face_descriptors')
+            ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
             ->get()
             ->map(function (User $employee) use ($descriptor) {
                 $distance = collect($employee->face_descriptors ?? [])
@@ -229,10 +298,33 @@ class AttendanceController extends Controller
             ->first();
 
         if (! $match || $match['distance'] > 0.48) {
-            throw ValidationException::withMessages(['face' => 'No enrolled employee matched this live face.']);
+            $message = $branch
+                ? "No enrolled employee matched this live face for {$branch->name}."
+                : 'No enrolled employee matched this live face.';
+
+            throw ValidationException::withMessages(['face' => $message]);
         }
 
         return $match['employee'];
+    }
+
+    private function assertWithinBranchGeofence(User $employee, float $latitude, float $longitude): void
+    {
+        $employee->loadMissing('branch');
+        $branch = $employee->branch;
+
+        if (! $branch || $branch->latitude === null || $branch->longitude === null) {
+            return;
+        }
+
+        $radius = (int) ($branch->attendance_radius_meters ?: 150);
+        $distance = $this->distanceInMeters((float) $branch->latitude, (float) $branch->longitude, $latitude, $longitude);
+
+        if ($distance > $radius) {
+            throw ValidationException::withMessages([
+                'location' => "Attendance location is outside {$branch->name}'s allowed {$radius}m radius.",
+            ]);
+        }
     }
 
     private function employeeForAttendance(Request $request, int $userId): User
@@ -240,6 +332,7 @@ class AttendanceController extends Controller
         $employee = User::query()
             ->whereKey($userId)
             ->where('status', 'active')
+            ->with('branch')
             ->firstOrFail();
 
         if (! $request->user()->isAdmin()) {
@@ -272,5 +365,22 @@ class AttendanceController extends Controller
         }
 
         return sqrt($sum);
+    }
+
+    private function distanceInMeters(float $lat1, float $lng1, float $lat2, float $lng2): float
+    {
+        $earthRadius = 6371000;
+        $latDelta = deg2rad($lat2 - $lat1);
+        $lngDelta = deg2rad($lng2 - $lng1);
+
+        $a = sin($latDelta / 2) ** 2
+            + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($lngDelta / 2) ** 2;
+
+        return $earthRadius * 2 * atan2(sqrt($a), sqrt(1 - $a));
+    }
+
+    private function challengeCacheKey(string $nonce): string
+    {
+        return 'attendance_challenge:'.$nonce;
     }
 }

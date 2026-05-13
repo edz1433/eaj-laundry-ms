@@ -77,6 +77,9 @@ class SystemSettingController extends Controller
             ],
             'branch_address' => ['nullable', 'string'],
             'branch_contact' => ['nullable', 'string', 'max:50'],
+            'branch_latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'branch_longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'attendance_radius_meters' => ['nullable', 'integer', 'min:25', 'max:5000'],
             'receipt_header' => ['nullable', 'string'],
             'receipt_footer' => ['nullable', 'string'],
             'operating_hours' => ['nullable', 'array'],
@@ -123,6 +126,9 @@ class SystemSettingController extends Controller
             'code' => $validated['branch_code'],
             'address' => $validated['branch_address'] ?? null,
             'contact_number' => $validated['branch_contact'] ?? null,
+            'latitude' => $validated['branch_latitude'] ?? null,
+            'longitude' => $validated['branch_longitude'] ?? null,
+            'attendance_radius_meters' => $validated['attendance_radius_meters'] ?? null,
         ]);
 
         BranchSetting::updateOrCreate(
@@ -145,6 +151,9 @@ class SystemSettingController extends Controller
             $validated['branch_code'],
             $validated['branch_address'],
             $validated['branch_contact'],
+            $validated['branch_latitude'],
+            $validated['branch_longitude'],
+            $validated['attendance_radius_meters'],
             $validated['receipt_header'],
             $validated['receipt_footer'],
             $validated['operating_hours'],
