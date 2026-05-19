@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="{{ $appPrimaryColor }}">
     <title>@yield('page_title', 'Dashboard') - {{ $appBusinessName }}</title>
     <link rel="icon" href="{{ $appBusinessLogo }}">
     <link rel="apple-touch-icon" href="{{ $appBusinessLogo }}">
@@ -14,24 +15,24 @@
 </head>
 
 <body class="app-surface text-dark dark:text-gray-100">
-    <div x-data="{ sidebarOpen: false }" class="min-h-screen">
+    <div x-data="{ sidebarOpen: false }" class="min-h-screen flex">
 
         @include('partials.sidebar')
 
-        <div class="flex min-h-screen min-w-0 flex-col lg:pl-64">
+        <div class="flex-1 flex flex-col min-w-0 lg:pl-64">
             @include('partials.topbar')
 
-            <main class="flex-1 p-4 lg:p-5">
-                <div class="mx-auto w-full max-w-7xl">
-                    @include('partials.alerts')
+            <main class="flex-1 p-4 sm:p-6 lg:p-8">
+                @include('partials.alerts')
 
-                    {{ $slot ?? '' }}
+                {{ $slot ?? '' }}
 
-                    @yield('content')
-                </div>
+                @yield('content')
             </main>
 
-            @include('partials.footer')
+            @unless(trim($__env->yieldContent('hide_footer')))
+                @include('partials.footer')
+            @endunless
         </div>
     </div>
 </body>

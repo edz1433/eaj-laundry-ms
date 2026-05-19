@@ -1,148 +1,164 @@
 @extends('layouts.app')
 
 @section('page_title', in_array(auth()->user()->role, ['branch_manager', 'cashier'], true) ? 'Cashier POS' : 'New Job Order')
+@section('hide_footer', true)
 
 @section('content')
-<form
-    method="POST"
-    action="{{ route('admin.job-orders.store') }}"
+<div
     x-data="posPage(@js($services), @js($customers), @js((float) ($appSettings?->vat_rate ?? 0)), @js((bool) ($appSettings?->vat_enabled ?? false)))"
-    class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] 2xl:grid-cols-[minmax(0,1fr)_22rem]"
 >
-    @csrf
+    <form
+        method="POST"
+        action="{{ route('admin.job-orders.store') }}"
+        class="grid gap-4 md:h-[calc(100dvh-6.5rem)] md:grid-cols-[minmax(0,1fr)_18rem] md:overflow-hidden lg:h-[calc(100dvh-7.5rem)] lg:grid-cols-[minmax(0,1fr)_20rem] 2xl:grid-cols-[minmax(0,1fr)_22rem]"
+    >
+        @csrf
 
-    <section class="min-w-0 space-y-4">
-        <div class="rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div class="mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                    <h2 class="font-semibold">Service Catalog</h2>
-                    <p class="text-sm text-muted">Tap a service to add it to the cart.</p>
-                </div>
-
-                <div class="flex h-9 w-full items-center gap-2 rounded-md border border-border px-3 dark:border-gray-800 md:w-64">
-                    <span data-lucide="search" class="h-4 w-4 text-muted"></span>
-                    <input type="search" x-model.debounce.200ms="serviceSearch" placeholder="Search services..." class="w-full bg-transparent text-sm outline-none">
-                </div>
-            </div>
-
-            <div class="mb-3 flex gap-1 overflow-x-auto rounded-md bg-smoke p-1 dark:bg-gray-950">
-                <template x-for="type in serviceTypes" :key="type.value">
-                    <button
-                        type="button"
-                        @click="typeFilter = type.value"
-                        class="h-8 shrink-0 rounded-sm px-3 text-sm font-medium"
-                        :class="typeFilter === type.value ? 'bg-white text-dark shadow-sm dark:bg-gray-900 dark:text-white' : 'text-muted hover:text-dark dark:hover:text-white'"
-                        x-text="type.label"
-                    ></button>
-                </template>
-            </div>
-
-            <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                <template x-for="service in filteredServices" :key="service.id">
-                    <button
-                        type="button"
-                        @click="add(service)"
-                        class="group rounded-md border border-border p-3 text-left transition hover:border-primary hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950"
-                    >
-                        <div class="flex items-start justify-between gap-3">
-                            <div class="min-w-0">
-                                <p class="truncate text-sm font-medium" x-text="service.name"></p>
-                                <p class="mt-1 text-xs capitalize text-muted" x-text="service.pricing_type"></p>
-                            </div>
-                            <span class="rounded-md bg-white px-2 py-1 text-xs font-medium text-primary shadow-sm dark:bg-gray-900">
-                                {{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(service.price)"></span>
-                            </span>
-                        </div>
-                    </button>
-                </template>
-
-                <div x-show="filteredServices.length === 0" class="col-span-full rounded-md border border-dashed border-border p-8 text-center text-sm text-muted dark:border-gray-800">
-                    No services match your filter.
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <aside class="w-full lg:sticky lg:top-[4.5rem] lg:w-80 lg:self-start xl:w-[22rem] xl:justify-self-end">
-        <div class="w-full min-w-0 overflow-hidden rounded-lg border border-border bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div class="space-y-3 border-b border-border p-3 dark:border-gray-800">
-                <div class="flex items-center justify-between gap-3">
-                    <div class="min-w-0">
-                        <h1 class="truncate text-sm font-semibold">New Job Order</h1>
-                        <p class="text-[11px] text-muted">Customer and cart</p>
-                    </div>
-                    <a href="{{ route('admin.job-orders.index') }}" class="inline-flex h-8 shrink-0 items-center rounded-md border border-border px-2.5 text-xs font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
-                        Orders
-                    </a>
-                </div>
-
-                @if(in_array(auth()->user()->role, ['super_admin', 'admin'], true))
+        <section class="min-h-0 min-w-0">
+            <div class="flex h-full min-h-0 flex-col rounded-lg border border-border bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900 lg:p-4">
+                <div class="mb-3 flex shrink-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                     <div>
-                        <label class="mb-1.5 block text-xs font-medium text-muted">Branch</label>
-                        <select name="branch_id" x-model="branchId" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950" required>
-                            @foreach($branches as $branch)
-                                <option value="{{ $branch->id }}" @selected($branchId == $branch->id)>{{ $branch->name }}</option>
-                            @endforeach
-                        </select>
+                        <h2 class="font-semibold">Service Catalog</h2>
+                        <p class="text-sm text-muted">Tap a service to add it to the cart.</p>
                     </div>
-                @else
-                    <input type="hidden" name="branch_id" value="{{ $branchId }}">
-                @endif
 
-                <div>
-                    <label class="mb-1.5 block text-xs font-medium text-muted">Customer</label>
-                    <div class="relative" @click.outside="customerOpen = false">
-                        <input type="hidden" name="customer_id" :value="selectedCustomerId">
-                        <div class="flex h-9 items-center gap-2 rounded-md border border-border bg-white px-3 dark:border-gray-800 dark:bg-gray-950">
-                            <span data-lucide="search" class="h-4 w-4 shrink-0 text-muted"></span>
-                            <input
-                                type="search"
-                                x-model="customerSearch"
-                                @focus="customerOpen = true"
-                                @input="selectedCustomerId = ''; customerOpen = true"
-                                placeholder="Search customer..."
-                                class="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                                autocomplete="off"
-                            >
-                            <button type="button" x-show="selectedCustomerId" @click="clearCustomer()" title="Clear customer" aria-label="Clear customer" class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md hover:bg-smoke dark:hover:bg-gray-900">
-                                <span data-lucide="x" class="h-3.5 w-3.5"></span>
+                    <div class="flex h-9 w-full items-center gap-2 rounded-md border border-border px-3 dark:border-gray-800 xl:w-64">
+                        <span data-lucide="search" class="h-4 w-4 text-muted"></span>
+                        <input type="search" x-model.debounce.200ms="serviceSearch" placeholder="Search services..." class="w-full bg-transparent text-sm outline-none">
+                    </div>
+                </div>
+
+                <div class="mb-3 flex shrink-0 gap-1 overflow-x-auto rounded-md bg-smoke p-1 dark:bg-gray-950" x-effect="serviceTypes; refreshIcons()">
+                    <template x-for="type in serviceTypes" :key="type.value">
+                        <button
+                            type="button"
+                            @click="typeFilter = type.value; refreshIcons()"
+                            class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-sm px-3 text-sm font-medium"
+                            :class="typeFilter === type.value ? 'bg-white text-dark shadow-sm dark:bg-gray-900 dark:text-white' : 'text-muted hover:text-dark dark:hover:text-white'"
+                        >
+                            <span :data-lucide="type.icon" class="h-3.5 w-3.5"></span>
+                            <span x-text="type.label"></span>
+                        </button>
+                    </template>
+                </div>
+
+                <div class="grid min-h-0 flex-1 content-start gap-2 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-3" x-effect="filteredServices.map(service => service.id).join(','); refreshIcons()">
+                    <template x-for="service in filteredServices" :key="service.id">
+                        <button
+                            type="button"
+                            @click="add(service)"
+                            class="group rounded-md border border-border p-3 text-left transition hover:border-primary hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950"
+                        >
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="flex min-w-0 items-start gap-2.5">
+                                    <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                                        <span :data-lucide="serviceIcon(service)" class="h-5 w-5"></span>
+                                    </span>
+                                    <div class="min-w-0">
+                                        <p class="truncate text-sm font-medium" x-text="service.name"></p>
+                                        <p class="mt-1 text-xs capitalize text-muted" x-text="service.pricing_type"></p>
+                                    </div>
+                                </div>
+                                <span class="shrink-0 rounded-md bg-white px-2 py-1 text-xs font-medium text-primary shadow-sm dark:bg-gray-900">
+                                    {{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(service.price)"></span>
+                                </span>
+                            </div>
+                        </button>
+                    </template>
+
+                    <div x-show="filteredServices.length === 0" class="col-span-full rounded-md border border-dashed border-border p-8 text-center text-sm text-muted dark:border-gray-800">
+                        No services match your filter.
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <aside class="min-h-0 w-full md:self-stretch lg:w-80 xl:w-[22rem] xl:justify-self-end">
+            <div class="flex h-full w-full min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <div class="shrink-0 space-y-2 border-b border-border p-3 dark:border-gray-800">
+                    <div class="flex items-center justify-between gap-3">
+                        <div class="min-w-0">
+                            <h1 class="truncate text-sm font-semibold">New Job Order</h1>
+                            <p class="text-[11px] text-muted">Customer and cart</p>
+                        </div>
+                        <a href="{{ route('admin.job-orders.index') }}" class="inline-flex h-8 shrink-0 items-center rounded-md border border-border px-2.5 text-xs font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
+                            Orders
+                        </a>
+                    </div>
+
+                    @if(in_array(auth()->user()->role, ['super_admin', 'admin'], true))
+                        <div>
+                            <label class="mb-1.5 block text-xs font-medium text-muted">Branch</label>
+                            <select name="branch_id" x-model="branchId" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950" required>
+                                @foreach($branches as $branch)
+                                    <option value="{{ $branch->id }}" @selected($branchId == $branch->id)>{{ $branch->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    @else
+                        <input type="hidden" name="branch_id" value="{{ $branchId }}">
+                    @endif
+
+                    <div>
+                        <div class="mb-1.5 flex items-center justify-between gap-2">
+                            <label class="block text-xs font-medium text-muted">Customer</label>
+                            <button type="button" @click="quickCustomerOpen = true; refreshIcons()" class="inline-flex h-7 items-center gap-1.5 rounded-md border border-border px-2 text-xs font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
+                                <span data-lucide="plus" class="h-3.5 w-3.5"></span>
+                                Add
                             </button>
                         </div>
-
-                        <div
-                            x-cloak
-                            x-show="customerOpen"
-                            x-transition
-                            class="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-border bg-white p-1 shadow-lg dark:border-gray-800 dark:bg-gray-950"
-                        >
-                            <template x-for="customer in filteredCustomers" :key="customer.id">
-                                <button
-                                    type="button"
-                                    @click="selectCustomer(customer)"
-                                    class="flex w-full items-center justify-between gap-3 rounded-sm px-3 py-2 text-left text-sm hover:bg-smoke dark:hover:bg-gray-900"
+                        <div class="relative" @click.outside="customerOpen = false">
+                            <input type="hidden" name="customer_id" :value="selectedCustomerId">
+                            <div class="flex h-9 items-center gap-2 rounded-md border border-border bg-white px-3 dark:border-gray-800 dark:bg-gray-950">
+                                <span data-lucide="search" class="h-4 w-4 shrink-0 text-muted"></span>
+                                <input
+                                    type="search"
+                                    x-model="customerSearch"
+                                    @focus="customerOpen = true"
+                                    @input="selectedCustomerId = ''; customerOpen = true"
+                                    placeholder="Search customer..."
+                                    class="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                                    autocomplete="off"
                                 >
-                                    <span class="min-w-0">
-                                        <span class="block truncate font-medium" x-text="customer.name"></span>
-                                        <span class="block truncate text-xs text-muted" x-text="`${customer.phone || 'No phone'} - ${formatBilling(customer.billing_type)}`"></span>
-                                    </span>
-                                    <span x-show="String(selectedCustomerId) === String(customer.id)" data-lucide="check" class="h-4 w-4 shrink-0 text-primary"></span>
+                                <button type="button" x-show="selectedCustomerId" @click="clearCustomer()" title="Clear customer" aria-label="Clear customer" class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md hover:bg-smoke dark:hover:bg-gray-900">
+                                    <span data-lucide="x" class="h-3.5 w-3.5"></span>
                                 </button>
-                            </template>
+                            </div>
 
-                            <div x-show="filteredCustomers.length === 0" class="px-3 py-6 text-center text-sm text-muted">
-                                No customers found for this branch.
+                            <div
+                                x-cloak
+                                x-show="customerOpen"
+                                x-transition
+                                class="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-border bg-white p-1 shadow-lg dark:border-gray-800 dark:bg-gray-950"
+                            >
+                                <template x-for="customer in filteredCustomers" :key="customer.id">
+                                    <button
+                                        type="button"
+                                        @click="selectCustomer(customer)"
+                                        class="flex w-full items-center justify-between gap-3 rounded-sm px-3 py-2 text-left text-sm hover:bg-smoke dark:hover:bg-gray-900"
+                                    >
+                                        <span class="min-w-0">
+                                            <span class="block truncate font-medium" x-text="customer.name"></span>
+                                            <span class="block truncate text-xs text-muted" x-text="`${customer.phone || 'No phone'} - ${formatBilling(customer.billing_type)}`"></span>
+                                        </span>
+                                        <span x-show="String(selectedCustomerId) === String(customer.id)" data-lucide="check" class="h-4 w-4 shrink-0 text-primary"></span>
+                                    </button>
+                                </template>
+
+                                <div x-show="filteredCustomers.length === 0" class="px-3 py-6 text-center text-sm text-muted">
+                                    No customers found for this branch.
+                                </div>
                             </div>
                         </div>
+                        <p x-show="!selectedCustomerId && customerSearch" class="mt-1.5 text-xs text-amber-600 dark:text-amber-300">
+                            Select a customer from the list before saving.
+                        </p>
                     </div>
-                    <p x-show="!selectedCustomerId && customerSearch" class="mt-1.5 text-xs text-amber-600 dark:text-amber-300">
-                        Select a customer from the list before saving.
-                    </p>
+
+                    <textarea name="notes" rows="2" placeholder="Notes / instructions" class="w-full rounded-md border border-border bg-white px-3 py-2 text-sm shadow-sm dark:border-gray-800 dark:bg-gray-950"></textarea>
                 </div>
 
-                <textarea name="notes" rows="2" placeholder="Notes / instructions" class="w-full rounded-md border border-border bg-white px-3 py-2 text-sm shadow-sm dark:border-gray-800 dark:bg-gray-950"></textarea>
-            </div>
-
-            <div class="flex h-12 items-center justify-between border-b border-border px-3 dark:border-gray-800">
+            <div class="flex h-12 shrink-0 items-center justify-between border-b border-border px-3 dark:border-gray-800">
                 <div>
                     <h2 class="text-sm font-semibold">Cart</h2>
                     <p class="text-[11px] text-muted"><span x-text="items.length"></span> item<span x-show="items.length !== 1">s</span></p>
@@ -152,7 +168,7 @@
                 </button>
             </div>
 
-            <div class="max-h-[40vh] space-y-1.5 overflow-y-auto p-2 lg:max-h-[calc(100vh-22rem)]">
+            <div class="min-h-[8rem] flex-1 space-y-1.5 overflow-y-auto p-2">
                 <template x-for="(item, index) in items" :key="index">
                     <div class="rounded-md border border-border bg-white p-2 dark:border-gray-800 dark:bg-gray-950">
                         <input type="hidden" :name="`items[${index}][laundry_service_id]`" :value="item.id">
@@ -187,38 +203,73 @@
                 </div>
             </div>
 
-            <div class="space-y-1.5 border-t border-border p-3 text-sm dark:border-gray-800">
-                <div class="flex justify-between text-xs"><span class="text-muted">Subtotal</span><span>{{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(subtotal)"></span></span></div>
-                <div class="flex h-8 items-center justify-between gap-3">
-                    <span class="text-muted">Discount</span>
-                    <input name="discount" x-model.number="discount" type="number" min="0" step="0.01" class="h-8 w-24 rounded-md border border-border px-2 text-right text-xs dark:border-gray-800 dark:bg-gray-950">
-                </div>
-                <div class="flex justify-between text-xs"><span class="text-muted">VAT</span><span>{{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(tax)"></span></span></div>
-                <div class="my-1.5 h-px bg-border dark:bg-gray-800"></div>
-                <div class="flex justify-between text-base font-semibold"><span>Total</span><span>{{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(total)"></span></span></div>
-                <div class="flex h-8 items-center justify-between gap-3">
-                    <span class="text-muted">Paid</span>
-                    <input name="paid_amount" x-model.number="paid" type="number" min="0" step="0.01" class="h-8 w-24 rounded-md border border-border px-2 text-right text-xs dark:border-gray-800 dark:bg-gray-950">
-                </div>
-                <div class="flex justify-between text-sm font-medium"><span>Balance</span><span>{{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(balance)"></span></span></div>
-                <div class="grid grid-cols-[1fr_auto] gap-2 pt-1">
-                    <select name="payment_type" class="h-9 min-w-0 rounded-md border border-border bg-white px-2 text-xs dark:border-gray-800 dark:bg-gray-950">
-                        <option value="cash">Cash</option>
-                        <option value="credit">Credit</option>
-                        <option value="po">PO</option>
-                        <option value="monthly_billing">Monthly Billing</option>
-                    </select>
-                    <button type="button" @click="paid = total" title="Pay exact total" aria-label="Pay exact total" class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
-                        <span data-lucide="payments" class="h-4 w-4"></span>
-                    </button>
-                </div>
-                <button :disabled="items.length === 0 || !selectedCustomerId" class="h-9 w-full rounded-md bg-primary text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">
+            <div class="shrink-0 border-t border-border p-3 dark:border-gray-800">
+                <button type="button" @click="showPaymentPanel = true; refreshIcons()" :disabled="items.length === 0 || !selectedCustomerId" class="h-9 w-full rounded-md bg-primary text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">
                     Save Job Order
                 </button>
             </div>
+            </div>
+        </aside>
+
+        <div x-cloak x-show="showPaymentPanel" x-transition class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div @click.outside="showPaymentPanel = false" class="w-full max-w-md rounded-lg bg-white p-5 shadow-2xl dark:bg-gray-900">
+                <div class="mb-4 flex items-center justify-between">
+                    <h2 class="inline-flex items-center gap-2 text-lg font-semibold"><span data-lucide="payments" class="h-4 w-4 text-primary"></span>Payment</h2>
+                    <button type="button" @click="showPaymentPanel = false" class="rounded-md p-2 hover:bg-smoke dark:hover:bg-gray-800"><span data-lucide="x" class="h-4 w-4"></span></button>
+                </div>
+
+                <div class="space-y-2 text-sm">
+                    <div class="flex justify-between text-xs"><span class="text-muted">Subtotal</span><span>{{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(subtotal)"></span></span></div>
+                    <div class="flex h-9 items-center justify-between gap-3">
+                        <span class="text-muted">Discount</span>
+                        <input name="discount" x-model.number="discount" type="number" min="0" step="0.01" class="h-9 w-28 rounded-md border border-border px-2 text-right text-sm dark:border-gray-800 dark:bg-gray-950">
+                    </div>
+                    <div class="flex justify-between text-xs"><span class="text-muted">VAT</span><span>{{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(tax)"></span></span></div>
+                    <div class="my-2 h-px bg-border dark:bg-gray-800"></div>
+                    <div class="flex justify-between text-base font-semibold"><span>Total</span><span>{{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(total)"></span></span></div>
+                    <div class="flex h-9 items-center justify-between gap-3">
+                        <span class="text-muted">Paid</span>
+                        <input name="paid_amount" x-model.number="paid" type="number" min="0" step="0.01" class="h-9 w-28 rounded-md border border-border px-2 text-right text-sm dark:border-gray-800 dark:bg-gray-950">
+                    </div>
+                    <div class="flex justify-between text-sm font-medium"><span>Balance</span><span>{{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(balance)"></span></span></div>
+                    <div class="grid grid-cols-[1fr_auto] gap-2 pt-2">
+                        <select name="payment_type" class="h-9 min-w-0 rounded-md border border-border bg-white px-2 text-sm dark:border-gray-800 dark:bg-gray-950">
+                            <option value="cash">Cash</option>
+                            <option value="credit">Credit</option>
+                            <option value="po">PO</option>
+                            <option value="monthly_billing">Monthly Billing</option>
+                        </select>
+                        <button type="button" @click="paid = total" title="Pay exact total" aria-label="Pay exact total" class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
+                            <span data-lucide="payments" class="h-4 w-4"></span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mt-5 grid grid-cols-2 gap-2">
+                    <button type="button" @click="showPaymentPanel = false" class="h-9 rounded-md border border-border text-sm font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">Cancel</button>
+                    <button type="submit" class="h-9 rounded-md bg-primary text-sm font-medium text-white hover:opacity-90">Confirm Save</button>
+                </div>
+            </div>
         </div>
-    </aside>
-</form>
+    </form>
+
+    <div x-cloak x-show="quickCustomerOpen" x-transition class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div @click.outside="quickCustomerOpen = false" class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white p-5 shadow-2xl dark:bg-gray-900">
+            <div class="mb-4 flex items-center justify-between">
+                <h2 class="inline-flex items-center gap-2 text-lg font-semibold"><span data-lucide="customers" class="h-4 w-4 text-primary"></span>Add Customer</h2>
+                <button type="button" @click="quickCustomerOpen = false" class="rounded-md p-2 hover:bg-smoke dark:hover:bg-gray-800"><span data-lucide="x" class="h-4 w-4"></span></button>
+            </div>
+
+            @include('admin.customers.partials.form', [
+                'action' => route('admin.job-orders.customers.store'),
+                'method' => 'POST',
+                'customer' => new \App\Models\Customer(['branch_id' => $branchId, 'billing_type' => 'regular', 'is_active' => true, 'credit_limit' => 0]),
+                'redirectTo' => 'pos',
+                'branchModel' => 'branchId',
+            ])
+        </div>
+    </div>
+</div>
 
 <script>
 function posPage(services, customers, vatRate, vatEnabled) {
@@ -229,19 +280,22 @@ function posPage(services, customers, vatRate, vatEnabled) {
         items: [],
         discount: 0,
         paid: 0,
+        showPaymentPanel: false,
+        quickCustomerOpen: @js($errors->any() && old('redirect_to') === 'pos'),
         customerOpen: false,
         customerSearch: '',
-        selectedCustomerId: '',
+        selectedCustomerId: @js((string) ($selectedCustomerId ?? '')),
         serviceSearch: '',
         typeFilter: 'all',
         serviceTypes: [
-            { value: 'all', label: 'All' },
-            { value: 'kilo', label: 'Kilo' },
-            { value: 'load', label: 'Load' },
-            { value: 'piece', label: 'Piece' },
-            { value: 'custom', label: 'Custom' },
+            { value: 'all', label: 'All', icon: 'services' },
+            { value: 'kilo', label: 'Kilo', icon: 'scale' },
+            { value: 'load', label: 'Load', icon: 'laundry' },
+            { value: 'piece', label: 'Piece', icon: 'shirt' },
+            { value: 'custom', label: 'Custom', icon: 'sparkles' },
         ],
         init() {
+            this.syncSelectedCustomer();
             this.$watch('branchId', () => {
                 this.items = [];
                 this.discount = 0;
@@ -260,6 +314,7 @@ function posPage(services, customers, vatRate, vatEnabled) {
 
                 this.$nextTick(() => window.renderLucideIcons());
             });
+            this.$watch('quickCustomerOpen', () => this.refreshIcons());
         },
         get availableCustomers() {
             return this.customers.filter(customer => String(customer.branch_id) === String(this.branchId));
@@ -288,8 +343,33 @@ function posPage(services, customers, vatRate, vatEnabled) {
             this.customerOpen = false;
             this.$nextTick(() => window.renderLucideIcons());
         },
+        syncSelectedCustomer() {
+            if (!this.selectedCustomerId) {
+                return;
+            }
+
+            const selected = this.customers.find(customer => String(customer.id) === String(this.selectedCustomerId));
+            if (selected) {
+                this.selectCustomer(selected);
+            }
+        },
         formatBilling(value) {
             return String(value || 'regular').replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+        },
+        serviceIcon(service) {
+            const name = String(service.name || '').toLowerCase();
+
+            if (name.includes('dry') || name.includes('dryer')) return 'droplets';
+            if (name.includes('fold') || name.includes('iron') || name.includes('press')) return 'shirt';
+            if (name.includes('wash') || name.includes('laundry')) return 'laundry';
+            if (service.pricing_type === 'kilo') return 'scale';
+            if (service.pricing_type === 'piece') return 'shirt';
+            if (service.pricing_type === 'custom') return 'sparkles';
+
+            return 'laundry';
+        },
+        refreshIcons() {
+            this.$nextTick(() => window.renderLucideIcons());
         },
         get availableServices() {
             return this.services.filter(service => String(service.branch_id) === String(this.branchId));

@@ -61,7 +61,7 @@
                 </button>
                 
                 {{-- SMS tab - ONLY for Super Admin --}}
-                @if($canManageGlobal)
+                @if($canManageSms)
                     <button type="button" @click="tab = 'sms'" class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition" :class="tab === 'sms' ? 'bg-white text-primary shadow-sm dark:bg-gray-900' : 'text-muted hover:bg-white/70 dark:hover:bg-gray-900'">
                         <span data-lucide="sms" class="h-4 w-4"></span> SMS/API
                     </button>
@@ -258,7 +258,7 @@
                 </div>
 
                 {{-- SMS Tab - ONLY for Super Admin --}}
-                @if($canManageGlobal)
+                @if($canManageSms)
                 <div x-show="tab === 'sms'" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div class="lg:col-span-2">
                         <label class="flex items-center gap-3">

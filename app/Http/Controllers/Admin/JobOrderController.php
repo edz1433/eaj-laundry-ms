@@ -68,9 +68,15 @@ class JobOrderController extends Controller
     public function create(Request $request)
     {
         $user = $request->user();
-        $branchId = in_array($user->role, ['super_admin', 'admin'], true)
-            ? Branch::where('is_active', true)->value('id')
+        $canChooseBranch = in_array($user->role, ['super_admin', 'admin'], true);
+        $requestedBranchId = $request->integer('branch_id');
+        $branchId = $canChooseBranch
+            ? Branch::where('is_active', true)
+                ->when($requestedBranchId, fn ($query) => $query->whereKey($requestedBranchId))
+                ->value('id')
             : $user->branch_id;
+
+        $branchId ??= Branch::where('is_active', true)->value('id');
 
         $branches = Branch::where('is_active', true)->orderBy('name')->get();
         $customers = Customer::where('is_active', true)
@@ -81,8 +87,15 @@ class JobOrderController extends Controller
             ->when(! in_array($user->role, ['super_admin', 'admin'], true), fn ($q) => $q->where('branch_id', $user->branch_id))
             ->orderBy('name')
             ->get(['id', 'branch_id', 'name', 'pricing_type', 'price']);
+        $selectedCustomerId = '';
+        if ($request->filled('customer_id')) {
+            $selectedCustomerId = (string) Customer::where('is_active', true)
+                ->whereKey($request->integer('customer_id'))
+                ->where('branch_id', $branchId)
+                ->value('id');
+        }
 
-        return view('admin.job-orders.create', compact('branches', 'customers', 'services', 'branchId'));
+        return view('admin.job-orders.create', compact('branches', 'customers', 'services', 'branchId', 'selectedCustomerId'));
     }
 
     public function store(Request $request)

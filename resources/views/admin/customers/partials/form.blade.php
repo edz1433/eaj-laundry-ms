@@ -3,6 +3,9 @@
     @if($method !== 'POST')
         @method($method)
     @endif
+    @if(! empty($redirectTo))
+        <input type="hidden" name="redirect_to" value="{{ $redirectTo }}">
+    @endif
     @php($canChooseBranch = auth()->user()->isSuperAdmin() || auth()->user()->role === 'admin')
 
     <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -14,10 +17,10 @@
         <div>
             <label class="mb-1.5 block text-sm font-medium">Branch</label>
             @if(! $canChooseBranch)
-                <input type="hidden" name="branch_id" value="{{ auth()->user()->branch_id }}">
+                <input type="hidden" name="branch_id" @if(! empty($branchModel)) :value="{{ $branchModel }}" @else value="{{ auth()->user()->branch_id }}" @endif>
                 <input value="{{ auth()->user()->branch?->name }}" disabled class="h-9 w-full rounded-md border border-border bg-smoke px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
             @else
-                <select name="branch_id" required class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
+                <select name="branch_id" @if(! empty($branchModel)) x-model="{{ $branchModel }}" @endif required class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
                     @foreach($branches as $branch)
                         <option value="{{ $branch->id }}" @selected(old('branch_id', $customer->branch_id) == $branch->id)>{{ $branch->name }}</option>
                     @endforeach

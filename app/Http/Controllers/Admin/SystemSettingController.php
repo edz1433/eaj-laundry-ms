@@ -17,7 +17,8 @@ class SystemSettingController extends Controller
     {
         $user = $request->user();
         $settings = SystemSetting::current();
-        $canManageGlobal = $user->isSuperAdmin();
+        $canManageGlobal = $user->isAdmin();
+        $canManageSms = $user->isSuperAdmin();
         $canChooseBranch = $user->isAdmin();
 
         $branches = Branch::query()
@@ -51,14 +52,15 @@ class SystemSettingController extends Controller
             ]
         );
 
-        return view('admin.settings.edit', compact('settings', 'branch', 'branches', 'branchSetting', 'canManageGlobal', 'canChooseBranch'));
+        return view('admin.settings.edit', compact('settings', 'branch', 'branches', 'branchSetting', 'canManageGlobal', 'canManageSms', 'canChooseBranch'));
     }
 
     public function update(Request $request)
     {
         $user = $request->user();
         $settings = SystemSetting::current();
-        $canManageGlobal = $user->isSuperAdmin();
+        $canManageGlobal = $user->isAdmin();
+        $canManageSms = $user->isSuperAdmin();
         $canChooseBranch = $user->isAdmin();
         $branch = $canChooseBranch
             ? Branch::query()->findOrFail($request->integer('branch_id'))
@@ -95,19 +97,24 @@ class SystemSettingController extends Controller
         if ($canManageGlobal) {
             $rules = array_merge($rules, [
                 'business_name' => ['required', 'string', 'max:255'],
-            'business_logo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
-            'business_email' => ['nullable', 'email', 'max:255'],
-            'contact_number' => ['required', 'string', 'max:50'],
-            'business_address' => ['required', 'string'],
-            'currency' => ['required', 'string', 'max:10'],
-            'vat_enabled' => ['nullable', 'boolean'],
-            'vat_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'sms_provider' => ['nullable', 'string', 'max:100'],
-            'sms_api_key' => ['nullable', 'string'],
-            'sms_enabled' => ['nullable', 'boolean'],
-            'primary_color' => ['required', 'string', 'max:20'],
-            'dark_mode_default' => ['nullable', 'boolean'],
+                'business_logo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+                'business_email' => ['nullable', 'email', 'max:255'],
+                'contact_number' => ['required', 'string', 'max:50'],
+                'business_address' => ['required', 'string'],
+                'currency' => ['required', 'string', 'max:10'],
+                'vat_enabled' => ['nullable', 'boolean'],
+                'vat_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+                'primary_color' => ['required', 'string', 'max:20'],
+                'dark_mode_default' => ['nullable', 'boolean'],
             ]);
+
+            if ($canManageSms) {
+                $rules = array_merge($rules, [
+                    'sms_provider' => ['nullable', 'string', 'max:100'],
+                    'sms_api_key' => ['nullable', 'string'],
+                    'sms_enabled' => ['nullable', 'boolean'],
+                ]);
+            }
         }
 
         $validated = $request->validate($rules);
@@ -166,8 +173,10 @@ class SystemSettingController extends Controller
 
         if ($canManageGlobal) {
             $validated['vat_enabled'] = $request->boolean('vat_enabled');
-            $validated['sms_enabled'] = $request->boolean('sms_enabled');
             $validated['dark_mode_default'] = $request->boolean('dark_mode_default');
+            if ($canManageSms) {
+                $validated['sms_enabled'] = $request->boolean('sms_enabled');
+            }
 
             $settings->fill($validated);
             $settings->is_completed = $settings->isComplete();

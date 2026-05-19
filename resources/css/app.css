@@ -45,6 +45,41 @@ textarea {
     background: color-mix(in srgb, var(--color-primary) 22%, transparent);
 }
 
+* {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, #94a3b8 45%, transparent) transparent;
+}
+
+*::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, #94a3b8 38%, transparent);
+    border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, #64748b 55%, transparent);
+}
+
+.dark * {
+    scrollbar-color: color-mix(in srgb, #64748b 42%, transparent) transparent;
+}
+
+.dark *::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, #64748b 38%, transparent);
+}
+
+.dark *::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, #94a3b8 48%, transparent);
+}
+
 .glass-panel {
     background: rgba(255, 255, 255, 0.84);
     backdrop-filter: blur(18px);

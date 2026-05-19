@@ -49,8 +49,18 @@ class CustomerController extends Controller
         $validated = $request->validate($this->rules());
         $validated = $this->normalizeBranch($validated);
         $validated['is_active'] = $request->boolean('is_active', true);
+        unset($validated['redirect_to']);
 
-        Customer::create($validated);
+        $customer = Customer::create($validated);
+
+        if ($request->input('redirect_to') === 'pos') {
+            return redirect()
+                ->route('admin.job-orders.create', [
+                    'branch_id' => $customer->branch_id,
+                    'customer_id' => $customer->id,
+                ])
+                ->with('success', 'Customer created successfully.');
+        }
 
         return redirect()
             ->route('admin.customers.index')
@@ -103,6 +113,7 @@ class CustomerController extends Controller
             'billing_type' => ['required', Rule::in(['regular', 'po', 'monthly_billing'])],
             'credit_limit' => ['nullable', 'numeric', 'min:0'],
             'is_active' => ['nullable', 'boolean'],
+            'redirect_to' => ['nullable', Rule::in(['pos'])],
         ];
     }
 

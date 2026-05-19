@@ -45,6 +45,7 @@ Route::middleware(['auth', 'settings.completed'])->group(function () {
             Route::get('/job-orders', [JobOrderController::class, 'index'])->name('job-orders.index');
             Route::get('/job-orders/create', [JobOrderController::class, 'create'])->name('job-orders.create');
             Route::post('/job-orders', [JobOrderController::class, 'store'])->name('job-orders.store');
+            Route::post('/job-orders/customers', [CustomerController::class, 'store'])->name('job-orders.customers.store');
             Route::get('/job-orders/{jobOrder}', [JobOrderController::class, 'show'])->name('job-orders.show');
             Route::get('/job-orders/{jobOrder}/receipt', [JobOrderController::class, 'receipt'])->name('job-orders.receipt');
             Route::patch('/job-orders/{jobOrder}/status', [JobOrderController::class, 'updateStatus'])->name('job-orders.status');

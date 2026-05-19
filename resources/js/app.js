@@ -32,7 +32,9 @@ import {
     Search,
     Settings,
     ShieldCheck,
+    Shirt,
     Sparkles,
+    Scale,
     Store,
     Sun,
     Tags,
@@ -99,8 +101,10 @@ const icons = {
     services: Tags,
     settings: Settings,
     shieldCheck: ShieldCheck,
+    shirt: Shirt,
     sms: Bell,
     sparkles: Sparkles,
+    scale: Scale,
     store: Store,
     sun: Sun,
     trash: Trash2,
@@ -139,10 +143,15 @@ window.renderLucideIcons = () => {
     });
 };
 
+const appThemeDefault = Boolean(window.appDarkModeDefault);
+const appThemeDefaultKey = String(appThemeDefault);
+const storedThemeDefaultKey = localStorage.getItem('themeDefault');
+const storedTheme = localStorage.getItem('theme');
+
 Alpine.store('theme', {
-    dark: localStorage.getItem('theme')
-        ? localStorage.getItem('theme') === 'dark'
-        : Boolean(window.appDarkModeDefault),
+    dark: storedTheme && storedThemeDefaultKey === appThemeDefaultKey
+        ? storedTheme === 'dark'
+        : appThemeDefault,
 
     init() {
         this.apply();
@@ -151,10 +160,12 @@ Alpine.store('theme', {
     toggle() {
         this.dark = !this.dark;
         localStorage.setItem('theme', this.dark ? 'dark' : 'light');
+        localStorage.setItem('themeDefault', appThemeDefaultKey);
         this.apply();
     },
 
     apply() {
+        localStorage.setItem('themeDefault', appThemeDefaultKey);
         document.documentElement.classList.toggle('dark', this.dark);
         document.documentElement.style.colorScheme = this.dark ? 'dark' : 'light';
     }
