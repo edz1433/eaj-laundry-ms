@@ -42,6 +42,55 @@ class BillingSystemTest extends TestCase
             ->assertDontSee('System Free Trial Active Until');
     }
 
+    public function test_trial_date_range_skips_billing_even_when_toggle_is_off(): void
+    {
+        $this->completeSystemSettings();
+        SystemTrialSetting::query()->create([
+            'trial_enabled' => false,
+            'trial_start_date' => '2026-05-01',
+            'trial_end_date' => '2026-05-31',
+            'trial_status' => 'inactive',
+            'grace_period_days' => 0,
+        ]);
+
+        $branch = $this->createBranch('Date Trial Branch', 'DTRIAL');
+        $user = User::factory()->create([
+            'role' => 'admin',
+            'branch_id' => $branch->id,
+            'access' => ['dashboard'],
+        ]);
+
+        $this->travelTo(Carbon::parse('2026-05-15'));
+
+        $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('System Free Trial Active Until May 31, 2026');
+    }
+
+    public function test_blank_trial_settings_do_not_lock_branch_users_before_trial_is_configured(): void
+    {
+        $this->completeSystemSettings();
+
+        $branch = $this->createBranch('Setup Branch', 'SETUP');
+        $user = User::factory()->create([
+            'role' => 'admin',
+            'branch_id' => $branch->id,
+            'access' => ['dashboard'],
+        ]);
+
+        SystemTrialSetting::query()->create([
+            'trial_enabled' => false,
+            'trial_status' => 'inactive',
+            'grace_period_days' => 0,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertDontSee('Subscription Expired');
+    }
+
     public function test_expired_trial_locks_unpaid_branch_after_grace_only(): void
     {
         $this->completeSystemSettings();

@@ -41,6 +41,10 @@ class EnsureBranchBillingAccess
             return $next($request);
         }
 
+        if (! $trial->shouldEnforceBilling()) {
+            return $next($request);
+        }
+
         if (! $user->branch_id) {
             return response()->view('billing.locked', [
                 'message' => 'Branch subscription has expired. Please contact your administrator to continue using the system.',

@@ -54,20 +54,26 @@ class SystemTrialSetting extends Model
     {
         $date ??= now();
 
-        return $this->trial_enabled
-            && $this->trial_start_date
+        return $this->trial_start_date
             && $this->trial_end_date
             && $date->toDateString() >= $this->trial_start_date->toDateString()
             && $date->toDateString() <= $this->trial_end_date->toDateString();
     }
 
-    public function computedStatus(?Carbon $date = null): string
+    public function shouldEnforceBilling(?Carbon $date = null): bool
     {
         $date ??= now();
 
-        if (! $this->trial_enabled) {
-            return 'inactive';
+        if (! $this->trial_start_date || ! $this->trial_end_date) {
+            return false;
         }
+
+        return $date->toDateString() > $this->trial_end_date->toDateString();
+    }
+
+    public function computedStatus(?Carbon $date = null): string
+    {
+        $date ??= now();
 
         if ($this->isActive($date)) {
             return 'active';
