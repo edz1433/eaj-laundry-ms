@@ -40,10 +40,11 @@
 
         <div class="bg-white dark:bg-gray-900 border border-border dark:border-gray-800 rounded-lg shadow-sm overflow-hidden">
             <div class="flex gap-1 overflow-x-auto border-b border-border bg-smoke p-2 dark:border-gray-800 dark:bg-gray-950">
-                {{-- Global tab - visible to both Admin and Super Admin --}}
-                <button type="button" @click="tab = 'business'" class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition" :class="tab === 'business' ? 'bg-white text-primary shadow-sm dark:bg-gray-900' : 'text-muted hover:bg-white/70 dark:hover:bg-gray-900'">
-                    <span data-lucide="store" class="h-4 w-4"></span> Global
-                </button>
+                @if($canManageGlobal)
+                    <button type="button" @click="tab = 'business'" class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition" :class="tab === 'business' ? 'bg-white text-primary shadow-sm dark:bg-gray-900' : 'text-muted hover:bg-white/70 dark:hover:bg-gray-900'">
+                        <span data-lucide="store" class="h-4 w-4"></span> Global
+                    </button>
+                @endif
                 
                 {{-- Pricing tab - visible to both Admin and Super Admin --}}
                 <button type="button" @click="tab = 'pricing'" class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition" :class="tab === 'pricing' ? 'bg-white text-primary shadow-sm dark:bg-gray-900' : 'text-muted hover:bg-white/70 dark:hover:bg-gray-900'">
@@ -67,10 +68,11 @@
                     </button>
                 @endif
                 
-                {{-- Theme tab - visible to both Admin and Super Admin --}}
-                <button type="button" @click="tab = 'theme'" class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition" :class="tab === 'theme' ? 'bg-white text-primary shadow-sm dark:bg-gray-900' : 'text-muted hover:bg-white/70 dark:hover:bg-gray-900'">
-                    <span data-lucide="sparkles" class="h-4 w-4"></span> Theme
-                </button>
+                @if($canManageGlobal)
+                    <button type="button" @click="tab = 'theme'" class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition" :class="tab === 'theme' ? 'bg-white text-primary shadow-sm dark:bg-gray-900' : 'text-muted hover:bg-white/70 dark:hover:bg-gray-900'">
+                        <span data-lucide="sparkles" class="h-4 w-4"></span> Theme
+                    </button>
+                @endif
             </div>
 
             <div class="p-4">
@@ -91,7 +93,7 @@
                     <input type="hidden" name="branch_id" value="{{ $branch->id }}">
                 @endif
 
-                {{-- Global/Business Tab - Visible to both Admin and Super Admin --}}
+                @if($canManageGlobal)
                 <div x-show="tab === 'business'" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium mb-2">Business Name</label>
@@ -148,6 +150,7 @@
                         </div>
                     </div>
                 </div>
+                @endif
 
                 {{-- Pricing Tab - Visible to both Admin and Super Admin --}}
                 <div x-show="tab === 'pricing'" class="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -166,18 +169,19 @@
                         <input type="number" step="0.01" name="default_price_per_piece" value="{{ old('default_price_per_piece', $branchSetting->default_price_per_piece) }}" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
                     </div>
 
-                    {{-- VAT settings - Visible to both Admin and Super Admin --}}
-                    <div class="lg:col-span-3">
-                        <label class="flex items-center gap-3">
-                            <input type="checkbox" name="vat_enabled" value="1" x-model="vatEnabled" class="rounded border-border text-primary">
-                            <span class="text-sm font-medium">Enable VAT / Tax</span>
-                        </label>
-                    </div>
+                    @if($canManageGlobal)
+                        <div class="lg:col-span-3">
+                            <label class="flex items-center gap-3">
+                                <input type="checkbox" name="vat_enabled" value="1" x-model="vatEnabled" class="rounded border-border text-primary">
+                                <span class="text-sm font-medium">Enable VAT / Tax</span>
+                            </label>
+                        </div>
 
-                    <div x-show="vatEnabled">
-                        <label class="block text-sm font-medium mb-2">VAT Rate (%)</label>
-                        <input type="number" step="0.01" name="vat_rate" value="{{ old('vat_rate', $settings->vat_rate) }}" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
-                    </div>
+                        <div x-show="vatEnabled">
+                            <label class="block text-sm font-medium mb-2">VAT Rate (%)</label>
+                            <input type="number" step="0.01" name="vat_rate" value="{{ old('vat_rate', $settings->vat_rate) }}" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
+                        </div>
+                    @endif
                 </div>
 
                 {{-- Branch Tab - Visible to both Admin and Super Admin --}}
@@ -197,9 +201,9 @@
                         <input name="branch_contact" value="{{ old('branch_contact', $branch->contact_number) }}" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
                     </div>
 
-                    <div>
+                    <div class="lg:col-span-2">
                         <label class="block text-sm font-medium mb-2">Branch Address</label>
-                        <input name="branch_address" value="{{ old('branch_address', $branch->address) }}" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
+                        <textarea name="branch_address" rows="3" class="w-full rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 py-2 text-sm">{{ old('branch_address', $branch->address) }}</textarea>
                     </div>
 
                     <div>
@@ -279,7 +283,7 @@
                 </div>
                 @endif
 
-                {{-- Theme Tab - Visible to both Admin and Super Admin --}}
+                @if($canManageGlobal)
                 <div x-show="tab === 'theme'" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium mb-2">Primary Color</label>
@@ -293,6 +297,7 @@
                         </label>
                     </div>
                 </div>
+                @endif
             </div>
 
             <div class="px-4 py-3 border-t border-border dark:border-gray-800 flex justify-end">

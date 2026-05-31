@@ -10,6 +10,8 @@ use Illuminate\Http\Request;
 
 class SmsLogController extends Controller
 {
+    private const STATUSES = ['queued', 'sent', 'failed'];
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -25,7 +27,7 @@ class SmsLogController extends Controller
             ->with(['branch', 'customer'])
             ->when(! $canChooseBranch, fn ($query) => $query->where('branch_id', $user->branch_id))
             ->when($request->filled('branch_id') && $canChooseBranch, fn ($query) => $query->where('branch_id', $request->branch_id))
-            ->when($request->filled('status'), fn ($query) => $query->where('status', $request->status))
+            ->when(in_array($request->status, self::STATUSES, true), fn ($query) => $query->where('status', $request->status))
             ->when($request->filled('search'), function ($query) use ($request) {
                 $search = $request->search;
 
@@ -42,6 +44,7 @@ class SmsLogController extends Controller
             'canChooseBranch' => $canChooseBranch,
             'logs' => $logs,
             'settings' => SystemSetting::current(),
+            'statuses' => self::STATUSES,
         ]);
     }
 }

@@ -49,8 +49,8 @@
                         <p class="truncate font-semibold">{{ $employee->name }}</p>
                         <p class="truncate text-sm text-muted">{{ str_replace('_', ' ', $employee->role) }} - {{ $employee->branch?->name ?? 'All branches' }}</p>
                     </div>
-                    <span class="shrink-0 rounded-md bg-smoke px-2 py-1 text-xs font-medium text-muted dark:bg-gray-950">
-                        {{ ucfirst($employee->status) }}
+                    <span class="shrink-0 {{ \App\Support\StatusBadge::classes($employee->status) }}">
+                        {{ \App\Support\StatusBadge::label($employee->status) }}
                     </span>
                 </div>
 
@@ -70,7 +70,7 @@
 
                 <div class="mt-3 grid gap-3 md:grid-cols-[12rem_1fr]">
                     <div class="overflow-hidden rounded-md border border-border bg-smoke dark:border-gray-800 dark:bg-gray-950">
-                        <video x-ref="video" autoplay muted playsinline class="aspect-video w-full object-cover"></video>
+                        <video x-ref="video" autoplay muted playsinline class="aspect-video w-full -scale-x-100 object-cover"></video>
                         <canvas x-ref="canvas" class="hidden"></canvas>
                     </div>
                     <div class="flex flex-wrap items-end gap-2">

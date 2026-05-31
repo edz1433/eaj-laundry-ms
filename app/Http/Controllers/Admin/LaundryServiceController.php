@@ -12,6 +12,9 @@ use Illuminate\Validation\Rule;
 
 class LaundryServiceController extends Controller
 {
+    private const PRICING_TYPES = ['kilo', 'load', 'piece', 'custom'];
+    private const STATUS_FILTERS = ['active', 'inactive'];
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -28,8 +31,8 @@ class LaundryServiceController extends Controller
 
         $services = LaundryService::with('branch')
             ->where('branch_id', $selectedBranchId)
-            ->when($request->filled('pricing_type'), fn ($query) => $query->where('pricing_type', $request->pricing_type))
-            ->when($request->filled('status'), fn ($query) => $query->where('is_active', $request->status === 'active'))
+            ->when(in_array($request->pricing_type, self::PRICING_TYPES, true), fn ($query) => $query->where('pricing_type', $request->pricing_type))
+            ->when(in_array($request->status, self::STATUS_FILTERS, true), fn ($query) => $query->where('is_active', $request->status === 'active'))
             ->when($request->filled('search'), fn ($query) => $query->where('name', 'like', "%{$request->search}%"))
             ->latest()
             ->paginate(10)

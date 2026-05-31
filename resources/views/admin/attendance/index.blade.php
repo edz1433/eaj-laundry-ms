@@ -78,7 +78,7 @@
             <p class="mt-1 text-sm text-muted" x-text="employeeName || 'Select an employee from the list.'"></p>
 
             <div class="mt-3 overflow-hidden rounded-md border border-border bg-smoke dark:border-gray-800 dark:bg-gray-950">
-                <video x-ref="video" autoplay muted playsinline class="aspect-video w-full object-cover"></video>
+                <video x-ref="video" autoplay muted playsinline class="aspect-video w-full -scale-x-100 object-cover"></video>
                 <canvas x-ref="canvas" class="hidden"></canvas>
             </div>
 

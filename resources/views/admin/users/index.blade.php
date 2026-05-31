@@ -49,11 +49,11 @@
                                 <p class="font-semibold">{{ $user->name }}</p>
                                 <p class="text-xs text-muted">{{ $user->username }} · {{ $user->email }}</p>
                             </td>
-                            <td class="px-4 py-3">{{ str_replace('_', ' ', $user->role) }}</td>
+                            <td class="px-4 py-3">{{ \App\Support\StatusBadge::label($user->role) }}</td>
                             <td class="px-4 py-3">{{ $user->branch?->name ?? 'All branches' }}</td>
                             <td class="px-4 py-3">
-                                <span class="rounded-md px-2 py-1 text-xs font-medium {{ $user->status === 'active' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700' }}">
-                                    {{ ucfirst($user->status) }}
+                                <span class="{{ \App\Support\StatusBadge::classes($user->status) }}">
+                                    {{ \App\Support\StatusBadge::label($user->status) }}
                                 </span>
                             </td>
                             <td class="px-4 py-3 text-right">

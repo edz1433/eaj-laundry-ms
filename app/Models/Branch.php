@@ -36,4 +36,14 @@ class Branch extends Model
     {
         return $this->hasOne(BranchSetting::class);
     }
+
+    public function billingRecords()
+    {
+        return $this->hasMany(BranchBillingRecord::class);
+    }
+
+    public function expenses()
+    {
+        return $this->hasMany(BranchExpense::class);
+    }
 }

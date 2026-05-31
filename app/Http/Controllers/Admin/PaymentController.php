@@ -10,6 +10,8 @@ use Illuminate\Support\Carbon;
 
 class PaymentController extends Controller
 {
+    private const PAYMENT_TYPES = ['cash', 'credit', 'po', 'monthly_billing'];
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -26,7 +28,7 @@ class PaymentController extends Controller
             ->with(['branch', 'customer', 'jobOrder', 'receiver'])
             ->when(! $canChooseBranch, fn ($query) => $query->where('branch_id', $user->branch_id))
             ->when($request->filled('branch_id') && $canChooseBranch, fn ($query) => $query->where('branch_id', $request->branch_id))
-            ->when($request->filled('payment_type'), fn ($query) => $query->where('payment_type', $request->payment_type))
+            ->when(in_array($request->payment_type, self::PAYMENT_TYPES, true), fn ($query) => $query->where('payment_type', $request->payment_type))
             ->when($dateFrom, fn ($query) => $query->whereDate('paid_at', '>=', $dateFrom))
             ->when($dateTo, fn ($query) => $query->whereDate('paid_at', '<=', $dateTo))
             ->when($request->filled('search'), function ($query) use ($request) {
@@ -69,7 +71,7 @@ class PaymentController extends Controller
             'todayTotal',
             'dateFrom',
             'dateTo'
-        ));
+        ) + ['paymentTypes' => self::PAYMENT_TYPES]);
     }
 
     private function canChooseBranch($user): bool

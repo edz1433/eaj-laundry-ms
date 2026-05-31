@@ -46,15 +46,15 @@
 
             <select name="billing_type" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
                 <option value="">All billing</option>
-                <option value="regular" @selected(request('billing_type') === 'regular')>Regular</option>
-                <option value="po" @selected(request('billing_type') === 'po')>PO</option>
-                <option value="monthly_billing" @selected(request('billing_type') === 'monthly_billing')>Monthly</option>
+                @foreach($billingTypes as $billingType)
+                    <option value="{{ $billingType }}" @selected(request('billing_type') === $billingType)>{{ \App\Support\StatusBadge::label($billingType) }}</option>
+                @endforeach
             </select>
 
             <select name="status" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
                 <option value="">All status</option>
-                @foreach(['pending', 'washing', 'drying', 'folding', 'ready_for_pickup', 'completed'] as $status)
-                    <option value="{{ $status }}" @selected(request('status') === $status)>{{ str_replace('_', ' ', ucfirst($status)) }}</option>
+                @foreach($statuses as $status)
+                    <option value="{{ $status }}" @selected(request('status') === $status)>{{ \App\Support\StatusBadge::label($status) }}</option>
                 @endforeach
             </select>
 
@@ -92,13 +92,13 @@
                                 <p class="text-xs text-muted">{{ $order->customer?->phone ?: 'No phone' }}</p>
                             </td>
                             <td class="px-4 py-3">{{ $order->branch?->name ?? 'N/A' }}</td>
-                            <td class="px-4 py-3">{{ str_replace('_', ' ', ucfirst($order->customer?->billing_type ?? 'regular')) }}</td>
+                            <td class="px-4 py-3"><span class="{{ \App\Support\StatusBadge::classes($order->customer?->billing_type ?? 'regular') }}">{{ \App\Support\StatusBadge::label($order->customer?->billing_type ?? 'regular') }}</span></td>
                             <td class="px-4 py-3 text-right">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $order->total, 2) }}</td>
                             <td class="px-4 py-3 text-right">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $order->paid_amount, 2) }}</td>
                             <td class="px-4 py-3 text-right font-semibold text-amber-700 dark:text-amber-300">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $order->balance, 2) }}</td>
                             <td class="px-4 py-3">
-                                <span class="rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
-                                    {{ str_replace('_', ' ', ucfirst($order->status)) }}
+                                <span class="{{ \App\Support\StatusBadge::classes($order->status) }}">
+                                    {{ \App\Support\StatusBadge::label($order->status) }}
                                 </span>
                             </td>
                             <td class="px-4 py-3 text-right">

@@ -11,6 +11,9 @@ use Illuminate\Validation\Rule;
 
 class CustomerController extends Controller
 {
+    private const BILLING_TYPES = ['regular', 'po', 'monthly_billing'];
+    private const STATUS_FILTERS = ['active', 'inactive'];
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -26,8 +29,8 @@ class CustomerController extends Controller
             ->withCount('jobOrders')
             ->when(! $this->canChooseBranch($user), fn ($query) => $query->where('branch_id', $user->branch_id))
             ->when($request->filled('branch_id') && $this->canChooseBranch($user), fn ($query) => $query->where('branch_id', $request->branch_id))
-            ->when($request->filled('billing_type'), fn ($query) => $query->where('billing_type', $request->billing_type))
-            ->when($request->filled('status'), fn ($query) => $query->where('is_active', $request->status === 'active'))
+            ->when(in_array($request->billing_type, self::BILLING_TYPES, true), fn ($query) => $query->where('billing_type', $request->billing_type))
+            ->when(in_array($request->status, self::STATUS_FILTERS, true), fn ($query) => $query->where('is_active', $request->status === 'active'))
             ->when($request->filled('search'), function ($query) use ($request) {
                 $search = $request->search;
 

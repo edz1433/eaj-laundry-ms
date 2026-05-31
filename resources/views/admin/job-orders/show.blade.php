@@ -55,7 +55,7 @@
                         <div class="flex items-center justify-between rounded-md border border-border p-3 text-sm dark:border-gray-800">
                             <div>
                                 <p class="font-medium">{{ $payment->payment_number }}</p>
-                                <p class="text-xs text-muted">{{ str_replace('_', ' ', ucfirst($payment->payment_type)) }} - {{ $payment->paid_at?->format('M d, Y h:i A') }}</p>
+                                <p class="text-xs text-muted">{{ \App\Support\StatusBadge::label($payment->payment_type) }} - {{ $payment->paid_at?->format('M d, Y h:i A') }}</p>
                             </div>
                             <span class="font-semibold">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $payment->amount, 2) }}</span>
                         </div>
@@ -70,7 +70,7 @@
             <div class="rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
                 <h2 class="mb-3 text-sm font-semibold">Summary</h2>
                 <div class="space-y-2 text-sm">
-                    <div class="flex justify-between"><span class="text-muted">Status</span><span class="font-medium">{{ str_replace('_', ' ', ucfirst($order->status)) }}</span></div>
+                    <div class="flex justify-between"><span class="text-muted">Status</span><span class="{{ \App\Support\StatusBadge::classes($order->status) }}">{{ \App\Support\StatusBadge::label($order->status) }}</span></div>
                     <div class="flex justify-between"><span class="text-muted">Subtotal</span><span>{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $order->subtotal, 2) }}</span></div>
                     <div class="flex justify-between"><span class="text-muted">Discount</span><span>{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $order->discount, 2) }}</span></div>
                     <div class="flex justify-between"><span class="text-muted">VAT</span><span>{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $order->tax, 2) }}</span></div>

@@ -45,7 +45,7 @@
                             <td class="px-4 py-3">{{ $branch->contact_number ?: 'N/A' }}</td>
                             <td class="px-4 py-3">{{ $branch->users_count }}</td>
                             <td class="px-4 py-3">
-                                <span class="rounded-md px-2 py-1 text-xs font-medium {{ $branch->is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-700' }}">
+                                <span class="{{ \App\Support\StatusBadge::classes($branch->is_active ? 'active' : 'inactive') }}">
                                     {{ $branch->is_active ? 'Active' : 'Inactive' }}
                                 </span>
                             </td>

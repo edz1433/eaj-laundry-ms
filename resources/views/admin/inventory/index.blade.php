@@ -15,7 +15,7 @@
             <p class="text-sm text-muted">{{ $activeBranch ? $activeBranch->name.' supplies and stock movements.' : 'Create a branch before adding stock items.' }}</p>
             <div class="mt-2 flex flex-wrap gap-1.5 text-xs">
                 <span class="rounded-md bg-smoke px-2 py-1 text-muted dark:bg-gray-950">{{ number_format((int) ($summary->items_count ?? 0)) }} items</span>
-                <span class="rounded-md bg-amber-50 px-2 py-1 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">{{ number_format($lowStockCount) }} low stock</span>
+                <span class="{{ \App\Support\StatusBadge::classes('low') }}">{{ number_format($lowStockCount) }} low stock</span>
                 <span class="rounded-md bg-smoke px-2 py-1 text-muted dark:bg-gray-950">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) ($summary->inventory_value ?? 0), 2) }} value</span>
             </div>
         </div>
@@ -106,7 +106,7 @@
                             <td class="px-4 py-3">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $item->unit_cost, 2) }}</td>
                             <td class="px-4 py-3 font-medium">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $item->quantity * (float) $item->unit_cost, 2) }}</td>
                             <td class="px-4 py-3">
-                                <span class="rounded-md px-2 py-1 text-xs font-medium {{ $isLow ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300' : ($item->is_active ? 'bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-300' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300') }}">
+                                <span class="{{ \App\Support\StatusBadge::classes($isLow ? 'low' : ($item->is_active ? 'active' : 'inactive')) }}">
                                     {{ $isLow ? 'Low' : ($item->is_active ? 'Active' : 'Inactive') }}
                                 </span>
                             </td>

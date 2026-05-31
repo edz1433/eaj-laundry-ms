@@ -11,14 +11,14 @@
                 Operations board
             </div>
             <h1 class="text-xl font-semibold">Cycle Monitoring</h1>
-            <p class="text-sm text-muted">Track wash, dry, fold, iron, and pickup readiness.</p>
+            <p class="text-sm text-muted">Start active laundry cycles, then mark orders ready or completed.</p>
         </div>
 
         <form method="GET" class="flex gap-2">
             <select name="status" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
                 <option value="">All active</option>
-                @foreach(['pending','washing','drying','folding','ready_for_pickup'] as $status)
-                    <option value="{{ $status }}" @selected(request('status') === $status)>{{ str_replace('_', ' ', ucfirst($status)) }}</option>
+                @foreach($statusFilters as $status)
+                    <option value="{{ $status }}" @selected(request('status') === $status)>{{ $statusLabels[$status] ?? str_replace('_', ' ', ucfirst($status)) }}</option>
                 @endforeach
             </select>
             <button class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
@@ -35,13 +35,13 @@
                         <p class="font-semibold">{{ $order->job_order_number }}</p>
                         <p class="truncate text-sm text-muted">{{ $order->customer?->name }} · {{ $order->branch?->name }}</p>
                     </div>
-                    <span class="shrink-0 rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-200">
-                        {{ str_replace('_', ' ', $order->status) }}
+                    <span class="shrink-0 {{ \App\Support\StatusBadge::classes($order->status) }}">
+                        {{ $statusLabels[$order->status] ?? str_replace('_', ' ', ucfirst($order->status)) }}
                     </span>
                 </div>
 
                 <div class="mb-3 flex flex-wrap gap-2">
-                    @foreach(['wash' => 'Washing', 'dry' => 'Drying', 'fold' => 'Folding', 'iron' => 'Ironing'] as $type => $label)
+                    @foreach($cycleTypes as $type => $label)
                         <form method="POST" action="{{ route('admin.cycles.store', $order) }}">
                             @csrf
                             <input type="hidden" name="cycle_type" value="{{ $type }}">
@@ -53,41 +53,58 @@
                     @endforeach
                 </div>
 
-                <div class="mb-3 flex flex-wrap gap-2">
-                    @foreach(['pending','washing','drying','folding','ready_for_pickup','completed'] as $status)
+                <div class="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border bg-smoke p-2 dark:border-gray-800 dark:bg-gray-950">
+                    <span class="text-xs font-medium text-muted">Finish order:</span>
+                    @foreach($completionStatuses as $status => $label)
                         <form method="POST" action="{{ route('admin.cycles.status', $order) }}">
                             @csrf
                             @method('PATCH')
                             <input type="hidden" name="status" value="{{ $status }}">
                             <button class="h-8 rounded-md px-2 text-xs font-medium {{ $order->status === $status ? 'bg-primary text-white' : 'border border-border hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950' }}">
-                                {{ str_replace('_', ' ', $status) }}
+                                {{ $label }}
                             </button>
                         </form>
                     @endforeach
                 </div>
 
                 <div class="space-y-2 border-t border-border pt-3 dark:border-gray-800">
-                    @forelse($order->cycles->sortByDesc('created_at')->take(5) as $cycle)
+                    @forelse($order->cycles->sortByDesc('created_at') as $cycle)
                         <div class="flex items-center justify-between gap-2 rounded-md bg-smoke px-3 py-2 text-sm dark:bg-gray-950">
                             <div>
-                                <p class="font-medium">{{ ucfirst($cycle->cycle_type) }} #{{ $cycle->cycle_number }}</p>
+                                <p class="font-medium">{{ $cycleTypes[$cycle->cycle_type] ?? ucfirst($cycle->cycle_type) }} #{{ $cycle->cycle_number }}</p>
                                 <p class="text-xs text-muted">
                                     {{ $cycle->started_at?->format('M d, h:i A') ?? 'Not started' }}
                                     @if($cycle->ended_at) - {{ $cycle->ended_at->format('h:i A') }} @endif
                                 </p>
                             </div>
 
-                            @if(! $cycle->ended_at)
-                                <form method="POST" action="{{ route('admin.cycles.end', $cycle) }}">
+                            <div class="flex items-center gap-1">
+                                @if(! $cycle->ended_at)
+                                    <form method="POST" action="{{ route('admin.cycles.end', $cycle) }}">
+                                        @csrf
+                                        @method('PATCH')
+                                        <button title="End cycle" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border hover:bg-white dark:border-gray-800 dark:hover:bg-gray-900">
+                                            <span data-lucide="activity" class="h-4 w-4"></span>
+                                        </button>
+                                    </form>
+                                @else
+                                    <span class="px-2 text-xs text-muted">Done</span>
+                                @endif
+
+                                <form method="POST" action="{{ route('admin.cycles.destroy', $cycle) }}" x-data>
                                     @csrf
-                                    @method('PATCH')
-                                    <button title="End cycle" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border hover:bg-white dark:border-gray-800 dark:hover:bg-gray-900">
-                                        <span data-lucide="activity" class="h-4 w-4"></span>
+                                    @method('DELETE')
+                                    <button
+                                        type="submit"
+                                        title="Remove cycle"
+                                        aria-label="Remove cycle"
+                                        x-on:click.prevent="Swal.fire({ title: 'Remove cycle?', text: 'Use this to clean duplicate or accidental cycle taps.', icon: 'warning', showCancelButton: true, confirmButtonColor: '#dc2626', confirmButtonText: 'Remove' }).then((result) => { if (result.isConfirmed) $el.closest('form').submit(); })"
+                                        class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/70 dark:hover:bg-red-950/30"
+                                    >
+                                        <span data-lucide="trash" class="h-4 w-4"></span>
                                     </button>
                                 </form>
-                            @else
-                                <span class="text-xs text-muted">Done</span>
-                            @endif
+                            </div>
                         </div>
                     @empty
                         <p class="rounded-md border border-dashed border-border py-6 text-center text-sm text-muted dark:border-gray-800">No cycles yet.</p>

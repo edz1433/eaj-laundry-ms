@@ -31,8 +31,8 @@
             @endif
             <select name="status" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
                 <option value="">All status</option>
-                @foreach(['queued', 'sent', 'failed'] as $status)
-                    <option value="{{ $status }}" @selected(request('status') === $status)>{{ ucfirst($status) }}</option>
+                @foreach($statuses as $status)
+                    <option value="{{ $status }}" @selected(request('status') === $status)>{{ \App\Support\StatusBadge::label($status) }}</option>
                 @endforeach
             </select>
             <button class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
@@ -61,7 +61,7 @@
                             <td class="px-4 py-3">{{ $log->customer?->name ?? 'N/A' }}</td>
                             <td class="px-4 py-3">{{ $log->branch?->name ?? 'N/A' }}</td>
                             <td class="max-w-md px-4 py-3"><p class="truncate" title="{{ $log->message }}">{{ $log->message }}</p><p class="text-xs text-muted">{{ $log->response }}</p></td>
-                            <td class="px-4 py-3"><span class="rounded-md bg-smoke px-2 py-1 text-xs font-medium dark:bg-gray-950">{{ ucfirst($log->status) }}</span></td>
+                            <td class="px-4 py-3"><span class="{{ \App\Support\StatusBadge::classes($log->status) }}">{{ \App\Support\StatusBadge::label($log->status) }}</span></td>
                             <td class="px-4 py-3">{{ $log->created_at->format('M d, Y h:i A') }}</td>
                         </tr>
                     @empty

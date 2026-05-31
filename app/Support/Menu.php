@@ -18,12 +18,10 @@ class Menu
             'receivables' => ['label' => 'Receivables', 'route' => 'admin.receivables.index', 'icon' => 'receivables'],
             'inventory' => ['label' => 'Inventory', 'route' => 'admin.inventory.index', 'icon' => 'inventory'],
             'attendance' => ['label' => 'Attendance', 'route' => 'admin.attendance.index', 'icon' => 'attendance'],
-            '<payroll>tra Dry minutes even this is already in custom services please fix redandant
-            </payroll>' => ['label' => 'Payroll', 'route' => 'admin.payroll.index', 'icon' => 'payroll'],
             'reports' => ['label' => 'Reports', 'route' => 'admin.reports.index', 'icon' => 'reports'],
             'sms_logs' => ['label' => 'SMS Logs', 'route' => 'admin.sms-logs.index', 'icon' => 'smsLogs'],
+            'billing' => ['label' => 'Billing', 'route' => 'admin.billing.index', 'icon' => 'receipt', 'super_admin' => true],
             'settings' => ['label' => 'System Settings', 'route' => 'admin.settings.edit', 'icon' => 'settings'],
-            'developer_settings' => ['label' => 'Developer Settings', 'route' => 'admin.developer-settings.edit', 'icon' => 'developerSettings', 'super_admin' => true],
         ];
     }
 

@@ -39,7 +39,7 @@
 
             <div class="min-h-0 flex-1 p-2 sm:p-4">
                 <div class="relative h-full overflow-hidden rounded-lg border border-border bg-gray-950 dark:border-gray-800">
-                    <video x-ref="video" autoplay muted playsinline class="h-full w-full object-cover"></video>
+                    <video x-ref="video" autoplay muted playsinline class="h-full w-full -scale-x-100 object-cover"></video>
                     <canvas x-ref="canvas" class="hidden"></canvas>
 
                     <div class="absolute inset-x-3 top-3 flex items-center justify-between gap-2">
@@ -233,8 +233,8 @@
                     const box = result.detection.box;
                     const nose = landmarks.getNose()[3];
                     const noseRatio = (nose.x - box.x) / box.width;
-                    if (noseRatio < 0.43) this.completeCurrentChallenge('left');
-                    if (noseRatio > 0.57) this.completeCurrentChallenge('right');
+                    if (noseRatio > 0.57) this.completeCurrentChallenge('left');
+                    if (noseRatio < 0.43) this.completeCurrentChallenge('right');
 
                     this.descriptor = Array.from(result.descriptor);
                     if (!this.canSubmit) {

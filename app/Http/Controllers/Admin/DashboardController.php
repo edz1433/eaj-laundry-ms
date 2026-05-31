@@ -8,6 +8,7 @@ use App\Models\Inventory;
 use App\Models\JobOrder;
 use App\Models\Payment;
 use App\Models\SystemSetting;
+use App\Support\StatusBadge;
 use Carbon\CarbonPeriod;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -88,7 +89,7 @@ class DashboardController extends Controller
             ->pluck('total', 'status');
 
         $statuses = ['pending', 'washing', 'drying', 'folding', 'ready_for_pickup', 'completed', 'cancelled'];
-        $statusLabels = array_map(fn ($status) => str_replace('_', ' ', ucfirst($status)), $statuses);
+        $statusLabels = array_map(fn ($status) => StatusBadge::label($status), $statuses);
         $statusValues = array_map(fn ($status) => (int) ($statusRows[$status] ?? 0), $statuses);
 
         $recentOrders = (clone $orders)
@@ -101,7 +102,8 @@ class DashboardController extends Controller
                 'number' => $order->job_order_number,
                 'customer' => $order->customer?->name ?? 'Walk-in',
                 'branch' => $order->branch?->name ?? 'N/A',
-                'status' => str_replace('_', ' ', ucfirst($order->status)),
+                'status' => StatusBadge::label($order->status),
+                'status_badge' => StatusBadge::classes($order->status),
                 'total' => $this->money($currency, (float) $order->total),
                 'url' => route('admin.job-orders.show', $order),
             ])

@@ -21,13 +21,15 @@ use Illuminate\Validation\ValidationException;
 
 class JobOrderController extends Controller
 {
+    private const STATUSES = ['pending', 'washing', 'drying', 'folding', 'ready_for_pickup', 'completed', 'cancelled'];
+
     public function index(Request $request)
     {
         $user = $request->user();
 
         $orders = JobOrder::with(['branch', 'customer'])
             ->when($user->role !== 'super_admin' && $user->role !== 'admin', fn ($q) => $q->where('branch_id', $user->branch_id))
-            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
+            ->when(in_array($request->status, self::STATUSES, true), fn ($q) => $q->where('status', $request->status))
             ->when($request->filled('search'), function ($q) use ($request) {
                 $search = $request->search;
                 $q->where('job_order_number', 'like', "%{$search}%")
@@ -37,7 +39,10 @@ class JobOrderController extends Controller
             ->paginate(10)
             ->withQueryString();
 
-        return view('admin.job-orders.index', compact('orders'));
+        return view('admin.job-orders.index', [
+            'orders' => $orders,
+            'statuses' => self::STATUSES,
+        ]);
     }
 
     public function show(Request $request, JobOrder $jobOrder)

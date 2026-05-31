@@ -124,7 +124,7 @@
                     <td>{{ $order->customer?->name }}</td>
                     <td>{{ $order->branch?->name }}</td>
                     <td class="right">{{ $currency }} {{ number_format((float) $order->balance, 2) }}</td>
-                    <td>{{ str_replace('_', ' ', ucfirst($order->status)) }}</td>
+                    <td>{{ \App\Support\StatusBadge::label($order->status) }}</td>
                 </tr>
             @empty
                 <tr><td colspan="5" class="empty">No receivables found.</td></tr>

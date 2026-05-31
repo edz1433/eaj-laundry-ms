@@ -15,6 +15,9 @@ use Illuminate\Validation\ValidationException;
 
 class InventoryController extends Controller
 {
+    private const STOCK_FILTERS = ['low', 'ok'];
+    private const STATUS_FILTERS = ['active', 'inactive'];
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -34,7 +37,7 @@ class InventoryController extends Controller
             ->with(['branch', 'supplier'])
             ->where('branch_id', $selectedBranchId)
             ->when($request->filled('supplier_id'), fn ($query) => $query->where('supplier_id', $request->supplier_id))
-            ->when($request->filled('stock_status'), function ($query) use ($request) {
+            ->when(in_array($request->stock_status, self::STOCK_FILTERS, true), function ($query) use ($request) {
                 if ($request->stock_status === 'low') {
                     $query->whereColumn('quantity', '<=', 'reorder_level');
                 }
@@ -43,7 +46,7 @@ class InventoryController extends Controller
                     $query->whereColumn('quantity', '>', 'reorder_level');
                 }
             })
-            ->when($request->filled('status'), fn ($query) => $query->where('is_active', $request->status === 'active'))
+            ->when(in_array($request->status, self::STATUS_FILTERS, true), fn ($query) => $query->where('is_active', $request->status === 'active'))
             ->when($request->filled('search'), function ($query) use ($request) {
                 $search = $request->search;
 

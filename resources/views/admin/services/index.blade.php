@@ -80,7 +80,7 @@
                             <td class="px-4 py-3">{{ ucfirst($service->pricing_type) }}</td>
                             <td class="px-4 py-3">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $service->price, 2) }}</td>
                             <td class="px-4 py-3">
-                                <span class="rounded-md px-2 py-1 text-xs font-medium {{ $service->is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-700' }}">
+                                <span class="{{ \App\Support\StatusBadge::classes($service->is_active ? 'active' : 'inactive') }}">
                                     {{ $service->is_active ? 'Active' : 'Inactive' }}
                                 </span>
                             </td>

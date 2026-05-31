@@ -13,13 +13,15 @@ class UserController extends Controller
 {
     public function index()
     {
+        $viewer = auth()->user();
+
         $users = User::with('branch')
-            ->visibleTo(auth()->user())
-            ->when(auth()->user()->role === 'branch_manager', fn ($query) => $query->where('branch_id', auth()->user()->branch_id))
+            ->visibleTo($viewer)
+            ->when($viewer->role === 'branch_manager', fn ($query) => $query->where('branch_id', $viewer->branch_id))
             ->latest()
             ->paginate(10);
         $branches = Branch::where('is_active', true)
-            ->when(auth()->user()->role === 'branch_manager', fn ($query) => $query->whereKey(auth()->user()->branch_id))
+            ->when($viewer->role === 'branch_manager', fn ($query) => $query->whereKey($viewer->branch_id))
             ->orderBy('name')
             ->get();
         $menuItems = Menu::items();
@@ -37,30 +39,22 @@ class UserController extends Controller
 
     public function store(Request $request)
     {
+        $viewer = $request->user();
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'username' => ['required', 'string', 'max:100', 'unique:users,username'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:6', 'confirmed'],
-            'role' => ['required', Rule::in([
-                'super_admin',
-                'admin',
-                'branch_manager',
-                'cashier',
-                'staff',
-            ])],
+            'role' => ['required', Rule::in($this->availableRoles($viewer))],
             'branch_id' => ['nullable', 'exists:branches,id'],
             'status' => ['required', Rule::in(['active', 'inactive', 'suspended'])],
             'access' => ['nullable', 'array'],
             'access.*' => ['string', Rule::in(Menu::keys())],
         ]);
 
-        if (! auth()->user()->isSuperAdmin() && $validated['role'] === 'super_admin') {
-            abort(403);
-        }
-
-        if (auth()->user()->role === 'branch_manager') {
-            $validated['branch_id'] = auth()->user()->branch_id;
+        if ($viewer->role === 'branch_manager') {
+            $validated['branch_id'] = $viewer->branch_id;
         }
 
         $validated['access'] = $this->normalizedAccess($validated['role'], $validated['access'] ?? []);
@@ -93,6 +87,7 @@ class UserController extends Controller
     public function update(Request $request, User $user)
     {
         $this->authorizeUserAccess($user);
+        $viewer = $request->user();
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -109,26 +104,16 @@ class UserController extends Controller
                 Rule::unique('users', 'email')->ignore($user->id),
             ],
             'password' => ['nullable', 'string', 'min:6', 'confirmed'],
-            'role' => ['required', Rule::in([
-                'super_admin',
-                'admin',
-                'branch_manager',
-                'cashier',
-                'staff',
-            ])],
+            'role' => ['required', Rule::in($this->availableRoles($viewer))],
             'branch_id' => ['nullable', 'exists:branches,id'],
             'status' => ['required', Rule::in(['active', 'inactive', 'suspended'])],
             'access' => ['nullable', 'array'],
             'access.*' => ['string', Rule::in(Menu::keys())],
         ]);
 
-        if (! auth()->user()->isSuperAdmin() && ($validated['role'] === 'super_admin' || $user->isSuperAdmin())) {
-            abort(403);
-        }
-
-        if (auth()->user()->role === 'branch_manager') {
-            abort_unless((int) $user->branch_id === (int) auth()->user()->branch_id, 403);
-            $validated['branch_id'] = auth()->user()->branch_id;
+        if ($viewer->role === 'branch_manager') {
+            abort_unless((int) $user->branch_id === (int) $viewer->branch_id, 403);
+            $validated['branch_id'] = $viewer->branch_id;
         }
 
         if (empty($validated['password'])) {
@@ -163,11 +148,12 @@ class UserController extends Controller
             ->with('success', 'User account deleted successfully.');
     }
 
-    private function availableRoles(): array
+    private function availableRoles(?User $viewer = null): array
     {
+        $viewer ??= auth()->user();
         $roles = ['admin', 'branch_manager', 'cashier', 'staff'];
 
-        if (auth()->user()->isSuperAdmin()) {
+        if ($viewer?->isSuperAdmin()) {
             array_unshift($roles, 'super_admin');
         }
 

@@ -77,7 +77,7 @@ class SystemSettingController extends Controller
                 'max:50',
                 Rule::unique('branches', 'code')->ignore($branch->id),
             ],
-            'branch_address' => ['nullable', 'string'],
+            'branch_address' => ['nullable', 'string', 'max:255'],
             'branch_contact' => ['nullable', 'string', 'max:50'],
             'branch_latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'branch_longitude' => ['nullable', 'numeric', 'between:-180,180'],

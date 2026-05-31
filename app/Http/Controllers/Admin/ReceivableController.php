@@ -15,6 +15,9 @@ use Illuminate\Validation\ValidationException;
 
 class ReceivableController extends Controller
 {
+    private const BILLING_TYPES = ['regular', 'po', 'monthly_billing'];
+    private const STATUSES = ['pending', 'washing', 'drying', 'folding', 'ready_for_pickup', 'completed'];
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -31,8 +34,8 @@ class ReceivableController extends Controller
             ->where('balance', '>', 0)
             ->when(! $canChooseBranch, fn ($query) => $query->where('branch_id', $user->branch_id))
             ->when($request->filled('branch_id') && $canChooseBranch, fn ($query) => $query->where('branch_id', $request->branch_id))
-            ->when($request->filled('billing_type'), fn ($query) => $query->whereHas('customer', fn ($query) => $query->where('billing_type', $request->billing_type)))
-            ->when($request->filled('status'), fn ($query) => $query->where('status', $request->status))
+            ->when(in_array($request->billing_type, self::BILLING_TYPES, true), fn ($query) => $query->whereHas('customer', fn ($query) => $query->where('billing_type', $request->billing_type)))
+            ->when(in_array($request->status, self::STATUSES, true), fn ($query) => $query->where('status', $request->status))
             ->when($request->filled('search'), function ($query) use ($request) {
                 $search = $request->search;
 
@@ -52,7 +55,14 @@ class ReceivableController extends Controller
             ->paginate(10)
             ->withQueryString();
 
-        return view('admin.receivables.index', compact('branches', 'receivables', 'summary', 'canChooseBranch'));
+        return view('admin.receivables.index', [
+            'branches' => $branches,
+            'receivables' => $receivables,
+            'summary' => $summary,
+            'canChooseBranch' => $canChooseBranch,
+            'billingTypes' => self::BILLING_TYPES,
+            'statuses' => self::STATUSES,
+        ]);
     }
 
     public function storePayment(Request $request, JobOrder $jobOrder)

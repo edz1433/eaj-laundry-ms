@@ -112,7 +112,7 @@
                                 <td class="px-4 py-3"><a :href="order.url" class="font-medium hover:text-primary" x-text="order.number"></a></td>
                                 <td class="px-4 py-3" x-text="order.customer"></td>
                                 <td class="px-4 py-3" x-text="order.branch"></td>
-                                <td class="px-4 py-3"><span class="rounded-md bg-smoke px-2 py-1 text-xs font-medium dark:bg-gray-950" x-text="order.status"></span></td>
+                                <td class="px-4 py-3"><span :class="order.status_badge" x-text="order.status"></span></td>
                                 <td class="px-4 py-3 text-right font-medium" x-text="order.total"></td>
                             </tr>
                         </template>

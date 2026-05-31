@@ -73,10 +73,9 @@
 
                     <select name="payment_type" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
                         <option value="">All types</option>
-                        <option value="cash" @selected(request('payment_type') === 'cash')>Cash</option>
-                        <option value="credit" @selected(request('payment_type') === 'credit')>Credit</option>
-                        <option value="po" @selected(request('payment_type') === 'po')>PO</option>
-                        <option value="monthly_billing" @selected(request('payment_type') === 'monthly_billing')>Monthly</option>
+                        @foreach($paymentTypes as $type)
+                            <option value="{{ $type }}" @selected(request('payment_type') === $type)>{{ \App\Support\StatusBadge::label($type) }}</option>
+                        @endforeach
                     </select>
 
                     <div class="flex h-9 items-center gap-2 rounded-md border border-border bg-white px-3 dark:border-gray-800 dark:bg-gray-950">
@@ -112,7 +111,7 @@
                             <span class="rounded-md bg-smoke px-2 py-1 text-muted dark:bg-gray-950">Search: {{ request('search') }}</span>
                         @endif
                         @if(request('payment_type'))
-                            <span class="rounded-md bg-smoke px-2 py-1 text-muted dark:bg-gray-950">Type: {{ str_replace('_', ' ', ucfirst(request('payment_type'))) }}</span>
+                            <span class="{{ \App\Support\StatusBadge::classes(request('payment_type')) }}">Type: {{ \App\Support\StatusBadge::label(request('payment_type')) }}</span>
                         @endif
                         @if($dateRangeValue)
                             <span class="rounded-md bg-smoke px-2 py-1 text-muted dark:bg-gray-950">Date: {{ $dateRangeValue }}</span>
@@ -129,7 +128,7 @@
                     @php($percent = (float) ($summary->total_amount ?? 0) > 0 ? ((float) $type->total_amount / (float) $summary->total_amount) * 100 : 0)
                     <div>
                         <div class="mb-1 flex items-center justify-between text-xs">
-                            <span class="font-medium">{{ str_replace('_', ' ', ucfirst($type->payment_type)) }}</span>
+                            <span class="font-medium">{{ \App\Support\StatusBadge::label($type->payment_type) }}</span>
                             <span class="text-muted">{{ number_format($percent, 0) }}%</span>
                         </div>
                         <div class="h-1.5 overflow-hidden rounded-full bg-smoke dark:bg-gray-950">
@@ -174,8 +173,8 @@
                             </td>
                             <td class="px-4 py-3">{{ $payment->branch?->name ?? 'N/A' }}</td>
                             <td class="px-4 py-3">
-                                <span class="rounded-md bg-smoke px-2 py-1 text-xs font-medium dark:bg-gray-950">
-                                    {{ str_replace('_', ' ', ucfirst($payment->payment_type)) }}
+                                <span class="{{ \App\Support\StatusBadge::classes($payment->payment_type) }}">
+                                    {{ \App\Support\StatusBadge::label($payment->payment_type) }}
                                 </span>
                             </td>
                             <td class="px-4 py-3 text-right font-semibold">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $payment->amount, 2) }}</td>

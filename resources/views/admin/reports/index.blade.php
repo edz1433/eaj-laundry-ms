@@ -84,7 +84,7 @@
     <x-report-table title="Receivables" x-show="tab === 'receivables'">
         <x-slot:head><th class="px-4 py-3">JO #</th><th class="px-4 py-3">Customer</th><th class="px-4 py-3">Branch</th><th class="px-4 py-3 text-right">Balance</th><th class="px-4 py-3">Status</th></x-slot:head>
         @forelse($receivables as $order)
-            <tr><td class="px-4 py-3 font-medium">{{ $order->job_order_number }}</td><td class="px-4 py-3">{{ $order->customer?->name }}</td><td class="px-4 py-3">{{ $order->branch?->name }}</td><td class="px-4 py-3 text-right font-medium">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $order->balance, 2) }}</td><td class="px-4 py-3">{{ str_replace('_', ' ', ucfirst($order->status)) }}</td></tr>
+            <tr><td class="px-4 py-3 font-medium">{{ $order->job_order_number }}</td><td class="px-4 py-3">{{ $order->customer?->name }}</td><td class="px-4 py-3">{{ $order->branch?->name }}</td><td class="px-4 py-3 text-right font-medium">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $order->balance, 2) }}</td><td class="px-4 py-3"><span class="{{ \App\Support\StatusBadge::classes($order->status) }}">{{ \App\Support\StatusBadge::label($order->status) }}</span></td></tr>
         @empty
             <tr><td colspan="5" class="px-4 py-10 text-center text-muted">No receivables found.</td></tr>
         @endforelse

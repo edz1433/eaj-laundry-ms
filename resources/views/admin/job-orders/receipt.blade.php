@@ -47,7 +47,7 @@
                 <div class="flex justify-between"><span>Branch</span><span>{{ $order->branch?->name }}</span></div>
                 <div class="flex justify-between"><span>Customer</span><span>{{ $order->customer?->name }}</span></div>
                 <div class="flex justify-between"><span>Billing</span><span>{{ str_replace('_', ' ', ucfirst($order->customer?->billing_type ?? 'regular')) }}</span></div>
-                <div class="flex justify-between"><span>Status</span><span>{{ str_replace('_', ' ', ucfirst($order->status)) }}</span></div>
+                <div class="flex justify-between"><span>Status</span><span>{{ \App\Support\StatusBadge::label($order->status) }}</span></div>
             </div>
 
             <table class="w-full text-xs">

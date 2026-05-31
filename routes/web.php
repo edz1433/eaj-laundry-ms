@@ -16,6 +16,7 @@ use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\SmsLogController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Admin\BillingController;
 use App\Http\Controllers\Admin\SystemSettingController;
 
 Route::middleware('guest')->group(function () {
@@ -32,11 +33,19 @@ Route::get('/time-clock/challenge', [AttendanceController::class, 'challenge'])-
 Route::post('/time-clock/time-in', [AttendanceController::class, 'publicTimeIn'])->name('attendance.public-time-in');
 Route::post('/time-clock/time-out', [AttendanceController::class, 'publicTimeOut'])->name('attendance.public-time-out');
 
-Route::middleware(['auth', 'settings.completed'])->group(function () {
+Route::middleware(['auth', 'settings.completed', 'billing.access'])->group(function () {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/dashboard/data', [DashboardController::class, 'data'])->name('dashboard.data');
 
     Route::prefix('admin')->name('admin.')->group(function () {
+        Route::middleware('super.admin')->group(function () {
+            Route::get('/billing', [BillingController::class, 'index'])->name('billing.index');
+            Route::put('/billing/trial', [BillingController::class, 'updateTrial'])->name('billing.trial.update');
+            Route::post('/billing/generate', [BillingController::class, 'generate'])->name('billing.generate');
+            Route::patch('/billing/records/{billingRecord}/status', [BillingController::class, 'updateStatus'])->name('billing.records.status');
+            Route::patch('/billing/records/{billingRecord}/paid', [BillingController::class, 'markPaid'])->name('billing.records.mark-paid');
+        });
+
         Route::resource('branches', BranchController::class)->only(['index', 'store', 'update', 'destroy'])->middleware('menu.access:branches');
         Route::resource('users', UserController::class)->only(['index', 'store', 'update', 'destroy'])->middleware('menu.access:users');
         Route::resource('customers', CustomerController::class)->only(['index', 'store', 'update', 'destroy'])->middleware('menu.access:customers');
@@ -66,6 +75,7 @@ Route::middleware(['auth', 'settings.completed'])->group(function () {
             Route::patch('/cycles/job-orders/{jobOrder}/status', [CycleController::class, 'updateStatus'])->name('cycles.status');
             Route::post('/cycles/job-orders/{jobOrder}', [CycleController::class, 'storeCycle'])->name('cycles.store');
             Route::patch('/cycles/{cycle}/end', [CycleController::class, 'endCycle'])->name('cycles.end');
+            Route::delete('/cycles/{cycle}', [CycleController::class, 'destroyCycle'])->name('cycles.destroy');
         });
         Route::middleware('menu.access:employees')->group(function () {
             Route::get('/employees', [EmployeeController::class, 'index'])->name('employees.index');

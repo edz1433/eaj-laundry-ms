@@ -41,9 +41,9 @@
 
             <select name="billing_type" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
                 <option value="">All billing</option>
-                <option value="regular" @selected(request('billing_type') === 'regular')>Regular</option>
-                <option value="po" @selected(request('billing_type') === 'po')>PO</option>
-                <option value="monthly_billing" @selected(request('billing_type') === 'monthly_billing')>Monthly</option>
+                @foreach(['regular', 'po', 'monthly_billing'] as $billingType)
+                    <option value="{{ $billingType }}" @selected(request('billing_type') === $billingType)>{{ \App\Support\StatusBadge::label($billingType) }}</option>
+                @endforeach
             </select>
 
             <select name="status" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
@@ -80,11 +80,11 @@
                                 <p class="text-xs text-muted">{{ $customer->phone ?: 'No phone' }} - {{ $customer->email ?: 'No email' }}</p>
                             </td>
                             <td class="px-4 py-3">{{ $customer->branch?->name ?? 'N/A' }}</td>
-                            <td class="px-4 py-3">{{ str_replace('_', ' ', ucfirst($customer->billing_type)) }}</td>
+                            <td class="px-4 py-3"><span class="{{ \App\Support\StatusBadge::classes($customer->billing_type) }}">{{ \App\Support\StatusBadge::label($customer->billing_type) }}</span></td>
                             <td class="px-4 py-3">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $customer->credit_limit, 2) }}</td>
                             <td class="px-4 py-3">{{ $customer->job_orders_count }}</td>
                             <td class="px-4 py-3">
-                                <span class="rounded-md px-2 py-1 text-xs font-medium {{ $customer->is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-700' }}">
+                                <span class="{{ \App\Support\StatusBadge::classes($customer->is_active ? 'active' : 'inactive') }}">
                                     {{ $customer->is_active ? 'Active' : 'Inactive' }}
                                 </span>
                             </td>
