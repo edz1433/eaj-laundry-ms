@@ -166,7 +166,7 @@ class UserController extends Controller
             return Menu::keys();
         }
 
-        return array_values(array_intersect($access, Menu::keys()));
+        return array_values(array_intersect($access, Menu::assignableKeysForRole($role)));
     }
 
     private function authorizeUserAccess(User $user): void

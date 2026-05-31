@@ -72,7 +72,12 @@
                         @checked(in_array($key, old('access', $user->access ?? []), true))
                         class="rounded border-border text-primary"
                     >
-                    {{ $item['label'] }}
+                    <span>
+                        {{ $item['label'] }}
+                        @if(! empty($item['super_admin']))
+                            <span class="text-xs text-muted">(Superadmin only)</span>
+                        @endif
+                    </span>
                 </label>
             @endforeach
         </div>

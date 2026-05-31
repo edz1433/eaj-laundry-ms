@@ -72,6 +72,72 @@ class UserManagementAccessTest extends TestCase
         ]);
     }
 
+    public function test_admin_cannot_see_or_assign_billing_access(): void
+    {
+        $this->completeSystemSettings();
+
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'access' => ['users'],
+        ]);
+
+        $this
+            ->actingAs($admin)
+            ->get(route('admin.users.index'))
+            ->assertOk()
+            ->assertDontSee('Billing')
+            ->assertDontSee('admin.billing.index');
+
+        $response = $this
+            ->actingAs($admin)
+            ->post(route('admin.users.store'), [
+                'name' => 'Billing Admin',
+                'username' => 'billing-admin',
+                'email' => 'billing-admin@example.com',
+                'password' => 'password',
+                'password_confirmation' => 'password',
+                'role' => 'admin',
+                'branch_id' => null,
+                'status' => 'active',
+                'access' => ['dashboard', 'users', 'billing'],
+            ]);
+
+        $response->assertRedirect(route('admin.users.index'));
+
+        $created = User::where('username', 'billing-admin')->firstOrFail();
+
+        $this->assertContains('users', $created->access);
+        $this->assertNotContains('billing', $created->access);
+
+        $this
+            ->actingAs($created)
+            ->get(route('admin.billing.index'))
+            ->assertForbidden();
+    }
+
+    public function test_super_admin_can_see_billing_access_checkbox_and_sidebar_link(): void
+    {
+        $this->completeSystemSettings();
+
+        $superAdmin = User::factory()->create([
+            'role' => 'super_admin',
+        ]);
+
+        $this
+            ->actingAs($superAdmin)
+            ->get(route('admin.users.index'))
+            ->assertOk()
+            ->assertSee('Billing')
+            ->assertSee('Superadmin only');
+
+        $this
+            ->actingAs($superAdmin)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('Billing')
+            ->assertSee(route('admin.billing.index'), false);
+    }
+
     private function completeSystemSettings(): void
     {
         SystemSetting::query()->create([
