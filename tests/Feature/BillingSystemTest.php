@@ -91,7 +91,7 @@ class BillingSystemTest extends TestCase
             ->assertDontSee('Subscription Expired');
     }
 
-    public function test_expired_trial_locks_unpaid_branch_after_grace_only(): void
+    public function test_expired_trial_allows_unpaid_branch_with_warning_but_locks_missing_subscription(): void
     {
         $this->completeSystemSettings();
         $this->expiredTrial(graceDays: 2);
@@ -99,6 +99,7 @@ class BillingSystemTest extends TestCase
 
         $paidBranch = $this->createBranch('Paid Branch', 'PAID');
         $unpaidBranch = $this->createBranch('Unpaid Branch', 'UNPAID');
+        $missingBranch = $this->createBranch('Missing Branch', 'MISS');
         $paidUser = User::factory()->create([
             'role' => 'admin',
             'branch_id' => $paidBranch->id,
@@ -107,6 +108,11 @@ class BillingSystemTest extends TestCase
         $unpaidUser = User::factory()->create([
             'role' => 'admin',
             'branch_id' => $unpaidBranch->id,
+            'access' => ['dashboard'],
+        ]);
+        $missingUser = User::factory()->create([
+            'role' => 'admin',
+            'branch_id' => $missingBranch->id,
             'access' => ['dashboard'],
         ]);
 
@@ -134,11 +140,16 @@ class BillingSystemTest extends TestCase
 
         $this->actingAs($unpaidUser)
             ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('Your branch subscription for May 2026 is overdue');
+
+        $this->actingAs($missingUser)
+            ->get(route('dashboard'))
             ->assertStatus(402)
-            ->assertSee('Branch subscription has expired');
+            ->assertSee('No active branch subscription was found for May 2026');
     }
 
-    public function test_unpaid_branch_can_access_during_grace_period_with_warning(): void
+    public function test_unpaid_branch_can_access_with_dismissible_warning(): void
     {
         $this->completeSystemSettings();
         $this->expiredTrial(graceDays: 5);
@@ -163,7 +174,36 @@ class BillingSystemTest extends TestCase
         $this->actingAs($user)
             ->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('Your branch subscription for May 2026 is unpaid');
+            ->assertSee('Your branch subscription for May 2026 is overdue')
+            ->assertSee('Dismiss billing notice');
+    }
+
+    public function test_suspended_current_subscription_locks_branch_users(): void
+    {
+        $this->completeSystemSettings();
+        $this->expiredTrial(graceDays: 0);
+        $this->travelTo(Carbon::parse('2026-05-07'));
+
+        $branch = $this->createBranch('Suspended Branch', 'SUSP');
+        $user = User::factory()->create([
+            'role' => 'admin',
+            'branch_id' => $branch->id,
+            'access' => ['dashboard'],
+        ]);
+
+        BranchBillingRecord::create([
+            'branch_id' => $branch->id,
+            'billing_month' => 5,
+            'billing_year' => 2026,
+            'amount' => 1000,
+            'due_date' => '2026-05-05',
+            'status' => 'suspended',
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertStatus(402)
+            ->assertSee('Branch subscription has been suspended');
     }
 
     public function test_super_admin_generates_billing_and_updates_only_unpaid_records(): void

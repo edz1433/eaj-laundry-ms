@@ -6,7 +6,6 @@ use App\Models\BranchBillingRecord;
 use App\Models\SystemTrialSetting;
 use Closure;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\View;
 use Symfony\Component\HttpFoundation\Response;
@@ -58,29 +57,34 @@ class EnsureBranchBillingAccess
             ->where('billing_year', (int) $today->year)
             ->first();
 
-        if ($record?->status === 'paid') {
+        if (! $record) {
+            return response()->view('billing.locked', [
+                'message' => 'No active branch subscription was found for '.$today->format('F Y').'. Please contact your administrator to continue using the system.',
+            ], 402);
+        }
+
+        if ($record->status === 'paid') {
             return $next($request);
         }
 
-        $graceDays = max(0, (int) $trial->grace_period_days);
-        $dueDate = $record?->due_date ?: Carbon::create($today->year, $today->month, 1);
-        $graceEndsAt = $dueDate->copy()->addDays($graceDays)->startOfDay();
-
-        if ($today->copy()->startOfDay()->lessThanOrEqualTo($graceEndsAt) && ! in_array($record?->status, ['suspended'], true)) {
-            View::share('billingBanner', [
-                'type' => 'billing',
-                'message' => 'Your branch subscription for '.$today->format('F Y').' is unpaid. Please contact your administrator.',
-            ]);
-
-            return $next($request);
+        if ($record->status === 'suspended') {
+            return response()->view('billing.locked', [
+                'message' => 'Branch subscription has been suspended. Please contact your administrator to continue using the system.',
+            ], 402);
         }
 
-        if ($record && $record->status === 'unpaid') {
+        if ($record->status === 'unpaid' && $record->due_date->toDateString() < $today->toDateString()) {
             $record->update(['status' => 'overdue']);
+            $record->status = 'overdue';
         }
 
-        return response()->view('billing.locked', [
-            'message' => 'Branch subscription has expired. Please contact your administrator to continue using the system.',
-        ], 402);
+        View::share('billingBanner', [
+            'type' => 'billing',
+            'dismissible' => true,
+            'key' => 'billing-'.$record->branch_id.'-'.$record->billing_year.'-'.$record->billing_month.'-'.$record->status,
+            'message' => 'Your branch subscription for '.$record->periodLabel().' is '.str_replace('_', ' ', $record->status).'. Please contact your administrator.',
+        ]);
+
+        return $next($request);
     }
 }
