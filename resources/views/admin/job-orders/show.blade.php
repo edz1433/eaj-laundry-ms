@@ -3,7 +3,23 @@
 @section('page_title', 'Job Order Details')
 
 @section('content')
-<div class="space-y-4">
+<style>
+    @media print {
+        body * { visibility: hidden !important; }
+        .receipt-print-area, .receipt-print-area * { visibility: visible !important; }
+        .receipt-print-area {
+            left: 0 !important;
+            margin: 0 auto !important;
+            max-width: 420px !important;
+            position: absolute !important;
+            right: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+        }
+        .receipt-print-actions { display: none !important; }
+    }
+</style>
+<div x-data="{ receiptOpen: false }" class="space-y-4">
     <div class="flex flex-col gap-3 rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:flex-row sm:items-center sm:justify-between">
         <div>
             <div class="mb-2 inline-flex items-center gap-1.5 rounded-md border border-border bg-smoke px-2.5 py-1 text-xs font-medium text-muted dark:border-gray-800 dark:bg-gray-950">
@@ -16,10 +32,10 @@
 
         <div class="flex gap-2">
             <a href="{{ route('admin.job-orders.index') }}" class="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">Back</a>
-            <a href="{{ route('admin.job-orders.receipt', $order) }}" target="_blank" class="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-white hover:opacity-90">
+            <button type="button" @click="receiptOpen = true" class="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-white hover:opacity-90">
                 <span data-lucide="receipt" class="h-4 w-4"></span>
                 Receipt
-            </a>
+            </button>
         </div>
     </div>
 
@@ -85,6 +101,21 @@
                 <p class="text-sm text-muted">{{ $order->notes ?: 'No notes.' }}</p>
             </div>
         </aside>
+    </div>
+
+    <div x-cloak x-show="receiptOpen" x-transition class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div @click.outside="receiptOpen = false" class="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-lg bg-white p-4 shadow-2xl dark:bg-gray-900">
+            <div class="receipt-print-actions mb-3 flex items-center justify-between gap-2">
+                <h2 class="inline-flex min-w-0 items-center gap-2 text-sm font-semibold"><span data-lucide="receipt" class="h-4 w-4 text-primary"></span><span class="truncate">{{ $order->job_order_number }} Receipt</span></h2>
+                <div class="flex gap-2">
+                    <button type="button" onclick="window.print()" class="inline-flex h-8 items-center gap-2 rounded-md bg-primary px-3 text-xs font-medium text-white hover:opacity-90"><span data-lucide="printer" class="h-3.5 w-3.5"></span>Print</button>
+                    <button type="button" @click="receiptOpen = false" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950"><span data-lucide="x" class="h-4 w-4"></span></button>
+                </div>
+            </div>
+            <div class="receipt-print-area">
+                @include('admin.job-orders.partials.receipt-card', ['order' => $order, 'settings' => $settings, 'branchSetting' => $order->branch?->setting])
+            </div>
+        </div>
     </div>
 </div>
 @endsection

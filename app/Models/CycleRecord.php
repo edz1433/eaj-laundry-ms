@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class CycleRecord extends Model
 {
-    protected $fillable = ['job_order_id', 'user_id', 'cycle_type', 'cycle_number', 'started_at', 'ended_at', 'notes'];
+    protected $fillable = ['job_order_id', 'user_id', 'cycle_type', 'machine_number', 'cycle_number', 'started_at', 'ended_at', 'notes'];
 
     protected $casts = ['started_at' => 'datetime', 'ended_at' => 'datetime'];
 

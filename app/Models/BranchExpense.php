@@ -13,6 +13,7 @@ class BranchExpense extends Model
         'amount',
         'expense_date',
         'payment_method',
+        'paid_from',
         'reference_no',
         'remarks',
         'source',

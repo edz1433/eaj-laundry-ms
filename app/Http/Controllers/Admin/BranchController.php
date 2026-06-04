@@ -100,6 +100,7 @@ class BranchController extends Controller
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'attendance_radius_meters' => ['nullable', 'integer', 'min:25', 'max:5000'],
+            'machine_count' => ['nullable', 'integer', 'min:0', 'max:100'],
             'is_active' => ['nullable', 'boolean'],
         ];
     }

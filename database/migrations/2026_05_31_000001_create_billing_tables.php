@@ -31,6 +31,7 @@ return new class extends Migration
                 $table->decimal('amount', 12, 2);
                 $table->date('expense_date');
                 $table->string('payment_method')->nullable();
+                $table->string('paid_from')->default('store_cash');
                 $table->string('reference_no')->nullable();
                 $table->text('remarks')->nullable();
                 $table->string('source')->nullable();

@@ -80,6 +80,126 @@ class CycleMonitoringTest extends TestCase
         ]);
     }
 
+    public function test_wash_cycle_requires_machine_when_branch_has_machines(): void
+    {
+        $this->completeSystemSettings();
+        $this->activeTrial();
+
+        $branch = $this->createBranch(['machine_count' => 5]);
+        $customer = $this->createCustomer($branch);
+        $user = User::factory()->create([
+            'role' => 'admin',
+            'branch_id' => $branch->id,
+            'access' => ['cycles'],
+        ]);
+        $order = $this->createJobOrder($branch, $customer);
+
+        $this->actingAs($user)
+            ->post(route('admin.cycles.store', $order), [
+                'cycle_type' => 'wash',
+            ])
+            ->assertSessionHasErrors('machine_number');
+    }
+
+    public function test_wash_cycle_tracks_selected_machine(): void
+    {
+        $this->completeSystemSettings();
+        $this->activeTrial();
+
+        $branch = $this->createBranch(['machine_count' => 5]);
+        $customer = $this->createCustomer($branch);
+        $user = User::factory()->create([
+            'role' => 'admin',
+            'branch_id' => $branch->id,
+            'access' => ['cycles'],
+        ]);
+        $order = $this->createJobOrder($branch, $customer);
+
+        $this->actingAs($user)
+            ->post(route('admin.cycles.store', $order), [
+                'cycle_type' => 'wash',
+                'machine_number' => 3,
+            ])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('cycle_records', [
+            'job_order_id' => $order->id,
+            'cycle_type' => 'wash',
+            'machine_number' => 3,
+            'cycle_number' => 1,
+        ]);
+    }
+
+    public function test_active_machine_cannot_be_assigned_twice(): void
+    {
+        $this->completeSystemSettings();
+        $this->activeTrial();
+
+        $branch = $this->createBranch(['machine_count' => 5]);
+        $customer = $this->createCustomer($branch);
+        $user = User::factory()->create([
+            'role' => 'admin',
+            'branch_id' => $branch->id,
+            'access' => ['cycles'],
+        ]);
+        $firstOrder = $this->createJobOrder($branch, $customer, 'JO-TEST-001');
+        $secondOrder = $this->createJobOrder($branch, $customer, 'JO-TEST-002');
+
+        CycleRecord::query()->create([
+            'job_order_id' => $firstOrder->id,
+            'user_id' => $user->id,
+            'cycle_type' => 'wash',
+            'machine_number' => 2,
+            'cycle_number' => 1,
+            'started_at' => now(),
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('admin.cycles.store', $secondOrder), [
+                'cycle_type' => 'wash',
+                'machine_number' => 2,
+            ])
+            ->assertSessionHasErrors('machine_number');
+    }
+
+    public function test_machine_can_be_reused_after_cycle_ends(): void
+    {
+        $this->completeSystemSettings();
+        $this->activeTrial();
+
+        $branch = $this->createBranch(['machine_count' => 5]);
+        $customer = $this->createCustomer($branch);
+        $user = User::factory()->create([
+            'role' => 'admin',
+            'branch_id' => $branch->id,
+            'access' => ['cycles'],
+        ]);
+        $firstOrder = $this->createJobOrder($branch, $customer, 'JO-TEST-001');
+        $secondOrder = $this->createJobOrder($branch, $customer, 'JO-TEST-002');
+
+        CycleRecord::query()->create([
+            'job_order_id' => $firstOrder->id,
+            'user_id' => $user->id,
+            'cycle_type' => 'wash',
+            'machine_number' => 2,
+            'cycle_number' => 1,
+            'started_at' => now()->subHour(),
+            'ended_at' => now()->subMinute(),
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('admin.cycles.store', $secondOrder), [
+                'cycle_type' => 'wash',
+                'machine_number' => 2,
+            ])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('cycle_records', [
+            'job_order_id' => $secondOrder->id,
+            'machine_number' => 2,
+        ]);
+    }
+
     public function test_user_can_remove_spammed_cycle_and_remaining_cycles_are_renumbered(): void
     {
         $this->completeSystemSettings();
@@ -185,15 +305,15 @@ class CycleMonitoringTest extends TestCase
         ]);
     }
 
-    private function createBranch(): Branch
+    private function createBranch(array $overrides = []): Branch
     {
-        return Branch::query()->create([
+        return Branch::query()->create(array_merge([
             'name' => 'Main Branch',
             'code' => 'MAIN',
             'address' => 'Manila',
             'contact_number' => '09171234567',
             'is_active' => true,
-        ]);
+        ], $overrides));
     }
 
     private function createCustomer(Branch $branch): Customer
@@ -207,12 +327,12 @@ class CycleMonitoringTest extends TestCase
         ]);
     }
 
-    private function createJobOrder(Branch $branch, Customer $customer): JobOrder
+    private function createJobOrder(Branch $branch, Customer $customer, string $jobOrderNumber = 'JO-TEST-001'): JobOrder
     {
         return JobOrder::query()->create([
             'branch_id' => $branch->id,
             'customer_id' => $customer->id,
-            'job_order_number' => 'JO-TEST-001',
+            'job_order_number' => $jobOrderNumber,
             'status' => 'pending',
             'subtotal' => 0,
             'discount' => 0,

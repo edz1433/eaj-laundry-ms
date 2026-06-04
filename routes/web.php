@@ -93,6 +93,9 @@ Route::middleware(['auth', 'settings.completed', 'billing.access'])->group(funct
         Route::get('/reports/pdf', [ReportController::class, 'pdf'])
             ->middleware('menu.access:reports')
             ->name('reports.pdf');
+        Route::post('/reports/expenses', [ReportController::class, 'storeExpense'])
+            ->middleware('menu.access:reports')
+            ->name('reports.expenses.store');
 
         Route::get('/sms-logs', [SmsLogController::class, 'index'])
             ->middleware('menu.access:sms_logs')

@@ -79,17 +79,19 @@
     <h2>Sales by Date</h2>
     <table class="report">
         <thead>
-            <tr><th>Date</th><th class="right">Payments</th><th class="right">Sales</th></tr>
+            <tr><th>Date</th><th class="right">Payments</th><th class="right">Cash</th><th class="right">GCash</th><th class="right">Sales</th></tr>
         </thead>
         <tbody>
             @forelse($salesByDate as $row)
                 <tr>
                     <td>{{ \Illuminate\Support\Carbon::parse($row->report_date)->format('M d, Y') }}</td>
                     <td class="right">{{ $row->payments_count }}</td>
+                    <td class="right">{{ $currency }} {{ number_format((float) $row->cash_amount, 2) }}</td>
+                    <td class="right">{{ $currency }} {{ number_format((float) $row->gcash_amount, 2) }}</td>
                     <td class="right">{{ $currency }} {{ number_format((float) $row->total_amount, 2) }}</td>
                 </tr>
             @empty
-                <tr><td colspan="3" class="empty">No sales found.</td></tr>
+                <tr><td colspan="5" class="empty">No sales found.</td></tr>
             @endforelse
         </tbody>
     </table>
@@ -97,17 +99,19 @@
     <h2>Sales by Branch</h2>
     <table class="report">
         <thead>
-            <tr><th>Branch</th><th class="right">Payments</th><th class="right">Sales</th></tr>
+            <tr><th>Branch</th><th class="right">Payments</th><th class="right">Cash</th><th class="right">GCash</th><th class="right">Sales</th></tr>
         </thead>
         <tbody>
             @forelse($salesByBranch as $row)
                 <tr>
                     <td>{{ $row->branch_name }}</td>
                     <td class="right">{{ $row->payments_count }}</td>
+                    <td class="right">{{ $currency }} {{ number_format((float) $row->cash_amount, 2) }}</td>
+                    <td class="right">{{ $currency }} {{ number_format((float) $row->gcash_amount, 2) }}</td>
                     <td class="right">{{ $currency }} {{ number_format((float) $row->total_amount, 2) }}</td>
                 </tr>
             @empty
-                <tr><td colspan="3" class="empty">No branch sales found.</td></tr>
+                <tr><td colspan="5" class="empty">No branch sales found.</td></tr>
             @endforelse
         </tbody>
     </table>
@@ -166,6 +170,27 @@
                 </tr>
             @empty
                 <tr><td colspan="3" class="empty">No payments found.</td></tr>
+            @endforelse
+        </tbody>
+    </table>
+
+    <h2>Expenses</h2>
+    <p class="muted">Store cash: {{ $currency }} {{ number_format((float) ($expenseSummary->store_cash_expenses ?? 0), 2) }} | Owner paid / record only: {{ $currency }} {{ number_format((float) ($expenseSummary->owner_expenses ?? 0), 2) }}</p>
+    <table class="report">
+        <thead>
+            <tr><th>Date</th><th>Branch</th><th>Expense</th><th>Paid From</th><th class="right">Amount</th></tr>
+        </thead>
+        <tbody>
+            @forelse($expenses as $expense)
+                <tr>
+                    <td>{{ $expense->expense_date?->format('M d, Y') }}</td>
+                    <td>{{ $expense->branch?->name }}</td>
+                    <td>{{ $expense->title }}<br><span class="muted">{{ $expense->category }}</span></td>
+                    <td>{{ $expense->paid_from === 'owner' ? 'Owner Paid / Record Only' : 'Store Cash' }}</td>
+                    <td class="right">{{ $currency }} {{ number_format((float) $expense->amount, 2) }}</td>
+                </tr>
+            @empty
+                <tr><td colspan="5" class="empty">No expenses found.</td></tr>
             @endforelse
         </tbody>
     </table>

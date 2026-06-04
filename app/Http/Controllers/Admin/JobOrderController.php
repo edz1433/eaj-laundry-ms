@@ -27,7 +27,7 @@ class JobOrderController extends Controller
     {
         $user = $request->user();
 
-        $orders = JobOrder::with(['branch', 'customer'])
+        $orders = JobOrder::with(['branch.setting', 'customer', 'items', 'payments.receiver'])
             ->when($user->role !== 'super_admin' && $user->role !== 'admin', fn ($q) => $q->where('branch_id', $user->branch_id))
             ->when(in_array($request->status, self::STATUSES, true), fn ($q) => $q->where('status', $request->status))
             ->when($request->filled('search'), function ($q) use ($request) {
@@ -49,7 +49,7 @@ class JobOrderController extends Controller
     {
         $this->authorizeJobOrder($request, $jobOrder);
 
-        $jobOrder->load(['branch', 'customer', 'creator', 'items.service', 'payments.receiver', 'cycles.user']);
+        $jobOrder->load(['branch.setting', 'customer', 'creator', 'items.service', 'payments.receiver', 'cycles.user']);
 
         return view('admin.job-orders.show', [
             'order' => $jobOrder,
@@ -115,7 +115,7 @@ class JobOrderController extends Controller
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
             'discount' => ['nullable', 'numeric', 'min:0'],
             'paid_amount' => ['nullable', 'numeric', 'min:0'],
-            'payment_type' => ['nullable', Rule::in(['cash', 'credit', 'po', 'monthly_billing'])],
+            'payment_type' => ['nullable', Rule::in(['cash', 'gcash', 'credit', 'po', 'monthly_billing'])],
             'notes' => ['nullable', 'string'],
         ]);
 

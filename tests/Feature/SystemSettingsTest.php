@@ -33,6 +33,7 @@ class SystemSettingsTest extends TestCase
                 'branch_address' => '123 Clean Water Avenue',
                 'branch_contact' => '09170000000',
                 'attendance_radius_meters' => 150,
+                'machine_count' => 6,
                 'receipt_header' => 'Fresh Wash',
                 'receipt_footer' => 'Thank you',
                 'default_price_per_kilo' => 75,
@@ -51,6 +52,7 @@ class SystemSettingsTest extends TestCase
             'name' => 'Fresh Wash Branch',
             'code' => 'FWB',
             'address' => '123 Clean Water Avenue',
+            'machine_count' => 6,
         ]);
 
         $this->assertDatabaseHas('branch_settings', [

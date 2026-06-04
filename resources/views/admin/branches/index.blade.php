@@ -29,6 +29,7 @@
                     <tr>
                         <th class="px-4 py-3">Branch</th>
                         <th class="px-4 py-3">Contact</th>
+                        <th class="px-4 py-3">Machines</th>
                         <th class="px-4 py-3">Users</th>
                         <th class="px-4 py-3">Status</th>
                         <th class="px-4 py-3 text-right">Actions</th>
@@ -43,6 +44,12 @@
                                 <p class="text-xs text-muted">{{ $branch->latitude !== null && $branch->longitude !== null ? 'Geofence: '.($branch->attendance_radius_meters ?: 150).'m' : 'Geofence not set' }}</p>
                             </td>
                             <td class="px-4 py-3">{{ $branch->contact_number ?: 'N/A' }}</td>
+                            <td class="px-4 py-3">
+                                <span class="inline-flex items-center gap-1.5 rounded-md bg-smoke px-2 py-1 text-xs font-medium text-muted dark:bg-gray-950">
+                                    <span data-lucide="laundry" class="h-3.5 w-3.5"></span>
+                                    {{ number_format((int) ($branch->machine_count ?? 0)) }}
+                                </span>
+                            </td>
                             <td class="px-4 py-3">{{ $branch->users_count }}</td>
                             <td class="px-4 py-3">
                                 <span class="{{ \App\Support\StatusBadge::classes($branch->is_active ? 'active' : 'inactive') }}">
@@ -73,7 +80,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="5" class="px-4 py-10 text-center text-muted">No branches found.</td>
+                            <td colspan="6" class="px-4 py-10 text-center text-muted">No branches found.</td>
                         </tr>
                     @endforelse
                 </tbody>

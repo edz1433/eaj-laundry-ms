@@ -82,6 +82,7 @@ return new class extends Migration
                 $table->foreignId('job_order_id')->constrained('job_orders')->cascadeOnDelete();
                 $table->foreignId('user_id')->nullable()->constrained('users')->nullOnDelete();
                 $table->enum('cycle_type', ['wash', 'dry', 'fold', 'iron']);
+                $table->unsignedInteger('machine_number')->nullable();
                 $table->unsignedInteger('cycle_number')->default(1);
                 $table->timestamp('started_at')->nullable();
                 $table->timestamp('ended_at')->nullable();
@@ -98,7 +99,7 @@ return new class extends Migration
                 $table->foreignId('customer_id')->nullable()->constrained('customers')->nullOnDelete();
                 $table->foreignId('received_by')->nullable()->constrained('users')->nullOnDelete();
                 $table->string('payment_number')->unique();
-                $table->enum('payment_type', ['cash', 'credit', 'po', 'monthly_billing']);
+                $table->enum('payment_type', ['cash', 'gcash', 'credit', 'po', 'monthly_billing']);
                 $table->decimal('amount', 12, 2);
                 $table->text('remarks')->nullable();
                 $table->timestamp('paid_at')->nullable();

@@ -42,13 +42,25 @@
 
                 <div class="mb-3 flex flex-wrap gap-2">
                     @foreach($cycleTypes as $type => $label)
+                        @php($activeMachines = $activeMachinesByBranch[$order->branch_id] ?? [])
                         <form method="POST" action="{{ route('admin.cycles.store', $order) }}">
                             @csrf
                             <input type="hidden" name="cycle_type" value="{{ $type }}">
-                            <button title="Start {{ $label }}" class="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2 text-xs font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
-                                <span data-lucide="plus" class="h-3.5 w-3.5"></span>
-                                {{ $label }}
-                            </button>
+                            <div class="flex overflow-hidden rounded-md border border-border dark:border-gray-800">
+                                @if($type === 'wash' && (int) ($order->branch?->machine_count ?? 0) > 0)
+                                    <select name="machine_number" aria-label="Machine" class="h-8 w-20 border-r border-border bg-white px-2 text-xs dark:border-gray-800 dark:bg-gray-950">
+                                        <option value="">Machine</option>
+                                        @for($machine = 1; $machine <= (int) $order->branch->machine_count; $machine++)
+                                            @php($usingOrder = $activeMachines[$machine] ?? null)
+                                            <option value="{{ $machine }}" @disabled($usingOrder)>#{{ $machine }}{{ $usingOrder ? ' - In use' : '' }}</option>
+                                        @endfor
+                                    </select>
+                                @endif
+                                <button title="Start {{ $label }}" class="inline-flex h-8 items-center gap-1.5 px-2 text-xs font-medium hover:bg-smoke dark:hover:bg-gray-950">
+                                    <span data-lucide="plus" class="h-3.5 w-3.5"></span>
+                                    {{ $label }}
+                                </button>
+                            </div>
                         </form>
                     @endforeach
                 </div>
@@ -68,10 +80,26 @@
                 </div>
 
                 <div class="space-y-2 border-t border-border pt-3 dark:border-gray-800">
+                    @if((int) ($order->branch?->machine_count ?? 0) > 0)
+                        <div class="flex flex-wrap gap-1.5">
+                            @for($machine = 1; $machine <= (int) $order->branch->machine_count; $machine++)
+                                @php($usingOrder = ($activeMachinesByBranch[$order->branch_id] ?? [])[$machine] ?? null)
+                                <span class="{{ \App\Support\StatusBadge::classes($usingOrder ? 'washing' : 'ok') }}" title="{{ $usingOrder ? 'Used by '.$usingOrder : 'Available' }}">
+                                    Machine #{{ $machine }} {{ $usingOrder ? 'Busy' : 'Open' }}
+                                </span>
+                            @endfor
+                        </div>
+                    @endif
+
                     @forelse($order->cycles->sortByDesc('created_at') as $cycle)
                         <div class="flex items-center justify-between gap-2 rounded-md bg-smoke px-3 py-2 text-sm dark:bg-gray-950">
                             <div>
-                                <p class="font-medium">{{ $cycleTypes[$cycle->cycle_type] ?? ucfirst($cycle->cycle_type) }} #{{ $cycle->cycle_number }}</p>
+                                <p class="font-medium">
+                                    {{ $cycleTypes[$cycle->cycle_type] ?? ucfirst($cycle->cycle_type) }} #{{ $cycle->cycle_number }}
+                                    @if($cycle->machine_number)
+                                        <span class="text-xs font-normal text-muted">Machine #{{ $cycle->machine_number }}</span>
+                                    @endif
+                                </p>
                                 <p class="text-xs text-muted">
                                     {{ $cycle->started_at?->format('M d, h:i A') ?? 'Not started' }}
                                     @if($cycle->ended_at) - {{ $cycle->ended_at->format('h:i A') }} @endif

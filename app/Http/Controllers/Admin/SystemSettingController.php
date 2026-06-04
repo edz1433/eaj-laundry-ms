@@ -82,6 +82,7 @@ class SystemSettingController extends Controller
             'branch_latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'branch_longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'attendance_radius_meters' => ['nullable', 'integer', 'min:25', 'max:5000'],
+            'machine_count' => ['nullable', 'integer', 'min:0', 'max:100'],
             'receipt_header' => ['nullable', 'string'],
             'receipt_footer' => ['nullable', 'string'],
             'operating_hours' => ['nullable', 'array'],
@@ -112,6 +113,9 @@ class SystemSettingController extends Controller
                 $rules = array_merge($rules, [
                     'sms_provider' => ['nullable', 'string', 'max:100'],
                     'sms_api_key' => ['nullable', 'string'],
+                    'twilio_account_sid' => ['nullable', 'string', 'max:255'],
+                    'twilio_auth_token' => ['nullable', 'string'],
+                    'twilio_from_number' => ['nullable', 'string', 'max:50'],
                     'sms_enabled' => ['nullable', 'boolean'],
                 ]);
             }
@@ -136,6 +140,7 @@ class SystemSettingController extends Controller
             'latitude' => $validated['branch_latitude'] ?? null,
             'longitude' => $validated['branch_longitude'] ?? null,
             'attendance_radius_meters' => $validated['attendance_radius_meters'] ?? null,
+            'machine_count' => $validated['machine_count'] ?? 0,
         ]);
 
         BranchSetting::updateOrCreate(
@@ -161,6 +166,7 @@ class SystemSettingController extends Controller
             $validated['branch_latitude'],
             $validated['branch_longitude'],
             $validated['attendance_radius_meters'],
+            $validated['machine_count'],
             $validated['receipt_header'],
             $validated['receipt_footer'],
             $validated['operating_hours'],

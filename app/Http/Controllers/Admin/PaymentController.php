@@ -10,7 +10,7 @@ use Illuminate\Support\Carbon;
 
 class PaymentController extends Controller
 {
-    private const PAYMENT_TYPES = ['cash', 'credit', 'po', 'monthly_billing'];
+    private const PAYMENT_TYPES = ['cash', 'gcash', 'credit', 'po', 'monthly_billing'];
 
     public function index(Request $request)
     {

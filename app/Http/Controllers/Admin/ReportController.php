@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\Branch;
+use App\Models\BranchExpense;
 use App\Models\CustomerLedger;
 use App\Models\InventoryMovement;
 use App\Models\JobOrder;
@@ -13,6 +14,7 @@ use App\Models\SystemSetting;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\Rule;
 
 class ReportController extends Controller
 {
@@ -37,6 +39,31 @@ class ReportController extends Controller
         return $pdf->stream('reports-'.$data['dateFrom'].'-to-'.$data['dateTo'].'.pdf');
     }
 
+    public function storeExpense(Request $request)
+    {
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'branch_id' => ['required', 'exists:branches,id'],
+            'category' => ['required', 'string', 'max:255'],
+            'title' => ['required', 'string', 'max:255'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'expense_date' => ['required', 'date'],
+            'payment_method' => ['nullable', 'string', 'max:100'],
+            'paid_from' => ['required', Rule::in(['store_cash', 'owner'])],
+            'reference_no' => ['nullable', 'string', 'max:255'],
+            'remarks' => ['nullable', 'string'],
+        ]);
+
+        if (! $user->isAdmin()) {
+            $validated['branch_id'] = $user->branch_id;
+        }
+
+        BranchExpense::create($validated + ['created_by' => $user->id]);
+
+        return back()->with('success', 'Expense recorded successfully.');
+    }
+
     private function reportData(Request $request): array
     {
         $user = $request->user();
@@ -57,14 +84,14 @@ class ReportController extends Controller
             ->whereDate('paid_at', '<=', $dateTo);
 
         $salesByDate = (clone $payments)
-            ->selectRaw('DATE(paid_at) as report_date, COALESCE(SUM(amount), 0) as total_amount, COUNT(*) as payments_count')
+            ->selectRaw("DATE(paid_at) as report_date, COALESCE(SUM(amount), 0) as total_amount, COALESCE(SUM(CASE WHEN payment_type = 'cash' THEN amount ELSE 0 END), 0) as cash_amount, COALESCE(SUM(CASE WHEN payment_type = 'gcash' THEN amount ELSE 0 END), 0) as gcash_amount, COUNT(*) as payments_count")
             ->groupBy('report_date')
             ->orderBy('report_date')
             ->get();
 
         $salesByBranch = (clone $payments)
             ->join('branches', 'payments.branch_id', '=', 'branches.id')
-            ->selectRaw('branches.name as branch_name, COALESCE(SUM(payments.amount), 0) as total_amount, COUNT(*) as payments_count')
+            ->selectRaw("branches.name as branch_name, COALESCE(SUM(payments.amount), 0) as total_amount, COALESCE(SUM(CASE WHEN payments.payment_type = 'cash' THEN payments.amount ELSE 0 END), 0) as cash_amount, COALESCE(SUM(CASE WHEN payments.payment_type = 'gcash' THEN payments.amount ELSE 0 END), 0) as gcash_amount, COUNT(*) as payments_count")
             ->groupBy('branches.name')
             ->orderByDesc('total_amount')
             ->get();
@@ -111,6 +138,23 @@ class ReportController extends Controller
             ->limit(40)
             ->get();
 
+        $expenses = BranchExpense::query()
+            ->with(['branch', 'creator'])
+            ->whereDate('expense_date', '>=', $dateFrom)
+            ->whereDate('expense_date', '<=', $dateTo)
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->latest('expense_date')
+            ->latest()
+            ->limit(60)
+            ->get();
+
+        $expenseSummary = BranchExpense::query()
+            ->whereDate('expense_date', '>=', $dateFrom)
+            ->whereDate('expense_date', '<=', $dateTo)
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->selectRaw("COALESCE(SUM(amount), 0) as total_expenses, COALESCE(SUM(CASE WHEN paid_from = 'store_cash' THEN amount ELSE 0 END), 0) as store_cash_expenses, COALESCE(SUM(CASE WHEN paid_from = 'owner' THEN amount ELSE 0 END), 0) as owner_expenses")
+            ->first();
+
         return [
             'activityLogs' => $activityLogs,
             'branches' => $branches,
@@ -119,6 +163,8 @@ class ReportController extends Controller
             'dateFrom' => $dateFrom,
             'dateRangeValue' => $dateFrom.' to '.$dateTo,
             'dateTo' => $dateTo,
+            'expenses' => $expenses,
+            'expenseSummary' => $expenseSummary,
             'inventoryUsage' => $inventoryUsage,
             'paymentTypes' => $paymentTypes,
             'receivables' => $receivables,

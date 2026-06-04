@@ -235,6 +235,7 @@
                     <div class="grid grid-cols-[1fr_auto] gap-2 pt-2">
                         <select name="payment_type" class="h-9 min-w-0 rounded-md border border-border bg-white px-2 text-sm dark:border-gray-800 dark:bg-gray-950">
                             <option value="cash">Cash</option>
+                            <option value="gcash">GCash</option>
                             <option value="credit">Credit</option>
                             <option value="po">PO</option>
                             <option value="monthly_billing">Monthly Billing</option>

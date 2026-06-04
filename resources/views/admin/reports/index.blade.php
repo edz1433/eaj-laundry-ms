@@ -4,7 +4,7 @@
 
 @section('content')
 <div
-    x-data="{ tab: 'sales', dateRange: @js($dateRangeValue), init() { this.$nextTick(() => window.flatpickr && window.flatpickr(this.$refs.dateRange, { mode: 'range', dateFormat: 'Y-m-d', defaultDate: this.dateRange.split(' to '), onClose: (dates, value) => this.dateRange = value })) } }"
+    x-data="{ tab: 'sales', expenseOpen: false, dateRange: @js($dateRangeValue), init() { this.$nextTick(() => window.flatpickr && window.flatpickr(this.$refs.dateRange, { mode: 'range', dateFormat: 'Y-m-d', defaultDate: this.dateRange.split(' to '), onClose: (dates, value) => this.dateRange = value })) } }"
     class="space-y-4"
 >
     <div class="flex flex-col gap-3 rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900 lg:flex-row lg:items-center lg:justify-between">
@@ -45,6 +45,10 @@
                 <span data-lucide="file-text" class="h-4 w-4"></span>
                 View PDF
             </a>
+            <button type="button" @click="expenseOpen = true" class="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium hover:bg-smoke dark:border-gray-800 dark:bg-gray-950 dark:hover:bg-gray-900">
+                <span data-lucide="plus" class="h-4 w-4"></span>
+                Expense
+            </button>
         </div>
     </div>
 
@@ -54,6 +58,7 @@
             'receivables' => 'Receivables',
             'inventory' => 'Inventory Usage',
             'payments' => 'Payment Type',
+            'expenses' => 'Expenses',
             'ledger' => 'Customer Ledger',
             'activity' => 'Activity Logs',
         ] as $key => $label)
@@ -63,20 +68,20 @@
 
     <div x-show="tab === 'sales'" class="grid gap-4 xl:grid-cols-2">
         <x-report-table title="Sales by Date">
-            <x-slot:head><th class="px-4 py-3">Date</th><th class="px-4 py-3 text-right">Payments</th><th class="px-4 py-3 text-right">Sales</th></x-slot:head>
+            <x-slot:head><th class="px-4 py-3">Date</th><th class="px-4 py-3 text-right">Payments</th><th class="px-4 py-3 text-right">Cash</th><th class="px-4 py-3 text-right">GCash</th><th class="px-4 py-3 text-right">Sales</th></x-slot:head>
             @forelse($salesByDate as $row)
-                <tr><td class="px-4 py-3">{{ \Illuminate\Support\Carbon::parse($row->report_date)->format('M d, Y') }}</td><td class="px-4 py-3 text-right">{{ $row->payments_count }}</td><td class="px-4 py-3 text-right font-medium">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->total_amount, 2) }}</td></tr>
+                <tr><td class="px-4 py-3">{{ \Illuminate\Support\Carbon::parse($row->report_date)->format('M d, Y') }}</td><td class="px-4 py-3 text-right">{{ $row->payments_count }}</td><td class="px-4 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->cash_amount, 2) }}</td><td class="px-4 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->gcash_amount, 2) }}</td><td class="px-4 py-3 text-right font-medium">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->total_amount, 2) }}</td></tr>
             @empty
-                <tr><td colspan="3" class="px-4 py-10 text-center text-muted">No sales found.</td></tr>
+                <tr><td colspan="5" class="px-4 py-10 text-center text-muted">No sales found.</td></tr>
             @endforelse
         </x-report-table>
 
         <x-report-table title="Sales by Branch">
-            <x-slot:head><th class="px-4 py-3">Branch</th><th class="px-4 py-3 text-right">Payments</th><th class="px-4 py-3 text-right">Sales</th></x-slot:head>
+            <x-slot:head><th class="px-4 py-3">Branch</th><th class="px-4 py-3 text-right">Payments</th><th class="px-4 py-3 text-right">Cash</th><th class="px-4 py-3 text-right">GCash</th><th class="px-4 py-3 text-right">Sales</th></x-slot:head>
             @forelse($salesByBranch as $row)
-                <tr><td class="px-4 py-3">{{ $row->branch_name }}</td><td class="px-4 py-3 text-right">{{ $row->payments_count }}</td><td class="px-4 py-3 text-right font-medium">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->total_amount, 2) }}</td></tr>
+                <tr><td class="px-4 py-3">{{ $row->branch_name }}</td><td class="px-4 py-3 text-right">{{ $row->payments_count }}</td><td class="px-4 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->cash_amount, 2) }}</td><td class="px-4 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->gcash_amount, 2) }}</td><td class="px-4 py-3 text-right font-medium">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->total_amount, 2) }}</td></tr>
             @empty
-                <tr><td colspan="3" class="px-4 py-10 text-center text-muted">No branch sales found.</td></tr>
+                <tr><td colspan="5" class="px-4 py-10 text-center text-muted">No branch sales found.</td></tr>
             @endforelse
         </x-report-table>
     </div>
@@ -108,6 +113,32 @@
         @endforelse
     </x-report-table>
 
+    <div x-show="tab === 'expenses'" class="space-y-4">
+        <div class="grid gap-3 md:grid-cols-3">
+            <div class="rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <p class="text-xs text-muted">All Recorded Expenses</p>
+                <p class="mt-1 text-lg font-semibold">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) ($expenseSummary->total_expenses ?? 0), 2) }}</p>
+            </div>
+            <div class="rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <p class="text-xs text-muted">Taken From Store Today</p>
+                <p class="mt-1 text-lg font-semibold">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) ($expenseSummary->store_cash_expenses ?? 0), 2) }}</p>
+            </div>
+            <div class="rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <p class="text-xs text-muted">Owner Paid / Record Only</p>
+                <p class="mt-1 text-lg font-semibold">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) ($expenseSummary->owner_expenses ?? 0), 2) }}</p>
+            </div>
+        </div>
+
+        <x-report-table title="Expenses">
+            <x-slot:head><th class="px-4 py-3">Date</th><th class="px-4 py-3">Branch</th><th class="px-4 py-3">Expense</th><th class="px-4 py-3">Paid From</th><th class="px-4 py-3 text-right">Amount</th></x-slot:head>
+            @forelse($expenses as $expense)
+                <tr><td class="px-4 py-3">{{ $expense->expense_date?->format('M d, Y') }}</td><td class="px-4 py-3">{{ $expense->branch?->name }}</td><td class="px-4 py-3"><p class="font-medium">{{ $expense->title }}</p><p class="text-xs text-muted">{{ $expense->category }}{{ $expense->payment_method ? ' - '.$expense->payment_method : '' }}</p></td><td class="px-4 py-3">{{ $expense->paid_from === 'owner' ? 'Owner Paid / Record Only' : 'Store Cash' }}</td><td class="px-4 py-3 text-right font-medium">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $expense->amount, 2) }}</td></tr>
+            @empty
+                <tr><td colspan="5" class="px-4 py-10 text-center text-muted">No expenses found.</td></tr>
+            @endforelse
+        </x-report-table>
+    </div>
+
     <x-report-table title="Customer Ledger" x-show="tab === 'ledger'">
         <x-slot:head><th class="px-4 py-3">Customer</th><th class="px-4 py-3">Type</th><th class="px-4 py-3 text-right">Amount</th><th class="px-4 py-3 text-right">Running</th><th class="px-4 py-3">Description</th></x-slot:head>
         @forelse($customerLedger as $entry)
@@ -125,5 +156,41 @@
             <tr><td colspan="5" class="px-4 py-10 text-center text-muted">No activity logs found.</td></tr>
         @endforelse
     </x-report-table>
+
+    <div x-cloak x-show="expenseOpen" x-transition class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div @click.outside="expenseOpen = false" class="w-full max-w-2xl rounded-lg bg-white p-5 shadow-2xl dark:bg-gray-900">
+            <div class="mb-4 flex items-center justify-between">
+                <h2 class="inline-flex items-center gap-2 text-lg font-semibold"><span data-lucide="plus" class="h-4 w-4 text-primary"></span>Record Expense</h2>
+                <button type="button" @click="expenseOpen = false" class="rounded-md p-2 hover:bg-smoke dark:hover:bg-gray-800"><span data-lucide="x" class="h-4 w-4"></span></button>
+            </div>
+            <form method="POST" action="{{ route('admin.reports.expenses.store') }}" class="space-y-4">
+                @csrf
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <label class="text-sm font-medium">Branch
+                        <select name="branch_id" class="mt-1.5 h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
+                            @foreach($branches as $branch)
+                                <option value="{{ $branch->id }}" @selected((int) $selectedBranchId === (int) $branch->id)>{{ $branch->name }}</option>
+                            @endforeach
+                        </select>
+                    </label>
+                    <label class="text-sm font-medium">Expense Date<input type="date" name="expense_date" value="{{ today()->toDateString() }}" required class="mt-1.5 h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950"></label>
+                    <label class="text-sm font-medium">Category<input name="category" required placeholder="Stocks, utilities, supplies..." class="mt-1.5 h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950"></label>
+                    <label class="text-sm font-medium">Amount<input type="number" min="0.01" step="0.01" name="amount" required class="mt-1.5 h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950"></label>
+                    <label class="text-sm font-medium md:col-span-2">Title<input name="title" required placeholder="Detergent stock, fabric conditioner..." class="mt-1.5 h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950"></label>
+                    <label class="text-sm font-medium">Payment Method<input name="payment_method" placeholder="Cash, GCash, bank..." class="mt-1.5 h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950"></label>
+                    <label class="text-sm font-medium">Paid From
+                        <select name="paid_from" class="mt-1.5 h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
+                            <option value="store_cash">Store cash</option>
+                            <option value="owner">Owner paid / record only</option>
+                        </select>
+                    </label>
+                    <label class="text-sm font-medium md:col-span-2">Remarks<textarea name="remarks" rows="3" class="mt-1.5 w-full rounded-md border border-border bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950"></textarea></label>
+                </div>
+                <div class="flex justify-end">
+                    <button class="h-9 rounded-md bg-primary px-4 text-sm font-medium text-white hover:opacity-90">Save Expense</button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>
 @endsection

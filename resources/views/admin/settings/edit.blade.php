@@ -223,6 +223,12 @@
                     </div>
 
                     <div class="lg:col-span-2">
+                        <label class="block text-sm font-medium mb-2">Washing Machines</label>
+                        <input type="number" min="0" max="100" name="machine_count" value="{{ old('machine_count', $branch->machine_count ?? 0) }}" placeholder="5" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
+                        <p class="mt-1 text-xs text-muted">Cycle Monitoring will show this many machine choices and prevent assigning an active machine twice.</p>
+                    </div>
+
+                    <div class="lg:col-span-2">
                         <p class="mb-3 text-sm font-medium">Operating Hours</p>
                         <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
                             @foreach(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as $day)
@@ -273,11 +279,29 @@
 
                     <div>
                         <label class="block text-sm font-medium mb-2">SMS Provider</label>
-                        <input name="sms_provider" value="{{ old('sms_provider', $settings->sms_provider) }}" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
+                        <select name="sms_provider" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
+                            <option value="">None</option>
+                            <option value="twilio" @selected(old('sms_provider', $settings->sms_provider) === 'twilio')>Twilio</option>
+                        </select>
                     </div>
 
                     <div>
-                        <label class="block text-sm font-medium mb-2">SMS API Key</label>
+                        <label class="block text-sm font-medium mb-2">Twilio Account SID</label>
+                        <input name="twilio_account_sid" value="{{ old('twilio_account_sid', $settings->twilio_account_sid) }}" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Twilio Auth Token</label>
+                        <input type="password" name="twilio_auth_token" value="{{ old('twilio_auth_token', $settings->twilio_auth_token) }}" autocomplete="new-password" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Twilio From Number</label>
+                        <input name="twilio_from_number" value="{{ old('twilio_from_number', $settings->twilio_from_number) }}" placeholder="+15551234567" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
+                    </div>
+
+                    <div class="lg:col-span-2">
+                        <label class="block text-sm font-medium mb-2">Legacy SMS API Key</label>
                         <input name="sms_api_key" value="{{ old('sms_api_key', $settings->sms_api_key) }}" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
                     </div>
                 </div>

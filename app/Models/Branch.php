@@ -17,6 +17,7 @@ class Branch extends Model
         'latitude',
         'longitude',
         'attendance_radius_meters',
+        'machine_count',
         'is_active',
     ];
 
@@ -24,6 +25,7 @@ class Branch extends Model
         'latitude' => 'decimal:7',
         'longitude' => 'decimal:7',
         'attendance_radius_meters' => 'integer',
+        'machine_count' => 'integer',
         'is_active' => 'boolean',
     ];
 

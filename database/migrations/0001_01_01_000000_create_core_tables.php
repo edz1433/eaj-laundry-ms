@@ -99,6 +99,9 @@ return new class extends Migration
                 $table->string('invoice_prefix')->default('INV');
                 $table->string('sms_provider')->nullable();
                 $table->text('sms_api_key')->nullable();
+                $table->string('twilio_account_sid')->nullable();
+                $table->text('twilio_auth_token')->nullable();
+                $table->string('twilio_from_number')->nullable();
                 $table->boolean('sms_enabled')->default(false);
                 $table->string('primary_color')->default('#2E7D32');
                 $table->boolean('dark_mode_default')->default(false);
