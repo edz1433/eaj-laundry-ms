@@ -146,6 +146,7 @@
                         <select name="payment_type" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
                             <option value="cash">Cash</option>
                             <option value="gcash">GCash</option>
+                            <option value="bank">Bank</option>
                             <option value="credit">Credit</option>
                             <option value="po">PO</option>
                             <option value="monthly_billing">Monthly Billing</option>
@@ -155,6 +156,11 @@
                     <div>
                         <label class="mb-1.5 block text-sm font-medium">Amount</label>
                         <input type="number" step="0.01" min="0.01" max="{{ $order->balance }}" name="amount" value="{{ $order->balance }}" required class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
+                    </div>
+
+                    <div>
+                        <label class="mb-1.5 block text-sm font-medium">Reference No.</label>
+                        <input name="reference_no" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950" placeholder="GCash/card reference">
                     </div>
 
                     <div>

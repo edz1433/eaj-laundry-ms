@@ -152,6 +152,7 @@
                         <th class="px-4 py-3">Customer</th>
                         <th class="px-4 py-3">Branch</th>
                         <th class="px-4 py-3">Type</th>
+                        <th class="px-4 py-3">Reference</th>
                         <th class="px-4 py-3 text-right">Amount</th>
                         <th class="px-4 py-3">Received By</th>
                         <th class="px-4 py-3">Remarks</th>
@@ -177,6 +178,7 @@
                                     {{ \App\Support\StatusBadge::label($payment->payment_type) }}
                                 </span>
                             </td>
+                            <td class="px-4 py-3">{{ $payment->reference_no ?: 'N/A' }}</td>
                             <td class="px-4 py-3 text-right font-semibold">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $payment->amount, 2) }}</td>
                             <td class="px-4 py-3">{{ $payment->receiver?->name ?? 'System' }}</td>
                             <td class="max-w-56 px-4 py-3">
@@ -185,7 +187,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="8" class="px-4 py-10 text-center text-muted">No payments found.</td>
+                            <td colspan="9" class="px-4 py-10 text-center text-muted">No payments found.</td>
                         </tr>
                     @endforelse
                 </tbody>

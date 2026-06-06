@@ -25,10 +25,35 @@
 
     <div class="overflow-hidden rounded-lg border border-border bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <div class="flex flex-col gap-3 border-b border-border p-3 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-between">
-            <div class="flex h-9 w-full max-w-sm items-center gap-2 rounded-md border border-border bg-white px-3 dark:border-gray-800 dark:bg-gray-950">
-                <span data-lucide="search" class="h-4 w-4 text-muted"></span>
-                <input type="search" placeholder="Search users..." class="w-full bg-transparent text-sm outline-none">
-            </div>
+            <form method="GET" class="grid w-full grid-cols-1 gap-2 sm:grid-cols-[minmax(12rem,1fr)_12rem_10rem_10rem_auto]">
+                <div class="flex h-9 items-center gap-2 rounded-md border border-border bg-white px-3 dark:border-gray-800 dark:bg-gray-950">
+                    <span data-lucide="search" class="h-4 w-4 text-muted"></span>
+                    <input name="search" value="{{ request('search') }}" type="search" placeholder="Search users..." class="w-full bg-transparent text-sm outline-none">
+                </div>
+                @if($canChooseBranch)
+                    <select name="branch_id" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
+                        <option value="">All branches</option>
+                        @foreach($branches as $branch)
+                            <option value="{{ $branch->id }}" @selected(request('branch_id') == $branch->id)>{{ $branch->name }}</option>
+                        @endforeach
+                    </select>
+                @endif
+                <select name="role" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
+                    <option value="">All roles</option>
+                    @foreach($roles as $role)
+                        <option value="{{ $role }}" @selected(request('role') === $role)>{{ \App\Support\StatusBadge::label($role) }}</option>
+                    @endforeach
+                </select>
+                <select name="status" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
+                    <option value="">All status</option>
+                    @foreach(['active', 'inactive', 'suspended'] as $status)
+                        <option value="{{ $status }}" @selected(request('status') === $status)>{{ \App\Support\StatusBadge::label($status) }}</option>
+                    @endforeach
+                </select>
+                <button type="submit" title="Filter" aria-label="Filter users" class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
+                    <span data-lucide="search" class="h-4 w-4"></span>
+                </button>
+            </form>
             <p class="text-sm text-muted">{{ $users->total() }} account{{ $users->total() === 1 ? '' : 's' }}</p>
         </div>
         <div class="overflow-x-auto">

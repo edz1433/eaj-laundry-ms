@@ -28,7 +28,7 @@ return new class extends Migration
         });
 
         if (DB::getDriverName() === 'mysql') {
-            DB::statement("ALTER TABLE payments MODIFY payment_type ENUM('cash', 'gcash', 'credit', 'po', 'monthly_billing') NOT NULL");
+            DB::statement("ALTER TABLE payments MODIFY payment_type ENUM('cash', 'gcash', 'bank', 'credit', 'po', 'monthly_billing') NOT NULL");
         }
     }
 

@@ -1,0 +1,28 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class AttendanceEmployee extends Model
+{
+    use SoftDeletes;
+
+    protected $fillable = ['branch_id', 'first_name', 'last_name', 'phone', 'username', 'password', 'daily_rate', 'status', 'last_login_at'];
+
+    protected $hidden = ['password'];
+
+    protected $casts = [
+        'daily_rate' => 'decimal:2',
+        'last_login_at' => 'datetime',
+    ];
+
+    public function branch() { return $this->belongsTo(Branch::class); }
+    public function attendanceRecords() { return $this->hasMany(EmployeeAttendanceRecord::class); }
+
+    public function getNameAttribute(): string
+    {
+        return trim($this->first_name.' '.$this->last_name);
+    }
+}

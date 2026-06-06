@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\BranchSetting;
+use App\Models\DailyTask;
 use App\Support\DefaultInventoryItems;
 use App\Support\DefaultLaundryServices;
 use App\Support\DefaultServiceInventoryUsages;
@@ -14,15 +15,28 @@ use Illuminate\Validation\Rule;
 
 class BranchController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $user = auth()->user();
+        $user = $request->user();
 
         $branches = Branch::query()
             ->when($user->role === 'branch_manager', fn ($query) => $query->whereKey($user->branch_id))
+            ->when(in_array($request->status, ['active', 'inactive'], true), fn ($query) => $query->where('is_active', $request->status === 'active'))
+            ->when($request->filled('search'), function ($query) use ($request) {
+                $search = $request->search;
+
+                $query->where(function ($query) use ($search) {
+                    $query->where('name', 'like', "%{$search}%")
+                        ->orWhere('code', 'like', "%{$search}%")
+                        ->orWhere('contact_number', 'like', "%{$search}%")
+                        ->orWhere('address', 'like', "%{$search}%");
+                });
+            })
+            ->with(['dailyTasks' => fn ($query) => $query->where('is_active', true)->orderBy('name')])
             ->withCount('users')
             ->latest()
-            ->paginate(10);
+            ->paginate(10)
+            ->withQueryString();
 
         return view('admin.branches.index', [
             'branches' => $branches,
@@ -85,6 +99,41 @@ class BranchController extends Controller
             ->with('success', 'Branch deleted successfully.');
     }
 
+    public function storeTask(Request $request, Branch $branch)
+    {
+        $this->authorizeBranch($branch);
+
+        $validated = $request->validate($this->taskRules($branch));
+        $validated['branch_id'] = $branch->id;
+        $validated['requires_photo'] = $request->boolean('requires_photo', true);
+        $validated['is_active'] = $request->boolean('is_active', true);
+
+        DailyTask::create($validated);
+
+        return back()->with('success', 'Branch end-of-day task added successfully.');
+    }
+
+    public function updateTask(Request $request, Branch $branch, DailyTask $task)
+    {
+        $this->authorizeBranchTask($branch, $task);
+
+        $validated = $request->validate($this->taskRules($branch, $task));
+        $validated['requires_photo'] = $request->boolean('requires_photo');
+        $validated['is_active'] = $request->boolean('is_active');
+
+        $task->update($validated);
+
+        return back()->with('success', 'Branch end-of-day task updated successfully.');
+    }
+
+    public function destroyTask(Branch $branch, DailyTask $task)
+    {
+        $this->authorizeBranchTask($branch, $task);
+        $task->update(['is_active' => false]);
+
+        return back()->with('success', 'Branch end-of-day task removed.');
+    }
+
     private function rules(?Branch $branch = null): array
     {
         return [
@@ -114,5 +163,29 @@ class BranchController extends Controller
         }
 
         abort_unless($user->role === 'branch_manager' && (int) $user->branch_id === (int) $branch->id, 403);
+    }
+
+    private function authorizeBranchTask(Branch $branch, DailyTask $task): void
+    {
+        $this->authorizeBranch($branch);
+        abort_unless((int) $task->branch_id === (int) $branch->id, 403);
+    }
+
+    private function taskRules(Branch $branch, ?DailyTask $task = null): array
+    {
+        $nameRule = Rule::unique('daily_tasks', 'name')
+            ->where(fn ($query) => $query
+                ->where('branch_id', $branch->id)
+                ->where('is_active', true));
+
+        if ($task) {
+            $nameRule->ignore($task->id);
+        }
+
+        return [
+            'name' => ['required', 'string', 'max:255', $nameRule],
+            'requires_photo' => ['nullable', 'boolean'],
+            'is_active' => ['nullable', 'boolean'],
+        ];
     }
 }

@@ -7,6 +7,7 @@ import Swal from 'sweetalert2';
 import {
     Activity,
     Bell,
+    Bot,
     Building2,
     CalendarCheck,
     Check,
@@ -41,9 +42,11 @@ import {
     Store,
     Sun,
     Tags,
+    TriangleAlert,
     Trash2,
     UserRound,
     Users,
+    Wallet,
     WashingMachine,
     X,
 } from 'lucide-static';
@@ -52,13 +55,6 @@ window.Alpine = Alpine;
 window.Swal = Swal;
 window.flatpickr = flatpickr;
 window.Chart = Chart;
-window.loadFaceApi = async () => {
-    if (!window.faceapi) {
-        window.faceapi = await import('@vladmandic/face-api');
-    }
-
-    return window.faceapi;
-};
 window.toast = Swal.mixin({
     toast: true,
     position: 'bottom-end',
@@ -78,6 +74,7 @@ window.toast = Swal.mixin({
 const icons = {
     activity: Activity,
     bell: Bell,
+    bot: Bot,
     building: Building2,
     calendar: CalendarCheck,
     check: Check,
@@ -85,6 +82,7 @@ const icons = {
     cycles: Activity,
     dashboard: LayoutDashboard,
     dollar: CircleDollarSign,
+    expense: CircleDollarSign,
     eye: Eye,
     eyeOff: EyeOff,
     inventory: Package,
@@ -114,9 +112,11 @@ const icons = {
     scale: Scale,
     store: Store,
     sun: Sun,
+    alertTriangle: TriangleAlert,
     trash: Trash2,
     user: UserRound,
     users: Users,
+    wallet: Wallet,
     x: X,
     branches: Building2,
     customers: Users,

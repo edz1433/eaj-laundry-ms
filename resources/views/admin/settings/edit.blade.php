@@ -140,13 +140,11 @@
                                 class="h-16 w-16 object-contain rounded-md border border-border"
                             >
 
-                            @if($settings->business_logo)
-                                <img 
-                                    x-show="!logoPreview"
-                                    src="{{ asset('storage/' . $settings->business_logo) }}"
-                                    class="h-16 w-16 object-contain rounded-md border border-border"
-                                >
-                            @endif
+                            <img
+                                x-show="!logoPreview"
+                                src="{{ $appBusinessLogo }}"
+                                class="h-16 w-16 object-contain rounded-md border border-border"
+                            >
                         </div>
                     </div>
                 </div>

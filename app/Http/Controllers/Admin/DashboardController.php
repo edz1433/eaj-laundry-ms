@@ -4,10 +4,16 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
+use App\Models\BranchExpense;
+use App\Models\DailyTask;
+use App\Models\DailyTaskCompletion;
+use App\Models\EmployeeAttendanceRecord;
 use App\Models\Inventory;
 use App\Models\JobOrder;
+use App\Models\MoneyMovement;
 use App\Models\Payment;
 use App\Models\SystemSetting;
+use App\Models\ZReading;
 use App\Support\StatusBadge;
 use Carbon\CarbonPeriod;
 use Illuminate\Http\Request;
@@ -40,6 +46,41 @@ class DashboardController extends Controller
     public function data(Request $request)
     {
         return response()->json($this->payload($request));
+    }
+
+    public function assistant(Request $request)
+    {
+        abort_unless(in_array($request->user()->role, ['super_admin', 'admin', 'branch_manager'], true), 403);
+
+        $validated = $request->validate([
+            'preset' => ['nullable', 'string'],
+            'question' => ['nullable', 'string', 'max:255'],
+            'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
+            'date_range' => ['nullable', 'string', 'max:50'],
+        ]);
+
+        $preset = $validated['preset'] ?? $this->inferAssistantPreset($validated['question'] ?? '');
+        abort_unless(array_key_exists($preset, $this->assistantPresets()), 422);
+
+        return response()->json($this->assistantAnswer($request, $preset, $validated['question'] ?? null));
+    }
+
+    public function assistantOptions(Request $request)
+    {
+        abort_unless(in_array($request->user()->role, ['super_admin', 'admin', 'branch_manager'], true), 403);
+
+        $canChooseBranch = $request->user()->canManageAllBranches();
+
+        return response()->json([
+            'can_choose_branch' => $canChooseBranch,
+            'branches' => Branch::query()
+                ->where('is_active', true)
+                ->when(! $canChooseBranch, fn ($query) => $query->whereKey($request->user()->branch_id))
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn (Branch $branch) => ['id' => $branch->id, 'name' => $branch->name])
+                ->values(),
+        ]);
     }
 
     private function payload(Request $request): array
@@ -132,6 +173,398 @@ class DashboardController extends Controller
             ],
             'recent_orders' => $recentOrders,
         ];
+    }
+
+    private function assistantPresets(): array
+    {
+        return [
+            'daily_sales' => 'Daily sales summary',
+            'payment_mix' => 'Payment method mix',
+            'expenses' => 'Expenses summary',
+            'cash_drawer' => 'Expected cash drawer',
+            'petty_cash' => 'Petty cash movement',
+            'receivables' => 'Receivables risk',
+            'unpaid_orders' => 'Unpaid job orders',
+            'active_cycles' => 'Active laundry cycles',
+            'ready_pickup' => 'Ready for pickup',
+            'low_stock' => 'Low stock items',
+            'top_customers' => 'Top customers',
+            'branch_compare' => 'Branch comparison',
+            'attendance_today' => 'Attendance today',
+            'eod_tasks' => 'End-of-day tasks',
+            'z_reading' => 'Latest Z Reading variance',
+        ];
+    }
+
+    private function assistantAnswer(Request $request, string $preset, ?string $question = null): array
+    {
+        [$dateFrom, $dateTo] = $this->dateRange($request);
+        $branchId = $this->assistantBranchId($request);
+        $currency = SystemSetting::current()->currency ?: 'PHP';
+        $scope = $this->assistantScopeLabel($branchId);
+        $period = Carbon::parse($dateFrom)->format('M d, Y').' to '.Carbon::parse($dateTo)->format('M d, Y');
+
+        $orders = JobOrder::query()
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->whereDate('created_at', '>=', $dateFrom)
+            ->whereDate('created_at', '<=', $dateTo);
+
+        $payments = Payment::query()
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->whereDate('paid_at', '>=', $dateFrom)
+            ->whereDate('paid_at', '<=', $dateTo);
+
+        $expenses = BranchExpense::query()
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->whereDate('expense_date', '>=', $dateFrom)
+            ->whereDate('expense_date', '<=', $dateTo);
+
+        $movements = MoneyMovement::query()
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->whereDate('movement_date', '>=', $dateFrom)
+            ->whereDate('movement_date', '<=', $dateTo);
+
+        $answer = match ($preset) {
+            'daily_sales' => $this->salesAssistant($payments, $orders, $currency),
+            'payment_mix' => $this->paymentMixAssistant($payments, $currency),
+            'expenses' => $this->expenseAssistant($expenses, $currency),
+            'cash_drawer' => $this->cashDrawerAssistant($payments, $expenses, $movements, $currency),
+            'petty_cash' => $this->pettyCashAssistant($movements, $currency),
+            'receivables' => $this->receivablesAssistant($branchId, $currency),
+            'unpaid_orders' => $this->unpaidOrdersAssistant($branchId, $currency),
+            'active_cycles' => $this->activeCyclesAssistant($branchId),
+            'ready_pickup' => $this->readyPickupAssistant($branchId),
+            'low_stock' => $this->lowStockAssistant($branchId),
+            'top_customers' => $this->topCustomersAssistant($branchId, $dateFrom, $dateTo, $currency),
+            'branch_compare' => $this->branchCompareAssistant($request, $dateFrom, $dateTo, $currency),
+            'attendance_today' => $this->attendanceAssistant($branchId),
+            'eod_tasks' => $this->dailyTaskAssistant($branchId),
+            'z_reading' => $this->zReadingAssistant($branchId, $currency),
+        };
+
+        return $answer + [
+            'scope' => $scope,
+            'period' => $period,
+            'preset' => $preset,
+            'question' => $question,
+            'generated_at' => now()->format('M d, Y h:i A'),
+        ];
+    }
+
+    private function inferAssistantPreset(string $question): string
+    {
+        $question = str($question)->lower()->toString();
+
+        return match (true) {
+            str_contains($question, 'payment') || str_contains($question, 'gcash') || str_contains($question, 'bank') => 'payment_mix',
+            str_contains($question, 'expense') || str_contains($question, 'cash advance') => 'expenses',
+            str_contains($question, 'drawer') || str_contains($question, 'cash count') || str_contains($question, 'cash drawer') => 'cash_drawer',
+            str_contains($question, 'petty') || str_contains($question, 'deposit') || str_contains($question, 'withdraw') => 'petty_cash',
+            str_contains($question, 'receivable') || str_contains($question, 'balance') || str_contains($question, 'utang') => 'receivables',
+            str_contains($question, 'unpaid') || str_contains($question, 'credit') => 'unpaid_orders',
+            str_contains($question, 'cycle') || str_contains($question, 'washing') || str_contains($question, 'drying') => 'active_cycles',
+            str_contains($question, 'pickup') || str_contains($question, 'ready') => 'ready_pickup',
+            str_contains($question, 'stock') || str_contains($question, 'inventory') => 'low_stock',
+            str_contains($question, 'customer') || str_contains($question, 'top') => 'top_customers',
+            str_contains($question, 'branch') || str_contains($question, 'compare') => 'branch_compare',
+            str_contains($question, 'attendance') || str_contains($question, 'clock') => 'attendance_today',
+            str_contains($question, 'task') || str_contains($question, 'cleaning') || str_contains($question, 'end of day') => 'eod_tasks',
+            str_contains($question, 'z reading') || str_contains($question, 'over') || str_contains($question, 'short') => 'z_reading',
+            default => 'daily_sales',
+        };
+    }
+
+    private function salesAssistant($payments, $orders, string $currency): array
+    {
+        $sales = (float) (clone $payments)->sum('amount');
+        $count = (clone $payments)->count();
+        $ordersCount = (clone $orders)->count();
+
+        return [
+            'title' => 'Daily Sales Summary',
+            'summary' => "Collected {$this->money($currency, $sales)} from {$count} payment(s), with {$ordersCount} job order(s) created in the selected period.",
+            'metrics' => [
+                ['label' => 'Sales', 'value' => $this->money($currency, $sales)],
+                ['label' => 'Payments', 'value' => number_format($count)],
+                ['label' => 'Job Orders', 'value' => number_format($ordersCount)],
+            ],
+        ];
+    }
+
+    private function paymentMixAssistant($payments, string $currency): array
+    {
+        $rows = (clone $payments)
+            ->selectRaw('payment_type, COALESCE(SUM(amount), 0) as total_amount, COUNT(*) as payments_count')
+            ->groupBy('payment_type')
+            ->orderByDesc('total_amount')
+            ->get();
+        $top = $rows->first();
+
+        return [
+            'title' => 'Payment Method Mix',
+            'summary' => $top ? StatusBadge::label($top->payment_type).' is the leading payment method at '.$this->money($currency, (float) $top->total_amount).'.' : 'No payments found for the selected period.',
+            'metrics' => $rows->map(fn ($row) => [
+                'label' => StatusBadge::label($row->payment_type).' ('.$row->payments_count.')',
+                'value' => $this->money($currency, (float) $row->total_amount),
+            ])->values()->all(),
+        ];
+    }
+
+    private function expenseAssistant($expenses, string $currency): array
+    {
+        $total = (float) (clone $expenses)->sum('amount');
+        $storeCash = (float) (clone $expenses)->where('paid_from', 'store_cash')->sum('amount');
+        $owner = (float) (clone $expenses)->where('paid_from', 'owner')->sum('amount');
+        $cashAdvance = (float) (clone $expenses)->where('expense_type', 'cash_advance')->sum('amount');
+
+        return [
+            'title' => 'Expenses Summary',
+            'summary' => "Recorded {$this->money($currency, $total)} in expenses. Store-cash expenses affect the drawer; owner-paid expenses are record-only for drawer cash.",
+            'metrics' => [
+                ['label' => 'Total Expenses', 'value' => $this->money($currency, $total)],
+                ['label' => 'Store Cash', 'value' => $this->money($currency, $storeCash)],
+                ['label' => 'Owner Paid', 'value' => $this->money($currency, $owner)],
+                ['label' => 'Cash Advance', 'value' => $this->money($currency, $cashAdvance)],
+            ],
+        ];
+    }
+
+    private function cashDrawerAssistant($payments, $expenses, $movements, string $currency): array
+    {
+        $cash = (float) (clone $payments)->where('payment_type', 'cash')->sum('amount');
+        $storeCashExpenses = (float) (clone $expenses)->where('paid_from', 'store_cash')->sum('amount');
+        $cashIn = (float) (clone $movements)->where('direction', 'in')->sum('amount');
+        $cashOut = (float) (clone $movements)->where('direction', 'out')->sum('amount');
+        $drawer = $cash - $storeCashExpenses + $cashIn - $cashOut;
+
+        return [
+            'title' => 'Expected Cash Drawer',
+            'summary' => 'Expected drawer is cash payments minus store-cash expenses plus deposits minus withdrawals/remittances.',
+            'metrics' => [
+                ['label' => 'Cash Payments', 'value' => '+ '.$this->money($currency, $cash)],
+                ['label' => 'Store Expenses', 'value' => '- '.$this->money($currency, $storeCashExpenses)],
+                ['label' => 'Petty Cash In', 'value' => '+ '.$this->money($currency, $cashIn)],
+                ['label' => 'Petty Cash Out', 'value' => '- '.$this->money($currency, $cashOut)],
+                ['label' => 'Expected Drawer', 'value' => $this->money($currency, $drawer)],
+            ],
+        ];
+    }
+
+    private function pettyCashAssistant($movements, string $currency): array
+    {
+        $cashIn = (float) (clone $movements)->where('direction', 'in')->sum('amount');
+        $cashOut = (float) (clone $movements)->where('direction', 'out')->sum('amount');
+
+        return [
+            'title' => 'Petty Cash Movement',
+            'summary' => 'Deposits increase branch cash; withdrawals reduce branch cash.',
+            'metrics' => [
+                ['label' => 'Deposits', 'value' => '+ '.$this->money($currency, $cashIn)],
+                ['label' => 'Withdrawals', 'value' => '- '.$this->money($currency, $cashOut)],
+                ['label' => 'Net Movement', 'value' => $this->money($currency, $cashIn - $cashOut)],
+            ],
+        ];
+    }
+
+    private function receivablesAssistant(?int $branchId, string $currency): array
+    {
+        $query = JobOrder::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->where('balance', '>', 0);
+        $balance = (float) (clone $query)->sum('balance');
+        $count = (clone $query)->count();
+
+        return [
+            'title' => 'Receivables Risk',
+            'summary' => "There are {$count} job order(s) with remaining balance.",
+            'metrics' => [
+                ['label' => 'Open Receivables', 'value' => number_format($count)],
+                ['label' => 'Total Balance', 'value' => $this->money($currency, $balance)],
+            ],
+        ];
+    }
+
+    private function unpaidOrdersAssistant(?int $branchId, string $currency): array
+    {
+        $query = JobOrder::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->where('balance', '>', 0)->latest();
+
+        return [
+            'title' => 'Unpaid Job Orders',
+            'summary' => 'Newest unpaid job orders are listed below for collection follow-up.',
+            'metrics' => $query->limit(5)->get()->map(fn (JobOrder $order) => [
+                'label' => $order->job_order_number,
+                'value' => $this->money($currency, (float) $order->balance),
+            ])->values()->all(),
+        ];
+    }
+
+    private function activeCyclesAssistant(?int $branchId): array
+    {
+        $rows = JobOrder::query()
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->whereIn('status', ['washing', 'drying', 'folding'])
+            ->selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        return [
+            'title' => 'Active Laundry Cycles',
+            'summary' => 'Active cycle counts show current work in progress.',
+            'metrics' => collect(['washing', 'drying', 'folding'])->map(fn ($status) => [
+                'label' => StatusBadge::label($status),
+                'value' => number_format((int) ($rows[$status] ?? 0)),
+            ])->all(),
+        ];
+    }
+
+    private function readyPickupAssistant(?int $branchId): array
+    {
+        $count = JobOrder::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->where('status', 'ready_for_pickup')->count();
+
+        return [
+            'title' => 'Ready for Pickup',
+            'summary' => "{$count} job order(s) are ready and should be released or followed up.",
+            'metrics' => [['label' => 'Ready Orders', 'value' => number_format($count)]],
+        ];
+    }
+
+    private function lowStockAssistant(?int $branchId): array
+    {
+        $items = Inventory::query()
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->whereColumn('quantity', '<=', 'reorder_level')
+            ->orderBy('quantity')
+            ->limit(6)
+            ->get();
+
+        return [
+            'title' => 'Low Stock Items',
+            'summary' => $items->count().' item(s) are at or below reorder level.',
+            'metrics' => $items->map(fn (Inventory $item) => [
+                'label' => $item->name,
+                'value' => number_format((float) $item->quantity, 2).' '.$item->unit,
+            ])->values()->all(),
+        ];
+    }
+
+    private function topCustomersAssistant(?int $branchId, string $dateFrom, string $dateTo, string $currency): array
+    {
+        $rows = JobOrder::query()
+            ->join('customers', 'job_orders.customer_id', '=', 'customers.id')
+            ->when($branchId, fn ($query) => $query->where('job_orders.branch_id', $branchId))
+            ->whereDate('job_orders.created_at', '>=', $dateFrom)
+            ->whereDate('job_orders.created_at', '<=', $dateTo)
+            ->selectRaw('customers.name, COALESCE(SUM(job_orders.total), 0) as total_amount')
+            ->groupBy('customers.id', 'customers.name')
+            ->orderByDesc('total_amount')
+            ->limit(5)
+            ->get();
+
+        return [
+            'title' => 'Top Customers',
+            'summary' => 'Top customers are ranked by job order total in the selected period.',
+            'metrics' => $rows->map(fn ($row) => [
+                'label' => $row->name,
+                'value' => $this->money($currency, (float) $row->total_amount),
+            ])->values()->all(),
+        ];
+    }
+
+    private function branchCompareAssistant(Request $request, string $dateFrom, string $dateTo, string $currency): array
+    {
+        if (! $request->user()->canManageAllBranches()) {
+            return $this->salesAssistant(
+                Payment::query()->where('branch_id', $request->user()->branch_id)->whereDate('paid_at', '>=', $dateFrom)->whereDate('paid_at', '<=', $dateTo),
+                JobOrder::query()->where('branch_id', $request->user()->branch_id)->whereDate('created_at', '>=', $dateFrom)->whereDate('created_at', '<=', $dateTo),
+                $currency
+            );
+        }
+
+        $rows = Payment::query()
+            ->join('branches', 'payments.branch_id', '=', 'branches.id')
+            ->whereDate('paid_at', '>=', $dateFrom)
+            ->whereDate('paid_at', '<=', $dateTo)
+            ->selectRaw('branches.name, COALESCE(SUM(payments.amount), 0) as total_amount')
+            ->groupBy('branches.name')
+            ->orderByDesc('total_amount')
+            ->limit(6)
+            ->get();
+
+        return [
+            'title' => 'Branch Comparison',
+            'summary' => 'Branches are ranked by collected payments in the selected period.',
+            'metrics' => $rows->map(fn ($row) => [
+                'label' => $row->name,
+                'value' => $this->money($currency, (float) $row->total_amount),
+            ])->values()->all(),
+        ];
+    }
+
+    private function attendanceAssistant(?int $branchId): array
+    {
+        $records = EmployeeAttendanceRecord::query()
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->whereDate('work_date', today())
+            ->get();
+        $clockIns = $records->sum(fn (EmployeeAttendanceRecord $record) => count($record->clock_in ?? []));
+        $clockOuts = $records->sum(fn (EmployeeAttendanceRecord $record) => count($record->clock_out ?? []));
+
+        return [
+            'title' => 'Attendance Today',
+            'summary' => 'Attendance is based on employee kiosk clock-in and clock-out records for today.',
+            'metrics' => [
+                ['label' => 'Employees With Logs', 'value' => number_format($records->count())],
+                ['label' => 'Clock Ins', 'value' => number_format($clockIns)],
+                ['label' => 'Clock Outs', 'value' => number_format($clockOuts)],
+            ],
+        ];
+    }
+
+    private function dailyTaskAssistant(?int $branchId): array
+    {
+        $tasks = DailyTask::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->where('is_active', true)->count();
+        $completed = DailyTaskCompletion::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->whereDate('work_date', today())->count();
+
+        return [
+            'title' => 'End-of-Day Tasks',
+            'summary' => 'Completions are counted for today only.',
+            'metrics' => [
+                ['label' => 'Required Active Tasks', 'value' => number_format($tasks)],
+                ['label' => 'Completed Today', 'value' => number_format($completed)],
+                ['label' => 'Remaining', 'value' => number_format(max(0, $tasks - $completed))],
+            ],
+        ];
+    }
+
+    private function zReadingAssistant(?int $branchId, string $currency): array
+    {
+        $reading = ZReading::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->latest('business_date')->latest()->first();
+
+        return [
+            'title' => 'Latest Z Reading Variance',
+            'summary' => $reading ? 'Latest cash count variance from '.$reading->business_date?->format('M d, Y').'.' : 'No Z Reading has been submitted yet.',
+            'metrics' => $reading ? [
+                ['label' => 'Expected Total', 'value' => $this->money($currency, (float) $reading->expected_total_amount)],
+                ['label' => 'Actual Total', 'value' => $this->money($currency, (float) $reading->actual_total_amount)],
+                ['label' => 'Over / Short', 'value' => $this->money($currency, (float) $reading->over_short_amount)],
+            ] : [],
+        ];
+    }
+
+    private function assistantBranchId(Request $request): ?int
+    {
+        if (! $request->user()->canManageAllBranches()) {
+            return $request->user()->branch_id;
+        }
+
+        return $request->filled('branch_id') ? (int) $request->branch_id : null;
+    }
+
+    private function assistantScopeLabel(?int $branchId): string
+    {
+        if (! $branchId) {
+            return 'All branches';
+        }
+
+        return Branch::query()->whereKey($branchId)->value('name') ?: 'Selected branch';
     }
 
     private function branchId(Request $request): ?int

@@ -48,6 +48,112 @@ class CycleMonitoringTest extends TestCase
         ]);
     }
 
+    public function test_cycle_monitoring_filters_by_branch_customer_and_date_for_admin(): void
+    {
+        $this->completeSystemSettings();
+        $this->activeTrial();
+
+        $branchA = $this->createBranch(['name' => 'Branch A', 'code' => 'A']);
+        $branchB = $this->createBranch(['name' => 'Branch B', 'code' => 'B']);
+        $customerA = $this->createCustomer($branchA);
+        $customerB = $this->createCustomer($branchB);
+        $customerA->update(['name' => 'Cycle Customer A']);
+        $customerB->update(['name' => 'Cycle Customer B']);
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'access' => ['cycles'],
+        ]);
+        $matchingOrder = $this->createJobOrder($branchA, $customerA, 'JO-CYCLE-MATCH');
+        $otherCustomerOrder = $this->createJobOrder($branchB, $customerB, 'JO-CYCLE-HIDDEN');
+        $oldOrder = $this->createJobOrder($branchA, $customerA, 'JO-CYCLE-OLD');
+
+        $matchingOrder->forceFill(['created_at' => now()->setDate(2026, 6, 6)])->save();
+        $otherCustomerOrder->forceFill(['created_at' => now()->setDate(2026, 6, 6)])->save();
+        $oldOrder->forceFill(['created_at' => now()->setDate(2026, 6, 5)])->save();
+
+        $this->actingAs($admin)
+            ->get(route('admin.cycles.index', [
+                'branch_id' => $branchA->id,
+                'customer_id' => $customerA->id,
+                'date_range' => '2026-06-06 to 2026-06-06',
+            ]))
+            ->assertOk()
+            ->assertSee('name="branch_id"', false)
+            ->assertSee('name="customer_id"', false)
+            ->assertSee('name="date_range"', false)
+            ->assertSee('JO-CYCLE-MATCH')
+            ->assertDontSee('JO-CYCLE-HIDDEN')
+            ->assertDontSee('JO-CYCLE-OLD');
+    }
+
+    public function test_cycle_monitoring_admin_customer_dropdown_depends_on_selected_branch(): void
+    {
+        $this->completeSystemSettings();
+        $this->activeTrial();
+
+        $branchA = $this->createBranch(['name' => 'Branch A', 'code' => 'A']);
+        $branchB = $this->createBranch(['name' => 'Branch B', 'code' => 'B']);
+        $customerA = $this->createCustomer($branchA);
+        $customerB = $this->createCustomer($branchB);
+        $customerA->update(['name' => 'Branch A Customer']);
+        $customerB->update(['name' => 'Branch B Customer']);
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'access' => ['cycles'],
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.cycles.index'))
+            ->assertOk()
+            ->assertSee('All customers')
+            ->assertSee('Select a branch to list customers')
+            ->assertDontSee('Branch A Customer')
+            ->assertDontSee('Branch B Customer');
+
+        $this->actingAs($admin)
+            ->get(route('admin.cycles.index', ['branch_id' => $branchA->id]))
+            ->assertOk()
+            ->assertSee('All customers')
+            ->assertSee('Branch A Customer')
+            ->assertDontSee('Branch B Customer');
+    }
+
+    public function test_cycle_monitoring_branch_user_gets_customer_filter_without_branch_selector(): void
+    {
+        $this->completeSystemSettings();
+        $this->activeTrial();
+
+        $branchA = $this->createBranch(['name' => 'Branch A', 'code' => 'A']);
+        $branchB = $this->createBranch(['name' => 'Branch B', 'code' => 'B']);
+        $customerA = $this->createCustomer($branchA);
+        $customerB = $this->createCustomer($branchB);
+        $customerA->update(['name' => 'Branch Customer A']);
+        $customerB->update(['name' => 'Branch Customer B']);
+        $user = User::factory()->create([
+            'role' => 'branch_manager',
+            'branch_id' => $branchA->id,
+            'access' => ['cycles'],
+        ]);
+        $visibleOrder = $this->createJobOrder($branchA, $customerA, 'JO-BRANCH-CUSTOMER');
+        $hiddenOrder = $this->createJobOrder($branchB, $customerB, 'JO-OTHER-CUSTOMER');
+
+        $visibleOrder->forceFill(['created_at' => now()->setDate(2026, 6, 6)])->save();
+        $hiddenOrder->forceFill(['created_at' => now()->setDate(2026, 6, 6)])->save();
+
+        $this->actingAs($user)
+            ->get(route('admin.cycles.index', [
+                'customer_id' => $customerA->id,
+                'date_range' => '2026-06-06 to 2026-06-06',
+            ]))
+            ->assertOk()
+            ->assertDontSee('name="branch_id"', false)
+            ->assertSee('name="customer_id"', false)
+            ->assertSee($customerA->name)
+            ->assertDontSee($customerB->name)
+            ->assertSee('JO-BRANCH-CUSTOMER')
+            ->assertDontSee('JO-OTHER-CUSTOMER');
+    }
+
     public function test_starting_iron_cycle_tracks_cycle_and_sets_reliable_work_status(): void
     {
         $this->completeSystemSettings();

@@ -153,6 +153,10 @@
                 </button>
             </form>
 
+            <div class="mt-5 text-center">
+                <a href="{{ route('attendance.login') }}" class="text-sm font-medium text-primary">Employee attendance login</a>
+            </div>
+
         </div>
     </main>
 

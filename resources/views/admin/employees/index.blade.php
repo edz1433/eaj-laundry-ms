@@ -3,169 +3,116 @@
 @section('page_title', 'Employees')
 
 @section('content')
-<div class="space-y-4">
+<div x-data="{ createOpen: false, editOpen: null }" class="space-y-4">
     <div class="flex flex-col gap-3 rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900 lg:flex-row lg:items-center lg:justify-between">
         <div>
             <div class="mb-2 inline-flex items-center gap-1.5 rounded-md border border-border bg-smoke px-2.5 py-1 text-xs font-medium text-muted dark:border-gray-800 dark:bg-gray-950">
                 <span data-lucide="employees" class="h-3.5 w-3.5"></span>
-                Employee module
+                Kiosk employee accounts
             </div>
             <h1 class="text-xl font-semibold tracking-normal">Employees</h1>
-            <p class="text-sm text-muted">Maintain monthly salary and face enrollment for attendance.</p>
+            <p class="text-sm text-muted">Add employees who can login at /attendance-login for attendance and task proof uploads.</p>
         </div>
 
-        <form method="GET" class="grid grid-cols-1 gap-2 sm:grid-cols-[12rem_16rem_auto]">
-            @if(auth()->user()->isAdmin())
-                <select name="branch_id" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
-                    <option value="">All branches</option>
-                    @foreach($branches as $branch)
-                        <option value="{{ $branch->id }}" @selected(request('branch_id') == $branch->id)>{{ $branch->name }}</option>
-                    @endforeach
-                </select>
-            @endif
-            <input name="search" value="{{ request('search') }}" placeholder="Search employee..." class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
-            <button class="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-white">
-                <span data-lucide="search" class="h-4 w-4"></span>
-                Search
-            </button>
+        <button type="button" @click="createOpen = true" class="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-white">
+            <span data-lucide="plus" class="h-4 w-4"></span>
+            Add Employee
+        </button>
+    </div>
+
+    <div class="rounded-lg border border-border bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <form method="GET" x-data="{ timer: null }" class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+                @if(auth()->user()->isAdmin())
+                    <select name="branch_id" @change="$el.form.submit()" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950 sm:w-48">
+                        <option value="">All branches</option>
+                        @foreach($branches as $branch)
+                            <option value="{{ $branch->id }}" @selected(request('branch_id') == $branch->id)>{{ $branch->name }}</option>
+                        @endforeach
+                    </select>
+                @endif
+            </div>
+            <div class="flex h-9 w-full items-center gap-2 rounded-md border border-border bg-white px-3 dark:border-gray-800 dark:bg-gray-950 sm:ml-auto sm:max-w-xs">
+                <span data-lucide="search" class="h-4 w-4 shrink-0 text-muted"></span>
+                <input
+                    name="search"
+                    value="{{ request('search') }}"
+                    type="search"
+                    placeholder="Search employees..."
+                    autocomplete="off"
+                    @input="clearTimeout(timer); timer = setTimeout(() => $el.form.submit(), 350)"
+                    class="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                >
+            </div>
         </form>
     </div>
 
-    <div class="grid gap-3 xl:grid-cols-2">
-        @forelse($employees as $employee)
-            <form
-                method="POST"
-                action="{{ route('admin.employees.update', $employee) }}"
-                x-data="faceEnrollment()"
-                class="rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900"
-            >
-                @csrf
-                @method('PUT')
-                <input type="hidden" name="face_image" x-model="faceImage">
-                <input type="hidden" name="face_descriptors" x-model="faceDescriptorsJson">
-
-                <div class="mb-3 flex items-start justify-between gap-3">
-                    <div class="min-w-0">
-                        <p class="truncate font-semibold">{{ $employee->name }}</p>
-                        <p class="truncate text-sm text-muted">{{ str_replace('_', ' ', $employee->role) }} - {{ $employee->branch?->name ?? 'All branches' }}</p>
-                    </div>
-                    <span class="shrink-0 {{ \App\Support\StatusBadge::classes($employee->status) }}">
-                        {{ \App\Support\StatusBadge::label($employee->status) }}
-                    </span>
-                </div>
-
-                <div class="grid gap-3 md:grid-cols-[1fr_10rem]">
-                    <label class="text-sm font-medium">
-                        Monthly Salary
-                        <input name="monthly_salary" type="number" min="0" step="0.01" value="{{ old('monthly_salary', $employee->monthly_salary ?? 0) }}" class="mt-1.5 h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
-                    </label>
-
-                    <div class="text-sm">
-                        <p class="mb-1.5 font-medium">Face</p>
-                        <div class="flex h-9 items-center rounded-md border border-border px-3 text-xs {{ $employee->face_enrolled_at ? 'text-green-700' : 'text-muted' }} dark:border-gray-800">
-                            {{ $employee->face_enrolled_at ? '4 samples saved' : 'Not enrolled' }}
-                        </div>
-                    </div>
-                </div>
-
-                <div class="mt-3 grid gap-3 md:grid-cols-[12rem_1fr]">
-                    <div class="overflow-hidden rounded-md border border-border bg-smoke dark:border-gray-800 dark:bg-gray-950">
-                        <video x-ref="video" autoplay muted playsinline class="aspect-video w-full -scale-x-100 object-cover"></video>
-                        <canvas x-ref="canvas" class="hidden"></canvas>
-                    </div>
-                    <div class="flex flex-wrap items-end gap-2">
-                        <button type="button" @click="startCamera()" class="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border px-3 text-sm font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
-                            <span data-lucide="eye" class="h-4 w-4"></span>
-                            Camera
-                        </button>
-                        <button type="button" @click="capture()" class="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border px-3 text-sm font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
-                            <span data-lucide="user" class="h-4 w-4"></span>
-                            Capture Sample
-                        </button>
-                        <button type="button" @click="resetSamples()" class="inline-flex h-9 items-center justify-center rounded-md border border-border px-3 text-sm font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">Reset</button>
-                        <button class="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-white">
-                            Save
-                        </button>
-                        <p class="w-full text-xs font-medium text-primary">Samples: <span x-text="descriptors.length"></span>/4</p>
-                        <p x-show="message" x-text="message" class="w-full text-xs text-muted"></p>
-                    </div>
-                </div>
-            </form>
-        @empty
-            <div class="rounded-lg border border-border bg-white p-10 text-center text-sm text-muted dark:border-gray-800 dark:bg-gray-900">
-                No employees found.
-            </div>
-        @endforelse
+    <div class="overflow-hidden rounded-lg border border-border bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm">
+                <thead class="border-b border-border bg-smoke text-xs uppercase text-muted dark:border-gray-800 dark:bg-gray-950">
+                    <tr>
+                        <th class="px-4 py-3">Employee</th>
+                        <th class="px-4 py-3">Username</th>
+                        <th class="px-4 py-3">Phone</th>
+                        <th class="px-4 py-3">Branch</th>
+                        <th class="px-4 py-3">Status</th>
+                        <th class="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-border dark:divide-gray-800">
+                    @forelse($employees as $employee)
+                        <tr>
+                            <td class="px-4 py-3">
+                                <p class="font-medium">{{ $employee->name }}</p>
+                                <p class="text-xs text-muted">Last login: {{ $employee->last_login_at?->format('M d, Y h:i A') ?? 'Never' }}</p>
+                            </td>
+                            <td class="px-4 py-3">{{ $employee->username }}</td>
+                            <td class="px-4 py-3">{{ $employee->phone ?: 'N/A' }}</td>
+                            <td class="px-4 py-3">{{ $employee->branch?->name }}</td>
+                            <td class="px-4 py-3"><span class="{{ \App\Support\StatusBadge::classes($employee->status) }}">{{ \App\Support\StatusBadge::label($employee->status) }}</span></td>
+                            <td class="px-4 py-3 text-right">
+                                <button type="button" @click="editOpen = {{ $employee->id }}" title="Edit" aria-label="Edit employee" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border hover:bg-smoke dark:border-gray-700 dark:hover:bg-gray-800">
+                                    <span data-lucide="settings" class="h-4 w-4"></span>
+                                </button>
+                                <form method="POST" action="{{ route('admin.employees.destroy', $employee) }}" class="inline" x-data>
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" title="Delete" aria-label="Delete employee" x-on:click.prevent="Swal.fire({ title: 'Delete employee?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#dc2626', confirmButtonText: 'Delete' }).then((result) => { if (result.isConfirmed) $el.closest('form').submit(); })" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-red-200 text-red-600 hover:bg-red-50">
+                                        <span data-lucide="trash" class="h-4 w-4"></span>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="6" class="px-4 py-10 text-center text-muted">No employees found.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+        <div class="border-t border-border px-4 py-3 dark:border-gray-800">{{ $employees->links() }}</div>
     </div>
 
-    <div>{{ $employees->links() }}</div>
+    <div x-cloak x-show="createOpen" x-transition class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div @click.outside="createOpen = false" class="w-full max-w-2xl rounded-lg bg-white p-5 shadow-2xl dark:bg-gray-900">
+            <div class="mb-4 flex items-center justify-between">
+                <h2 class="inline-flex items-center gap-2 text-lg font-semibold"><span data-lucide="employees" class="h-4 w-4 text-primary"></span>Add Employee</h2>
+                <button type="button" @click="createOpen = false" class="rounded-md p-2 hover:bg-smoke dark:hover:bg-gray-800"><span data-lucide="x" class="h-4 w-4"></span></button>
+            </div>
+            @include('admin.employees.partials.form', ['action' => route('admin.employees.store'), 'method' => 'POST', 'employee' => new \App\Models\AttendanceEmployee(['status' => 'active', 'branch_id' => auth()->user()->branch_id])])
+        </div>
+    </div>
+
+    @foreach($employees as $employee)
+        <div x-cloak x-show="editOpen === {{ $employee->id }}" x-transition class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div @click.outside="editOpen = null" class="w-full max-w-2xl rounded-lg bg-white p-5 shadow-2xl dark:bg-gray-900">
+                <div class="mb-4 flex items-center justify-between">
+                    <h2 class="inline-flex items-center gap-2 text-lg font-semibold"><span data-lucide="settings" class="h-4 w-4 text-primary"></span>Edit Employee</h2>
+                    <button type="button" @click="editOpen = null" class="rounded-md p-2 hover:bg-smoke dark:hover:bg-gray-800"><span data-lucide="x" class="h-4 w-4"></span></button>
+                </div>
+                @include('admin.employees.partials.form', ['action' => route('admin.employees.update', $employee), 'method' => 'PUT', 'employee' => $employee])
+            </div>
+        </div>
+    @endforeach
 </div>
-
-<script>
-function faceEnrollment() {
-    return {
-        faceImage: '',
-        faceDescriptorsJson: '',
-        descriptors: [],
-        message: '',
-        modelsLoaded: false,
-        async loadModels() {
-            if (this.modelsLoaded) return;
-            this.message = 'Loading face recognition models...';
-            const faceapi = await window.loadFaceApi();
-            await Promise.all([
-                faceapi.nets.tinyFaceDetector.load('/models/face-api'),
-                faceapi.nets.faceLandmark68TinyNet.load('/models/face-api'),
-                faceapi.nets.faceRecognitionNet.load('/models/face-api'),
-            ]);
-            this.modelsLoaded = true;
-        },
-        async startCamera() {
-            try {
-                await this.loadModels();
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
-                this.$refs.video.srcObject = stream;
-                this.message = 'Camera ready. Capture 4 clear samples: center, left, right, then center again.';
-            } catch (error) {
-                this.message = 'Camera permission is required.';
-            }
-        },
-        async capture() {
-            const video = this.$refs.video;
-            if (!video.videoWidth) {
-                this.message = 'Open the camera first.';
-                return;
-            }
-
-            await this.loadModels();
-            const faceapi = window.faceapi;
-            const detection = await faceapi
-                .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.65 }))
-                .withFaceLandmarks(true)
-                .withFaceDescriptor();
-
-            if (!detection) {
-                this.message = 'No clear face found. Face the camera with good lighting.';
-                return;
-            }
-
-            const canvas = this.$refs.canvas;
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            canvas.getContext('2d').drawImage(video, 0, 0);
-            this.faceImage = canvas.toDataURL('image/jpeg', 0.88);
-            this.descriptors.push(Array.from(detection.descriptor));
-            this.descriptors = this.descriptors.slice(-4);
-            this.faceDescriptorsJson = JSON.stringify(this.descriptors);
-            this.message = this.descriptors.length >= 4 ? '4 samples captured. Click Save.' : `Sample ${this.descriptors.length} captured. Need ${4 - this.descriptors.length} more.`;
-        },
-        resetSamples() {
-            this.faceImage = '';
-            this.faceDescriptorsJson = '';
-            this.descriptors = [];
-            this.message = 'Samples cleared.';
-        },
-    };
-}
-</script>
 @endsection

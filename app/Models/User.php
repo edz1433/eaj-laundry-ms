@@ -63,6 +63,11 @@ class User extends Authenticatable
         return in_array($this->role, ['super_admin', 'admin'], true);
     }
 
+    public function canManageAllBranches(): bool
+    {
+        return $this->isAdmin();
+    }
+
     public function isActive(): bool
     {
         return $this->status === 'active';
@@ -96,6 +101,12 @@ class User extends Authenticatable
             return $query;
         }
 
-        return $query->where('role', '!=', 'super_admin');
+        $query->where('role', '!=', 'super_admin');
+
+        if ($viewer->role === 'branch_manager') {
+            $query->where('branch_id', $viewer->branch_id);
+        }
+
+        return $query;
     }
 }

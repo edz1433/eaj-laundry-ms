@@ -156,6 +156,17 @@
                     </div>
 
                     <textarea name="notes" rows="2" placeholder="Notes / instructions" class="w-full rounded-md border border-border bg-white px-3 py-2 text-sm shadow-sm dark:border-gray-800 dark:bg-gray-950"></textarea>
+
+                    <div class="grid grid-cols-2 gap-1 rounded-md bg-smoke p-1 dark:bg-gray-950">
+                        <label class="flex h-8 cursor-pointer items-center justify-center rounded-sm text-xs font-medium has-[:checked]:bg-white has-[:checked]:text-primary has-[:checked]:shadow-sm dark:has-[:checked]:bg-gray-900">
+                            <input type="radio" name="transaction_type" value="walk_in" checked class="sr-only">
+                            Walk-in
+                        </label>
+                        <label class="flex h-8 cursor-pointer items-center justify-center rounded-sm text-xs font-medium has-[:checked]:bg-orange-100 has-[:checked]:text-orange-700 has-[:checked]:shadow-sm dark:has-[:checked]:bg-orange-500/10 dark:has-[:checked]:text-orange-300">
+                            <input type="radio" name="transaction_type" value="delivery" class="sr-only">
+                            Delivery
+                        </label>
+                    </div>
                 </div>
 
             <div class="flex h-12 shrink-0 items-center justify-between border-b border-border px-3 dark:border-gray-800">
@@ -236,6 +247,7 @@
                         <select name="payment_type" class="h-9 min-w-0 rounded-md border border-border bg-white px-2 text-sm dark:border-gray-800 dark:bg-gray-950">
                             <option value="cash">Cash</option>
                             <option value="gcash">GCash</option>
+                            <option value="bank">Bank</option>
                             <option value="credit">Credit</option>
                             <option value="po">PO</option>
                             <option value="monthly_billing">Monthly Billing</option>
@@ -244,6 +256,7 @@
                             <span data-lucide="payments" class="h-4 w-4"></span>
                         </button>
                     </div>
+                    <input name="payment_reference_no" placeholder="Reference no. for GCash/card" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
                 </div>
 
                 <div class="mt-5 grid grid-cols-2 gap-2">

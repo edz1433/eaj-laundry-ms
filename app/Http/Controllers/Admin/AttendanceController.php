@@ -3,10 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Attendance;
+use App\Models\AttendanceEmployee;
 use App\Models\Branch;
-use App\Models\User;
+use App\Models\DailyTask;
+use App\Models\DailyTaskCompletion;
+use App\Models\EmployeeAttendanceRecord;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -16,7 +19,28 @@ class AttendanceController extends Controller
 {
     public function kiosk()
     {
-        return view('attendance.kiosk');
+        $employee = AttendanceEmployee::query()
+            ->with('branch')
+            ->whereKey(session('attendance_employee_id'))
+            ->where('status', 'active')
+            ->first();
+
+        if (! $employee) {
+            return redirect()->route('attendance.login');
+        }
+
+        $workDate = today()->toDateString();
+        $dailyTasks = DailyTask::query()
+            ->with(['completions' => fn ($query) => $query
+                ->with(['completer', 'employeeCompleter'])
+                ->where('branch_id', $employee->branch_id)
+                ->whereDate('work_date', $workDate)])
+            ->where('is_active', true)
+            ->where(fn ($query) => $query->whereNull('branch_id')->orWhere('branch_id', $employee->branch_id))
+            ->orderBy('name')
+            ->get();
+
+        return view('attendance.kiosk', compact('employee', 'dailyTasks', 'workDate'));
     }
 
     public function challenge()
@@ -39,71 +63,55 @@ class AttendanceController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        $selectedBranchId = $user->isAdmin()
+        $canChooseBranch = $user->canManageAllBranches();
+        $selectedBranchId = $canChooseBranch
             ? ($request->integer('branch_id') ?: null)
             : $user->branch_id;
+        $selectedEmployeeId = $request->integer('employee_id') ?: null;
+        [$dateFrom, $dateTo] = $this->dateRange($request);
+        $workDate = $dateFrom === $dateTo ? $dateFrom : $dateFrom.' to '.$dateTo;
 
         $branches = Branch::query()
             ->where('is_active', true)
-            ->when(! $user->isAdmin(), fn ($query) => $query->whereKey($user->branch_id))
+            ->when(! $canChooseBranch, fn ($query) => $query->whereKey($user->branch_id))
             ->orderBy('name')
             ->get();
 
-        $employees = User::query()
+        $employees = AttendanceEmployee::query()
             ->with('branch')
-            ->whereIn('role', ['admin', 'branch_manager', 'cashier', 'staff'])
             ->where('status', 'active')
             ->when($selectedBranchId, fn ($query) => $query->where('branch_id', $selectedBranchId))
-            ->when(! $user->isAdmin(), fn ($query) => $query->where('branch_id', $user->branch_id))
-            ->orderBy('name')
+            ->when(! $canChooseBranch, fn ($query) => $query->where('branch_id', $user->branch_id))
+            ->orderBy('first_name')
+            ->orderBy('last_name')
             ->get();
 
-        $todayAttendance = Attendance::query()
-            ->whereDate('work_date', today())
-            ->whereIn('user_id', $employees->pluck('id'))
-            ->get()
-            ->keyBy('user_id');
-
-        $records = Attendance::query()
-            ->with(['user', 'branch'])
+        $records = EmployeeAttendanceRecord::query()
+            ->with(['employee', 'branch'])
             ->when($selectedBranchId, fn ($query) => $query->where('branch_id', $selectedBranchId))
-            ->when(! $user->isAdmin(), fn ($query) => $query->where('branch_id', $user->branch_id))
+            ->when(! $canChooseBranch, fn ($query) => $query->where('branch_id', $user->branch_id))
+            ->when($selectedEmployeeId, fn ($query) => $query->where('attendance_employee_id', $selectedEmployeeId))
+            ->whereDate('work_date', '>=', $dateFrom)
+            ->whereDate('work_date', '<=', $dateTo)
             ->latest('work_date')
             ->latest()
             ->paginate(20)
             ->withQueryString();
 
-        return view('admin.attendance.index', compact('branches', 'employees', 'records', 'selectedBranchId', 'todayAttendance'));
+        return view('admin.attendance.index', compact('branches', 'employees', 'records', 'selectedBranchId', 'selectedEmployeeId', 'workDate', 'dateFrom', 'dateTo', 'canChooseBranch'));
     }
 
     public function timeIn(Request $request)
     {
         $validated = $this->validateAttendanceRequest($request);
-        $employee = $this->employeeForAttendance($request, (int) $validated['user_id']);
-        $this->assertWithinBranchGeofence($employee, (float) $validated['latitude'], (float) $validated['longitude']);
+        $employee = $this->attendanceEmployeeForAdmin($request, (int) $validated['employee_id']);
+        $this->assertWithinAttendanceEmployeeBranch($employee, (float) $validated['latitude'], (float) $validated['longitude']);
+        $record = $this->attendanceRecordForToday($employee);
 
-        $attendance = Attendance::firstOrCreate(
-            [
-                'user_id' => $employee->id,
-                'work_date' => today()->toDateString(),
-            ],
-            [
-                'branch_id' => $employee->branch_id,
-                'status' => 'present',
-            ]
-        );
-
-        if ($attendance->time_in) {
-            throw ValidationException::withMessages(['user_id' => 'This employee already timed in today.']);
-        }
-
-        $attendance->update([
-            'branch_id' => $employee->branch_id,
-            'time_in' => now(),
-            'time_in_latitude' => $validated['latitude'],
-            'time_in_longitude' => $validated['longitude'],
-            'time_in_photo_path' => $this->storeFaceImage($validated['face_image'], 'attendance-faces'),
-            'status' => 'present',
+        $record->update([
+            'clock_in' => [...($record->clock_in ?? []), now()->format('H:i:s')],
+            'clock_in_photos' => [...($record->clock_in_photos ?? []), $this->storeAttendanceImage($validated['face_image'], 'attendance-proofs')],
+            'clock_in_locations' => [...($record->clock_in_locations ?? []), $this->locationPayload($validated)],
         ]);
 
         return back()->with('success', "{$employee->name} timed in successfully.");
@@ -112,27 +120,14 @@ class AttendanceController extends Controller
     public function timeOut(Request $request)
     {
         $validated = $this->validateAttendanceRequest($request);
-        $employee = $this->employeeForAttendance($request, (int) $validated['user_id']);
-        $this->assertWithinBranchGeofence($employee, (float) $validated['latitude'], (float) $validated['longitude']);
+        $employee = $this->attendanceEmployeeForAdmin($request, (int) $validated['employee_id']);
+        $this->assertWithinAttendanceEmployeeBranch($employee, (float) $validated['latitude'], (float) $validated['longitude']);
+        $record = $this->attendanceRecordForToday($employee);
 
-        $attendance = Attendance::query()
-            ->where('user_id', $employee->id)
-            ->whereDate('work_date', today())
-            ->first();
-
-        if (! $attendance || ! $attendance->time_in) {
-            throw ValidationException::withMessages(['user_id' => 'This employee has not timed in yet.']);
-        }
-
-        if ($attendance->time_out) {
-            throw ValidationException::withMessages(['user_id' => 'This employee already timed out today.']);
-        }
-
-        $attendance->update([
-            'time_out' => now(),
-            'time_out_latitude' => $validated['latitude'],
-            'time_out_longitude' => $validated['longitude'],
-            'time_out_photo_path' => $this->storeFaceImage($validated['face_image'], 'attendance-faces'),
+        $record->update([
+            'clock_out' => [...($record->clock_out ?? []), now()->format('H:i:s')],
+            'clock_out_photos' => [...($record->clock_out_photos ?? []), $this->storeAttendanceImage($validated['face_image'], 'attendance-proofs')],
+            'clock_out_locations' => [...($record->clock_out_locations ?? []), $this->locationPayload($validated)],
         ]);
 
         return back()->with('success', "{$employee->name} timed out successfully.");
@@ -141,79 +136,110 @@ class AttendanceController extends Controller
     public function publicTimeIn(Request $request)
     {
         $validated = $this->validatePublicAttendanceRequest($request);
-        $this->verifyChallenge($validated);
-        $branch = $this->branchForLocation((float) $validated['latitude'], (float) $validated['longitude']);
-        $employee = $this->matchEmployeeByFace($validated['descriptor'], $branch);
+        $employee = $this->employeeFromAttendanceSession();
+        $branch = $employee->branch;
+        $this->assertWithinAttendanceEmployeeBranch($employee, (float) $validated['latitude'], (float) $validated['longitude']);
+        $record = $this->attendanceRecordForToday($employee);
 
-        $attendance = Attendance::firstOrCreate(
-            [
-                'user_id' => $employee->id,
-                'work_date' => today()->toDateString(),
-            ],
-            [
-                'branch_id' => $employee->branch_id,
-                'status' => 'present',
-            ]
-        );
-
-        if ($attendance->time_in) {
-            throw ValidationException::withMessages(['face' => "{$employee->name} already timed in today."]);
-        }
-
-        $attendance->update([
-            'branch_id' => $employee->branch_id,
-            'time_in' => now(),
-            'time_in_latitude' => $validated['latitude'],
-            'time_in_longitude' => $validated['longitude'],
-            'time_in_photo_path' => $this->storeFaceImage($validated['face_image'], 'attendance-faces'),
-            'status' => 'present',
+        $record->update([
+            'clock_in' => [...($record->clock_in ?? []), now()->format('H:i:s')],
+            'clock_in_photos' => [...($record->clock_in_photos ?? []), $this->storeAttendanceImage($validated['face_image'], 'attendance-proofs')],
+            'clock_in_locations' => [...($record->clock_in_locations ?? []), $this->locationPayload($validated)],
         ]);
 
         return response()->json([
             'message' => "{$employee->name} timed in successfully.",
             'employee' => $employee->name,
-            'time' => $attendance->time_in->format('h:i A'),
+            'branch' => $branch->name,
+            'time' => now()->format('h:i A'),
         ]);
     }
 
     public function publicTimeOut(Request $request)
     {
         $validated = $this->validatePublicAttendanceRequest($request);
-        $this->verifyChallenge($validated);
-        $branch = $this->branchForLocation((float) $validated['latitude'], (float) $validated['longitude']);
-        $employee = $this->matchEmployeeByFace($validated['descriptor'], $branch);
+        $employee = $this->employeeFromAttendanceSession();
+        $branch = $employee->branch;
+        $this->assertWithinAttendanceEmployeeBranch($employee, (float) $validated['latitude'], (float) $validated['longitude']);
+        $record = $this->attendanceRecordForToday($employee);
 
-        $attendance = Attendance::query()
-            ->where('user_id', $employee->id)
-            ->whereDate('work_date', today())
-            ->first();
-
-        if (! $attendance || ! $attendance->time_in) {
-            throw ValidationException::withMessages(['face' => "{$employee->name} has not timed in yet."]);
-        }
-
-        if ($attendance->time_out) {
-            throw ValidationException::withMessages(['face' => "{$employee->name} already timed out today."]);
-        }
-
-        $attendance->update([
-            'time_out' => now(),
-            'time_out_latitude' => $validated['latitude'],
-            'time_out_longitude' => $validated['longitude'],
-            'time_out_photo_path' => $this->storeFaceImage($validated['face_image'], 'attendance-faces'),
+        $record->update([
+            'clock_out' => [...($record->clock_out ?? []), now()->format('H:i:s')],
+            'clock_out_photos' => [...($record->clock_out_photos ?? []), $this->storeAttendanceImage($validated['face_image'], 'attendance-proofs')],
+            'clock_out_locations' => [...($record->clock_out_locations ?? []), $this->locationPayload($validated)],
         ]);
 
         return response()->json([
             'message' => "{$employee->name} timed out successfully.",
             'employee' => $employee->name,
-            'time' => $attendance->time_out->format('h:i A'),
+            'branch' => $branch->name,
+            'time' => now()->format('h:i A'),
         ]);
+    }
+
+    public function preparePublicAttendance(Request $request)
+    {
+        $validated = $this->validatePublicCredentialsRequest($request);
+        $employee = $this->employeeFromAttendanceSession();
+        $branch = $employee->branch;
+        $this->assertWithinAttendanceEmployeeBranch($employee, (float) $validated['latitude'], (float) $validated['longitude']);
+
+        return response()->json([
+            'employee' => [
+                'id' => $employee->id,
+                'name' => $employee->name,
+            ],
+            'branch' => [
+                'id' => $branch->id,
+                'name' => $branch->name,
+                'address' => $branch->address,
+            ],
+            'captured_at' => now()->format('M d, Y h:i A'),
+        ]);
+    }
+
+    public function publicCompleteDailyTask(Request $request, DailyTask $task)
+    {
+        $employee = $this->employeeFromAttendanceSession();
+
+        abort_if($task->branch_id !== null && (int) $task->branch_id !== (int) $employee->branch_id, 403);
+
+        $validated = $request->validate([
+            'photo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
+            'remarks' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $workDate = today()->toDateString();
+        $path = $request->file('photo')->store('daily-tasks', 'public');
+        Storage::disk('public')->setVisibility($path, 'public');
+        $existing = DailyTaskCompletion::query()
+            ->where('daily_task_id', $task->id)
+            ->where('branch_id', $employee->branch_id)
+            ->whereDate('work_date', $workDate)
+            ->first();
+
+        if ($existing?->photo_path) {
+            Storage::disk('public')->delete($existing->photo_path);
+        }
+
+        DailyTaskCompletion::updateOrCreate(
+            ['daily_task_id' => $task->id, 'branch_id' => $employee->branch_id, 'work_date' => $workDate],
+            [
+                'completed_by' => null,
+                'completed_by_employee_id' => $employee->id,
+                'photo_path' => $path,
+                'remarks' => $validated['remarks'] ?? null,
+                'completed_at' => now(),
+            ]
+        );
+
+        return back()->with('success', 'End-of-day proof uploaded successfully.');
     }
 
     private function validateAttendanceRequest(Request $request): array
     {
         return $request->validate([
-            'user_id' => ['required', 'exists:users,id'],
+            'employee_id' => ['required', 'exists:attendance_employees,id'],
             'latitude' => ['required', 'numeric', 'between:-90,90'],
             'longitude' => ['required', 'numeric', 'between:-180,180'],
             'face_image' => ['required', 'string'],
@@ -223,14 +249,17 @@ class AttendanceController extends Controller
     private function validatePublicAttendanceRequest(Request $request): array
     {
         return $request->validate([
-            'descriptor' => ['required', 'array', 'size:128'],
-            'descriptor.*' => ['numeric'],
             'latitude' => ['required', 'numeric', 'between:-90,90'],
             'longitude' => ['required', 'numeric', 'between:-180,180'],
             'face_image' => ['required', 'string'],
-            'challenge_nonce' => ['required', 'string'],
-            'challenge_result' => ['required', 'array', 'size:3'],
-            'challenge_result.*' => ['required', 'string', 'in:blink,left,right'],
+        ]);
+    }
+
+    private function validatePublicCredentialsRequest(Request $request): array
+    {
+        return $request->validate([
+            'latitude' => ['required', 'numeric', 'between:-90,90'],
+            'longitude' => ['required', 'numeric', 'between:-180,180'],
         ]);
     }
 
@@ -274,41 +303,7 @@ class AttendanceController extends Controller
         return $branch['branch'];
     }
 
-    private function matchEmployeeByFace(array $descriptor, ?Branch $branch = null): User
-    {
-        $match = User::query()
-            ->with('branch')
-            ->where('status', 'active')
-            ->whereNotNull('branch_id')
-            ->whereNotNull('face_descriptors')
-            ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
-            ->get()
-            ->map(function (User $employee) use ($descriptor) {
-                $distance = collect($employee->face_descriptors ?? [])
-                    ->map(fn (array $known) => $this->euclideanDistance($known, $descriptor))
-                    ->min();
-
-                return [
-                    'employee' => $employee,
-                    'distance' => $distance,
-                ];
-            })
-            ->filter(fn (array $result) => $result['distance'] !== null)
-            ->sortBy('distance')
-            ->first();
-
-        if (! $match || $match['distance'] > 0.48) {
-            $message = $branch
-                ? "No enrolled employee matched this live face for {$branch->name}."
-                : 'No enrolled employee matched this live face.';
-
-            throw ValidationException::withMessages(['face' => $message]);
-        }
-
-        return $match['employee'];
-    }
-
-    private function assertWithinBranchGeofence(User $employee, float $latitude, float $longitude): void
+    private function assertWithinAttendanceEmployeeBranch(AttendanceEmployee $employee, float $latitude, float $longitude): void
     {
         $employee->loadMissing('branch');
         $branch = $employee->branch;
@@ -327,10 +322,25 @@ class AttendanceController extends Controller
         }
     }
 
-    private function employeeForAttendance(Request $request, int $userId): User
+    private function employeeFromAttendanceSession(): AttendanceEmployee
     {
-        $employee = User::query()
-            ->whereKey($userId)
+        $employee = AttendanceEmployee::query()
+            ->with('branch')
+            ->whereKey(session('attendance_employee_id'))
+            ->where('status', 'active')
+            ->first();
+
+        if (! $employee) {
+            throw ValidationException::withMessages(['employee' => 'Please login as an employee first.']);
+        }
+
+        return $employee;
+    }
+
+    private function attendanceEmployeeForAdmin(Request $request, int $employeeId): AttendanceEmployee
+    {
+        $employee = AttendanceEmployee::query()
+            ->whereKey($employeeId)
             ->where('status', 'active')
             ->with('branch')
             ->firstOrFail();
@@ -342,29 +352,83 @@ class AttendanceController extends Controller
         return $employee;
     }
 
-    private function storeFaceImage(string $image, string $directory): string
+    private function attendanceRecordForToday(AttendanceEmployee $employee): EmployeeAttendanceRecord
     {
-        abort_unless(str_starts_with($image, 'data:image/'), 422, 'Invalid face image.');
+        $record = EmployeeAttendanceRecord::query()
+            ->where('attendance_employee_id', $employee->id)
+            ->whereDate('work_date', today())
+            ->first();
+
+        if ($record) {
+            return $record;
+        }
+
+        return EmployeeAttendanceRecord::create([
+                'branch_id' => $employee->branch_id,
+                'attendance_employee_id' => $employee->id,
+                'work_date' => today()->toDateString(),
+                'clock_in' => [],
+                'clock_out' => [],
+                'clock_in_photos' => [],
+                'clock_out_photos' => [],
+                'clock_in_locations' => [],
+                'clock_out_locations' => [],
+        ]);
+    }
+
+    private function locationPayload(array $validated): array
+    {
+        return [
+            'latitude' => (float) $validated['latitude'],
+            'longitude' => (float) $validated['longitude'],
+            'captured_at' => now()->toDateTimeString(),
+        ];
+    }
+
+    private function storeAttendanceImage(string $image, string $directory): string
+    {
+        abort_unless(str_starts_with($image, 'data:image/'), 422, 'Invalid attendance image.');
+        abort_unless(str_contains($image, ','), 422, 'Invalid attendance image.');
 
         [$meta, $contents] = explode(',', $image, 2);
         $extension = str_contains($meta, 'image/png') ? 'png' : 'jpg';
-        $path = $directory.'/'.uniqid('face_', true).'.'.$extension;
+        $decoded = base64_decode($contents, true);
+        abort_if($decoded === false, 422, 'Invalid attendance image.');
+        $path = $directory.'/'.uniqid('attendance_', true).'.'.$extension;
 
-        Storage::disk('public')->put($path, base64_decode($contents));
+        Storage::disk('public')->put($path, $decoded);
+        Storage::disk('public')->setVisibility($path, 'public');
 
         return $path;
     }
 
-    private function euclideanDistance(array $known, array $candidate): float
+    private function dateRange(Request $request): array
     {
-        $sum = 0;
+        if ($request->filled('date_range')) {
+            $parts = preg_split('/\s+to\s+/', $request->date_range);
 
-        foreach ($known as $index => $value) {
-            $difference = (float) $value - (float) ($candidate[$index] ?? 0);
-            $sum += $difference * $difference;
+            return [
+                $this->parseDate($parts[0] ?? null, today()->toDateString()),
+                $this->parseDate($parts[1] ?? $parts[0] ?? null, today()->toDateString()),
+            ];
         }
 
-        return sqrt($sum);
+        $date = $this->parseDate($request->date, today()->toDateString());
+
+        return [$date, $date];
+    }
+
+    private function parseDate(?string $date, string $fallback): string
+    {
+        if (! $date) {
+            return $fallback;
+        }
+
+        try {
+            return Carbon::parse($date)->toDateString();
+        } catch (\Throwable) {
+            return $fallback;
+        }
     }
 
     private function distanceInMeters(float $lat1, float $lng1, float $lat2, float $lng2): float
@@ -383,4 +447,5 @@ class AttendanceController extends Controller
     {
         return 'attendance_challenge:'.$nonce;
     }
+
 }

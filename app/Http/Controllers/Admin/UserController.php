@@ -11,23 +11,37 @@ use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $viewer = auth()->user();
+        $viewer = $request->user();
+        $canChooseBranch = $viewer->canManageAllBranches();
 
         $users = User::with('branch')
             ->visibleTo($viewer)
-            ->when($viewer->role === 'branch_manager', fn ($query) => $query->where('branch_id', $viewer->branch_id))
+            ->when($canChooseBranch && $request->filled('branch_id'), fn ($query) => $query->where('branch_id', $request->branch_id))
+            ->when(in_array($request->role, $this->availableRoles($viewer), true), fn ($query) => $query->where('role', $request->role))
+            ->when(in_array($request->status, ['active', 'inactive', 'suspended'], true), fn ($query) => $query->where('status', $request->status))
+            ->when($request->filled('search'), function ($query) use ($request) {
+                $search = $request->search;
+
+                $query->where(function ($query) use ($search) {
+                    $query->where('name', 'like', "%{$search}%")
+                        ->orWhere('username', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%")
+                        ->orWhereHas('branch', fn ($query) => $query->where('name', 'like', "%{$search}%"));
+                });
+            })
             ->latest()
-            ->paginate(10);
+            ->paginate(10)
+            ->withQueryString();
         $branches = Branch::where('is_active', true)
-            ->when($viewer->role === 'branch_manager', fn ($query) => $query->whereKey($viewer->branch_id))
+            ->when(! $canChooseBranch, fn ($query) => $query->whereKey($viewer->branch_id))
             ->orderBy('name')
             ->get();
         $menuItems = Menu::items();
         $roles = $this->availableRoles();
 
-        return view('admin.users.index', compact('users', 'branches', 'menuItems', 'roles'));
+        return view('admin.users.index', compact('users', 'branches', 'menuItems', 'roles', 'canChooseBranch'));
     }
 
     public function create()
@@ -151,13 +165,16 @@ class UserController extends Controller
     private function availableRoles(?User $viewer = null): array
     {
         $viewer ??= auth()->user();
-        $roles = ['admin', 'branch_manager', 'cashier', 'staff'];
 
         if ($viewer?->isSuperAdmin()) {
-            array_unshift($roles, 'super_admin');
+            return ['super_admin', 'admin', 'branch_manager', 'cashier', 'staff'];
         }
 
-        return $roles;
+        if ($viewer?->role === 'admin') {
+            return ['admin', 'branch_manager', 'cashier', 'staff'];
+        }
+
+        return ['cashier', 'staff'];
     }
 
     private function normalizedAccess(string $role, array $access): array

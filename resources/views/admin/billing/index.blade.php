@@ -80,35 +80,23 @@
                 @csrf
                 <div class="grid gap-3 sm:grid-cols-3">
                     <div>
-                        <label class="mb-1.5 block text-sm font-medium">Billing Year</label>
-                        <input type="number" name="billing_year" value="{{ old('billing_year', now()->year) }}" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950" required>
+                        <label class="mb-1.5 block text-sm font-medium">Subscription Start</label>
+                        <input type="date" name="subscription_start_date" value="{{ old('subscription_start_date', now()->startOfMonth()->toDateString()) }}" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950" required>
                     </div>
                     <div>
-                        <label class="mb-1.5 block text-sm font-medium">Start Month</label>
-                        <select name="start_month" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
-                            @foreach($months as $number => $name)
-                                <option value="{{ $number }}" @selected((int) old('start_month', now()->month) === $number)>{{ $name }}</option>
-                            @endforeach
-                        </select>
+                        <label class="mb-1.5 block text-sm font-medium">Subscription End</label>
+                        <input type="date" name="subscription_end_date" value="{{ old('subscription_end_date', now()->endOfMonth()->toDateString()) }}" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950" required>
                     </div>
                     <div>
-                        <label class="mb-1.5 block text-sm font-medium">End Month</label>
-                        <select name="end_month" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
-                            @foreach($months as $number => $name)
-                                <option value="{{ $number }}" @selected((int) old('end_month', now()->month) === $number)>{{ $name }}</option>
-                            @endforeach
-                        </select>
+                        <label class="mb-1.5 block text-sm font-medium">Due Date</label>
+                        <input type="date" name="due_date" value="{{ old('due_date', now()->addDays(5)->toDateString()) }}" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950" required>
                     </div>
                 </div>
 
                 <div class="grid gap-3 sm:grid-cols-2">
-                    <div>
-                        <label class="mb-1.5 block text-sm font-medium">Due Day</label>
-                        <input type="number" min="1" max="31" name="due_day" value="{{ old('due_day', 5) }}" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950" required>
-                    </div>
-                    <label class="mt-7 flex items-center gap-2 text-sm">
+                    <label class="flex items-center gap-2 text-sm">
                         <input type="checkbox" name="update_unpaid" value="1" class="rounded border-border text-primary">
-                        Update/regenerate existing unpaid records
+                        Update/regenerate existing unpaid record for the same dates
                     </label>
                 </div>
 
@@ -135,7 +123,7 @@
     <section class="rounded-lg border border-border bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <div class="border-b border-border p-4 dark:border-gray-800">
             <h2 class="text-base font-semibold">Billing Records</h2>
-            <form method="GET" action="{{ route('admin.billing.index') }}" class="mt-3 grid gap-2 md:grid-cols-5">
+            <form method="GET" action="{{ route('admin.billing.index') }}" class="mt-3 grid gap-2 md:grid-cols-6">
                 <select name="branch_id" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
                     <option value="">All branches</option>
                     @foreach($branches as $branch)
@@ -149,6 +137,7 @@
                         <option value="{{ $number }}" @selected(($filters['billing_month'] ?? '') == $number)>{{ $name }}</option>
                     @endforeach
                 </select>
+                <input type="date" name="subscription_date" placeholder="Subscription date" value="{{ $filters['subscription_date'] ?? '' }}" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
                 <select name="status" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
                     <option value="">All statuses</option>
                     @foreach(['unpaid', 'paid', 'overdue', 'suspended'] as $status)
@@ -232,7 +221,7 @@
                     <h2 class="text-lg font-semibold">Mark Paid - {{ $record->branch?->name }} {{ $record->periodLabel() }}</h2>
                     <button type="button" @click="payOpen = null" class="rounded-md p-2 hover:bg-smoke dark:hover:bg-gray-800"><span data-lucide="x" class="h-4 w-4"></span></button>
                 </div>
-                <form method="POST" action="{{ route('admin.billing.records.mark-paid', $record) }}" class="space-y-3">
+                <form method="POST" action="{{ route('admin.billing.records.mark-paid', $record) }}" class="space-y-3" x-data="{ addExpense: {{ old('add_to_expenses', $record->expense_id ? '1' : '1') ? 'true' : 'false' }} }">
                     @csrf
                     @method('PATCH')
                     <div>
@@ -250,6 +239,23 @@
                     <div>
                         <label class="mb-1.5 block text-sm font-medium">Remarks</label>
                         <textarea name="remarks" rows="3" class="w-full rounded-md border border-border bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950">{{ old('remarks') }}</textarea>
+                    </div>
+                    <div class="rounded-lg border border-border bg-smoke p-3 dark:border-gray-800 dark:bg-gray-950">
+                        <label class="flex items-start gap-2 text-sm font-medium">
+                            <input type="checkbox" name="add_to_expenses" value="1" x-model="addExpense" class="mt-1 rounded border-border text-primary">
+                            <span>
+                                Add to branch expenses
+                                <span class="block text-xs font-normal text-muted">Use this if this billing payment should appear in Expenses and Z Reading/Cash Count.</span>
+                            </span>
+                        </label>
+
+                        <div x-show="addExpense" x-transition class="mt-3">
+                            <label class="mb-1.5 block text-sm font-medium">Paid From</label>
+                            <select name="paid_from" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-900">
+                                <option value="store_cash" @selected(old('paid_from', $record->expense?->paid_from ?? 'store_cash') === 'store_cash')>Store Cash - deduct from Cash Count</option>
+                                <option value="owner" @selected(old('paid_from', $record->expense?->paid_from) === 'owner')>Owner Paid - record expense only</option>
+                            </select>
+                        </div>
                     </div>
                     <div class="flex justify-end">
                         <button type="submit" class="h-9 rounded-md bg-primary px-4 text-sm font-medium text-white hover:opacity-90">Save Payment</button>

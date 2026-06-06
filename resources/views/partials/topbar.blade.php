@@ -1,8 +1,8 @@
-<header class="sticky top-0 z-30 border-b border-border bg-white/90 backdrop-blur dark:border-gray-800 dark:bg-gray-950/90">
+<header class="sticky top-0 z-40 border-b border-border bg-white/95 backdrop-blur dark:border-gray-800 dark:bg-gray-950/95">
     <div class="flex h-14 items-center justify-between gap-3 px-3 lg:px-5">
         <div class="flex min-w-0 items-center gap-2">
-            <button type="button" class="rounded-md border border-border bg-white p-2 dark:border-gray-800 dark:bg-gray-900 lg:hidden" @click="sidebarOpen = true">
-                <span data-lucide="menu" class="h-4 w-4"></span>
+            <button type="button" class="inline-flex h-10 w-10 items-center justify-center rounded-md border border-border bg-white text-dark shadow-sm transition hover:bg-smoke dark:border-gray-800 dark:bg-gray-900 dark:text-white dark:hover:bg-gray-800" @click="toggleSidebar()" aria-label="Toggle sidebar menu">
+                <span data-lucide="menu" class="h-5 w-5"></span>
             </button>
 
             <div class="min-w-0">

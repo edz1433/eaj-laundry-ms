@@ -3,22 +3,39 @@
 @section('page_title', 'Attendance')
 
 @section('content')
+@php($dateRangeValue = request('date_range') ?: ($dateFrom && $dateTo ? $dateFrom.' to '.$dateTo : ''))
 <div
-    x-data="attendanceCapture()"
+    x-data="{
+        proofOpen: false,
+        proofUrl: '',
+        proofTitle: '',
+        dateRange: @js($dateRangeValue),
+        init() {
+            this.$nextTick(() => {
+                if (!window.flatpickr) return;
+                window.flatpickr(this.$refs.dateRange, {
+                    mode: 'range',
+                    dateFormat: 'Y-m-d',
+                    defaultDate: this.dateRange ? this.dateRange.split(' to ') : null,
+                    onClose: (dates, value) => this.dateRange = value,
+                });
+            });
+        },
+    }"
     class="space-y-4"
 >
     <div class="flex flex-col gap-3 rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900 lg:flex-row lg:items-center lg:justify-between">
         <div>
             <div class="mb-2 inline-flex items-center gap-1.5 rounded-md border border-border bg-smoke px-2.5 py-1 text-xs font-medium text-muted dark:border-gray-800 dark:bg-gray-950">
                 <span data-lucide="attendance" class="h-3.5 w-3.5"></span>
-                Face and location attendance
+                Attendance records
             </div>
             <h1 class="text-xl font-semibold tracking-normal">Attendance</h1>
-            <p class="text-sm text-muted">Time in and time out with camera capture and GPS coordinates.</p>
+            <p class="text-sm text-muted">Review employee clock-in and clock-out logs by date.</p>
         </div>
 
-        <form method="GET" class="flex gap-2">
-            @if(auth()->user()->isAdmin())
+        <form method="GET" class="grid grid-cols-1 gap-2 sm:grid-cols-[12rem_14rem_16rem_auto]">
+            @if($canChooseBranch)
                 <select name="branch_id" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
                     <option value="">All branches</option>
                     @foreach($branches as $branch)
@@ -26,196 +43,159 @@
                     @endforeach
                 </select>
             @endif
-            <button class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
+            <select name="employee_id" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
+                <option value="">All employees</option>
+                @foreach($employees as $employee)
+                    <option value="{{ $employee->id }}" @selected((int) $selectedEmployeeId === (int) $employee->id)>
+                        {{ $employee->name }}{{ $canChooseBranch && ! $selectedBranchId ? ' - '.($employee->branch?->name ?? 'No branch') : '' }}
+                    </option>
+                @endforeach
+            </select>
+            <div class="flex h-9 items-center gap-2 rounded-md border border-border bg-white px-3 dark:border-gray-800 dark:bg-gray-950">
+                <span data-lucide="calendar" class="h-4 w-4 text-muted"></span>
+                <input x-ref="dateRange" x-model="dateRange" name="date_range" type="text" placeholder="Date range" autocomplete="off" class="w-full bg-transparent text-sm outline-none">
+            </div>
+            <button class="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-white hover:opacity-90">
                 <span data-lucide="search" class="h-4 w-4"></span>
+                Filter
             </button>
         </form>
     </div>
 
-    <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <div class="rounded-lg border border-border bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div class="border-b border-border px-4 py-3 dark:border-gray-800">
-                <h2 class="text-base font-semibold">Today's Employees</h2>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-sm">
-                    <thead class="border-b border-border bg-smoke text-xs uppercase text-muted dark:border-gray-800 dark:bg-gray-950">
-                        <tr>
-                            <th class="px-4 py-3">Employee</th>
-                            <th class="px-4 py-3">Branch</th>
-                            <th class="px-4 py-3">Time In</th>
-                            <th class="px-4 py-3">Time Out</th>
-                            <th class="px-4 py-3 text-right">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-border dark:divide-gray-800">
-                        @forelse($employees as $employee)
-                            @php($attendance = $todayAttendance->get($employee->id))
-                            <tr>
-                                <td class="px-4 py-3">
-                                    <p class="font-medium">{{ $employee->name }}</p>
-                                    <p class="text-xs text-muted">{{ str_replace('_', ' ', $employee->role) }}</p>
-                                </td>
-                                <td class="px-4 py-3">{{ $employee->branch?->name ?? 'All branches' }}</td>
-                                <td class="px-4 py-3">{{ $attendance?->time_in?->format('h:i A') ?? '-' }}</td>
-                                <td class="px-4 py-3">{{ $attendance?->time_out?->format('h:i A') ?? '-' }}</td>
-                                <td class="px-4 py-3 text-right">
-                                    <button type="button" @click="selectEmployee(@js($employee->id), @js($employee->name))" class="inline-flex h-8 items-center rounded-md border border-border px-2.5 text-xs font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
-                                        Select
-                                    </button>
-                                </td>
-                            </tr>
-                        @empty
-                            <tr><td colspan="5" class="px-4 py-10 text-center text-muted">No active employees found.</td></tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <div class="rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <h2 class="text-base font-semibold">Time Clock</h2>
-            <p class="mt-1 text-sm text-muted" x-text="employeeName || 'Select an employee from the list.'"></p>
-
-            <div class="mt-3 overflow-hidden rounded-md border border-border bg-smoke dark:border-gray-800 dark:bg-gray-950">
-                <video x-ref="video" autoplay muted playsinline class="aspect-video w-full -scale-x-100 object-cover"></video>
-                <canvas x-ref="canvas" class="hidden"></canvas>
-            </div>
-
-            <div class="mt-3 grid grid-cols-2 gap-2">
-                <button type="button" @click="startCamera()" class="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border px-3 text-sm font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
-                    <span data-lucide="eye" class="h-4 w-4"></span>
-                    Camera
-                </button>
-                <button type="button" @click="capture()" class="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border px-3 text-sm font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
-                    <span data-lucide="user" class="h-4 w-4"></span>
-                    Capture
-                </button>
-            </div>
-
-            <p class="mt-2 text-xs text-muted" x-text="message"></p>
-            <p class="mt-1 text-xs text-muted" x-show="latitude && longitude">GPS: <span x-text="latitude"></span>, <span x-text="longitude"></span></p>
-
-            <div class="mt-4 grid grid-cols-2 gap-2">
-                <form method="POST" action="{{ route('admin.attendance.time-in') }}" @submit="prepareSubmit">
-                    @csrf
-                    <input type="hidden" name="user_id" x-model="employeeId">
-                    <input type="hidden" name="latitude" x-model="latitude">
-                    <input type="hidden" name="longitude" x-model="longitude">
-                    <input type="hidden" name="face_image" x-model="faceImage">
-                    <button :disabled="!canSubmit" class="h-9 w-full rounded-md bg-primary text-sm font-medium text-white disabled:opacity-50">Time In</button>
-                </form>
-
-                <form method="POST" action="{{ route('admin.attendance.time-out') }}" @submit="prepareSubmit">
-                    @csrf
-                    <input type="hidden" name="user_id" x-model="employeeId">
-                    <input type="hidden" name="latitude" x-model="latitude">
-                    <input type="hidden" name="longitude" x-model="longitude">
-                    <input type="hidden" name="face_image" x-model="faceImage">
-                    <button :disabled="!canSubmit" class="h-9 w-full rounded-md border border-border text-sm font-medium hover:bg-smoke disabled:opacity-50 dark:border-gray-800 dark:hover:bg-gray-950">Time Out</button>
-                </form>
-            </div>
-        </div>
-    </div>
-
     <div class="rounded-lg border border-border bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-        <div class="border-b border-border px-4 py-3 dark:border-gray-800">
-            <h2 class="text-base font-semibold">Attendance Logs</h2>
+        <div class="flex flex-col gap-1 border-b border-border px-4 py-3 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-between">
+            <h2 class="text-base font-semibold">
+                {{ $dateFrom === $dateTo ? \Illuminate\Support\Carbon::parse($dateFrom)->format('M d, Y') : \Illuminate\Support\Carbon::parse($dateFrom)->format('M d, Y').' - '.\Illuminate\Support\Carbon::parse($dateTo)->format('M d, Y') }} Logs
+            </h2>
+            <p class="text-sm text-muted">{{ $records->total() }} record{{ $records->total() === 1 ? '' : 's' }}</p>
         </div>
         <div class="overflow-x-auto">
             <table class="w-full text-left text-sm">
                 <thead class="border-b border-border bg-smoke text-xs uppercase text-muted dark:border-gray-800 dark:bg-gray-950">
-                    <tr><th class="px-4 py-3">Date</th><th class="px-4 py-3">Employee</th><th class="px-4 py-3">Time In</th><th class="px-4 py-3">Time Out</th><th class="px-4 py-3">GPS</th></tr>
+                    <tr>
+                        <th class="px-4 py-3">Employee</th>
+                        <th class="px-4 py-3">Branch</th>
+                        <th class="px-4 py-3">Clock In</th>
+                        <th class="px-4 py-3">Time In Proof</th>
+                        <th class="px-4 py-3">Clock Out</th>
+                        <th class="px-4 py-3">Time Out Proof</th>
+                        <th class="px-4 py-3">GPS</th>
+                    </tr>
                 </thead>
                 <tbody class="divide-y divide-border dark:divide-gray-800">
                     @forelse($records as $record)
                         <tr>
-                            <td class="px-4 py-3">{{ $record->work_date->format('M d, Y') }}</td>
-                            <td class="px-4 py-3">{{ $record->user?->name }}</td>
-                            <td class="px-4 py-3">{{ $record->time_in?->format('h:i A') ?? '-' }}</td>
-                            <td class="px-4 py-3">{{ $record->time_out?->format('h:i A') ?? '-' }}</td>
+                            <td class="px-4 py-3">
+                                <p class="font-medium">{{ $record->employee?->name ?? 'Deleted employee' }}</p>
+                                <p class="text-xs text-muted">{{ $record->employee?->username ?? 'N/A' }}</p>
+                            </td>
+                            <td class="px-4 py-3">{{ $record->branch?->name ?? 'N/A' }}</td>
+                            <td class="px-4 py-3">{{ implode(', ', $record->clock_in ?? []) ?: '-' }}</td>
+                            <td class="px-4 py-3">
+                                <div class="flex flex-wrap gap-2">
+                                    @forelse($record->clock_in_photos ?? [] as $index => $photo)
+                                        @php($proofUrl = asset('storage/'.$photo))
+                                        <div class="w-24 overflow-hidden rounded-md border border-border bg-white dark:border-gray-800 dark:bg-gray-950">
+                                            <button
+                                                type="button"
+                                                @click="proofOpen = true; proofUrl = @js($proofUrl); proofTitle = @js(($record->employee?->name ?? 'Employee').' Time In '.(($record->clock_in[$index] ?? '') ?: '#'.($index + 1)))"
+                                                class="block w-full"
+                                            >
+                                                <img src="{{ $proofUrl }}" alt="Time in proof {{ $index + 1 }}" class="h-16 w-full object-cover">
+                                            </button>
+                                            <div class="flex border-t border-border dark:border-gray-800">
+                                                <button
+                                                    type="button"
+                                                    @click="proofOpen = true; proofUrl = @js($proofUrl); proofTitle = @js(($record->employee?->name ?? 'Employee').' Time In '.(($record->clock_in[$index] ?? '') ?: '#'.($index + 1)))"
+                                                    class="inline-flex h-7 flex-1 items-center justify-center gap-1 text-xs font-medium hover:bg-smoke dark:hover:bg-gray-900"
+                                                >
+                                                    <span data-lucide="eye" class="h-3.5 w-3.5"></span>
+                                                    View
+                                                </button>
+                                                <a
+                                                    href="{{ $proofUrl }}"
+                                                    target="_blank"
+                                                    rel="noopener"
+                                                    class="inline-flex h-7 w-8 items-center justify-center border-l border-border hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-900"
+                                                    title="Open proof"
+                                                    aria-label="Open time in proof {{ $index + 1 }}"
+                                                >
+                                                    <span data-lucide="external-link" class="h-3.5 w-3.5"></span>
+                                                </a>
+                                            </div>
+                                        </div>
+                                    @empty
+                                        <span class="text-xs text-muted">No time-in proof</span>
+                                    @endforelse
+                                </div>
+                            </td>
+                            <td class="px-4 py-3">{{ implode(', ', $record->clock_out ?? []) ?: '-' }}</td>
+                            <td class="px-4 py-3">
+                                <div class="flex flex-wrap gap-2">
+                                    @forelse($record->clock_out_photos ?? [] as $index => $photo)
+                                        @php($proofUrl = asset('storage/'.$photo))
+                                        <div class="w-24 overflow-hidden rounded-md border border-border bg-white dark:border-gray-800 dark:bg-gray-950">
+                                            <button
+                                                type="button"
+                                                @click="proofOpen = true; proofUrl = @js($proofUrl); proofTitle = @js(($record->employee?->name ?? 'Employee').' Time Out '.(($record->clock_out[$index] ?? '') ?: '#'.($index + 1)))"
+                                                class="block w-full"
+                                            >
+                                                <img src="{{ $proofUrl }}" alt="Time out proof {{ $index + 1 }}" class="h-16 w-full object-cover">
+                                            </button>
+                                            <div class="flex border-t border-border dark:border-gray-800">
+                                                <button
+                                                    type="button"
+                                                    @click="proofOpen = true; proofUrl = @js($proofUrl); proofTitle = @js(($record->employee?->name ?? 'Employee').' Time Out '.(($record->clock_out[$index] ?? '') ?: '#'.($index + 1)))"
+                                                    class="inline-flex h-7 flex-1 items-center justify-center gap-1 text-xs font-medium hover:bg-smoke dark:hover:bg-gray-900"
+                                                >
+                                                    <span data-lucide="eye" class="h-3.5 w-3.5"></span>
+                                                    View
+                                                </button>
+                                                <a
+                                                    href="{{ $proofUrl }}"
+                                                    target="_blank"
+                                                    rel="noopener"
+                                                    class="inline-flex h-7 w-8 items-center justify-center border-l border-border hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-900"
+                                                    title="Open proof"
+                                                    aria-label="Open time out proof {{ $index + 1 }}"
+                                                >
+                                                    <span data-lucide="external-link" class="h-3.5 w-3.5"></span>
+                                                </a>
+                                            </div>
+                                        </div>
+                                    @empty
+                                        <span class="text-xs text-muted">No time-out proof</span>
+                                    @endforelse
+                                </div>
+                            </td>
                             <td class="px-4 py-3 text-xs text-muted">
-                                @if($record->time_in_latitude && $record->time_in_longitude)
-                                    {{ $record->time_in_latitude }}, {{ $record->time_in_longitude }}
+                                @php($location = ($record->clock_in_locations[0] ?? null) ?: ($record->clock_out_locations[0] ?? null))
+                                @if($location)
+                                    {{ $location['latitude'] ?? '' }}, {{ $location['longitude'] ?? '' }}
                                 @else
                                     -
                                 @endif
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="5" class="px-4 py-10 text-center text-muted">No attendance logs yet.</td></tr>
+                        <tr><td colspan="7" class="px-4 py-10 text-center text-muted">No attendance logs for this date.</td></tr>
                     @endforelse
                 </tbody>
             </table>
         </div>
         <div class="border-t border-border px-4 py-3 dark:border-gray-800">{{ $records->links() }}</div>
     </div>
+
+    <div x-cloak x-show="proofOpen" x-transition class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+        <div @click.outside="proofOpen = false" class="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white p-4 shadow-2xl dark:bg-gray-900">
+            <div class="mb-3 flex items-center justify-between gap-3">
+                <h2 class="min-w-0 truncate text-base font-semibold" x-text="proofTitle || 'Attendance Proof'"></h2>
+                <button type="button" @click="proofOpen = false" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
+                    <span data-lucide="x" class="h-4 w-4"></span>
+                </button>
+            </div>
+            <img :src="proofUrl" alt="Attendance proof" class="max-h-[75vh] w-full rounded-md object-contain">
+        </div>
+    </div>
 </div>
-
-<script>
-function attendanceCapture() {
-    return {
-        employeeId: '',
-        employeeName: '',
-        latitude: '',
-        longitude: '',
-        faceImage: '',
-        message: 'Camera and GPS are required.',
-        get canSubmit() {
-            return this.employeeId && this.latitude && this.longitude && this.faceImage;
-        },
-        selectEmployee(id, name) {
-            this.employeeId = id;
-            this.employeeName = name;
-            this.message = 'Open camera, allow GPS, then capture.';
-            this.locate();
-        },
-        async startCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
-                this.$refs.video.srcObject = stream;
-                this.message = 'Camera ready. Capture face before submitting.';
-            } catch (error) {
-                this.message = 'Camera permission is required.';
-            }
-        },
-        locate() {
-            if (!navigator.geolocation) {
-                this.message = 'GPS is not supported by this browser.';
-                return;
-            }
-
-            navigator.geolocation.getCurrentPosition(
-                position => {
-                    this.latitude = position.coords.latitude.toFixed(7);
-                    this.longitude = position.coords.longitude.toFixed(7);
-                },
-                () => this.message = 'Location permission is required.',
-                { enableHighAccuracy: true, timeout: 12000 }
-            );
-        },
-        capture() {
-            const video = this.$refs.video;
-            if (!video.videoWidth) {
-                this.message = 'Open the camera first.';
-                return;
-            }
-
-            const canvas = this.$refs.canvas;
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            canvas.getContext('2d').drawImage(video, 0, 0);
-            this.faceImage = canvas.toDataURL('image/jpeg', 0.88);
-            this.locate();
-            this.message = 'Face captured.';
-        },
-        prepareSubmit(event) {
-            if (!this.canSubmit) {
-                event.preventDefault();
-                this.message = 'Select employee, capture face, and allow GPS first.';
-            }
-        },
-    };
-}
-</script>
 @endsection

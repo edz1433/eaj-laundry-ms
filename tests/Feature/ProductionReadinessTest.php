@@ -3,6 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\Branch;
+use App\Models\Customer;
+use App\Models\JobOrder;
+use App\Models\Payment;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Support\Menu;
@@ -93,8 +96,13 @@ class ProductionReadinessTest extends TestCase
             'admin.cycles.index',
             'admin.payments.index',
             'admin.receivables.index',
+            'admin.expenses.index',
+            'admin.petty-cash.index',
+            'admin.z-readings.index',
             'admin.inventory.index',
+            'admin.employees.index',
             'admin.attendance.index',
+            'admin.daily-tasks.index',
             'admin.reports.index',
             'admin.sms-logs.index',
             'admin.billing.index',
@@ -104,5 +112,177 @@ class ProductionReadinessTest extends TestCase
                 ->get(route($route))
                 ->assertOk();
         }
+    }
+
+    public function test_filterable_admin_modules_apply_search_status_and_branch_filters(): void
+    {
+        SystemSetting::query()->create([
+            'business_name' => 'EAJ Laundry',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'primary_color' => '#0EA5E9',
+            'is_completed' => true,
+        ]);
+
+        $mainBranch = Branch::query()->create([
+            'name' => 'Main Branch',
+            'code' => 'MAIN',
+            'address' => 'Manila',
+            'contact_number' => '09171234567',
+            'is_active' => true,
+        ]);
+        $hubBranch = Branch::query()->create([
+            'name' => 'Delivery Hub',
+            'code' => 'HUB',
+            'address' => 'Makati',
+            'contact_number' => '09170000000',
+            'is_active' => true,
+        ]);
+        $superAdmin = User::factory()->create(['role' => 'super_admin']);
+        $mainUser = User::factory()->create([
+            'name' => 'Alice Filter',
+            'role' => 'cashier',
+            'branch_id' => $mainBranch->id,
+            'status' => 'active',
+        ]);
+        $hubUser = User::factory()->create([
+            'name' => 'Bob Hidden',
+            'role' => 'cashier',
+            'branch_id' => $hubBranch->id,
+            'status' => 'active',
+        ]);
+        $mainCustomer = Customer::query()->create([
+            'branch_id' => $mainBranch->id,
+            'name' => 'Main Customer',
+            'phone' => '09171111111',
+            'billing_type' => 'regular',
+            'is_active' => true,
+        ]);
+        $hubCustomer = Customer::query()->create([
+            'branch_id' => $hubBranch->id,
+            'name' => 'Hub Customer',
+            'phone' => '09172222222',
+            'billing_type' => 'regular',
+            'is_active' => true,
+        ]);
+
+        JobOrder::query()->create([
+            'branch_id' => $mainBranch->id,
+            'customer_id' => $mainCustomer->id,
+            'job_order_number' => 'JO-FILTER-MAIN',
+            'status' => 'pending',
+            'subtotal' => 0,
+            'discount' => 0,
+            'tax' => 0,
+            'total' => 0,
+            'paid_amount' => 0,
+            'balance' => 0,
+        ]);
+        JobOrder::query()->create([
+            'branch_id' => $hubBranch->id,
+            'customer_id' => $hubCustomer->id,
+            'job_order_number' => 'JO-FILTER-HUB',
+            'status' => 'pending',
+            'subtotal' => 0,
+            'discount' => 0,
+            'tax' => 0,
+            'total' => 0,
+            'paid_amount' => 0,
+            'balance' => 0,
+        ]);
+
+        $this->actingAs($superAdmin)
+            ->get(route('admin.branches.index', ['search' => 'Delivery']))
+            ->assertOk()
+            ->assertSee('Delivery Hub')
+            ->assertDontSee('Main Branch');
+
+        $this->actingAs($superAdmin)
+            ->get(route('admin.users.index', ['branch_id' => $mainBranch->id, 'search' => 'Alice']))
+            ->assertOk()
+            ->assertSee($mainUser->email)
+            ->assertDontSee($hubUser->email);
+
+        $this->actingAs($superAdmin)
+            ->get(route('admin.cycles.index', ['branch_id' => $mainBranch->id, 'search' => 'FILTER']))
+            ->assertOk()
+            ->assertSee('JO-FILTER-MAIN')
+            ->assertDontSee('JO-FILTER-HUB');
+    }
+
+    public function test_system_assistant_is_role_and_branch_scoped(): void
+    {
+        SystemSetting::query()->create([
+            'business_name' => 'EAJ Laundry',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'primary_color' => '#0EA5E9',
+            'is_completed' => true,
+        ]);
+
+        $branchA = Branch::query()->create(['name' => 'Branch A', 'code' => 'A', 'is_active' => true]);
+        $branchB = Branch::query()->create(['name' => 'Branch B', 'code' => 'B', 'is_active' => true]);
+        $customerA = Customer::query()->create(['branch_id' => $branchA->id, 'name' => 'A Customer', 'billing_type' => 'regular', 'is_active' => true]);
+        $customerB = Customer::query()->create(['branch_id' => $branchB->id, 'name' => 'B Customer', 'billing_type' => 'regular', 'is_active' => true]);
+        $manager = User::factory()->create(['role' => 'branch_manager', 'branch_id' => $branchA->id]);
+        $cashier = User::factory()->create(['role' => 'cashier', 'branch_id' => $branchA->id]);
+        $superAdmin = User::factory()->create(['role' => 'super_admin']);
+
+        Payment::query()->create([
+            'branch_id' => $branchA->id,
+            'customer_id' => $customerA->id,
+            'received_by' => $manager->id,
+            'payment_number' => 'PAY-A-001',
+            'payment_type' => 'cash',
+            'amount' => 100,
+            'paid_at' => today(),
+        ]);
+        Payment::query()->create([
+            'branch_id' => $branchB->id,
+            'customer_id' => $customerB->id,
+            'received_by' => $superAdmin->id,
+            'payment_number' => 'PAY-B-001',
+            'payment_type' => 'cash',
+            'amount' => 900,
+            'paid_at' => today(),
+        ]);
+
+        $payload = [
+            'preset' => 'daily_sales',
+            'branch_id' => $branchB->id,
+            'date_range' => today()->toDateString().' to '.today()->toDateString(),
+        ];
+
+        $this->actingAs($manager)
+            ->postJson(route('dashboard.assistant'), $payload)
+            ->assertOk()
+            ->assertJsonPath('scope', 'Branch A')
+            ->assertJsonPath('metrics.0.value', 'PHP 100.00');
+
+        $this->actingAs($superAdmin)
+            ->postJson(route('dashboard.assistant'), $payload)
+            ->assertOk()
+            ->assertJsonPath('scope', 'Branch B')
+            ->assertJsonPath('metrics.0.value', 'PHP 900.00');
+
+        $this->actingAs($superAdmin)
+            ->postJson(route('dashboard.assistant'), [
+                'question' => 'What is the payment method breakdown?',
+                'branch_id' => $branchB->id,
+                'date_range' => today()->toDateString().' to '.today()->toDateString(),
+            ])
+            ->assertOk()
+            ->assertJsonPath('preset', 'payment_mix')
+            ->assertJsonPath('scope', 'Branch B');
+
+        $this->actingAs($cashier)
+            ->postJson(route('dashboard.assistant'), $payload)
+            ->assertForbidden();
     }
 }

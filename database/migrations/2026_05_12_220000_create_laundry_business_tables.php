@@ -99,7 +99,7 @@ return new class extends Migration
                 $table->foreignId('customer_id')->nullable()->constrained('customers')->nullOnDelete();
                 $table->foreignId('received_by')->nullable()->constrained('users')->nullOnDelete();
                 $table->string('payment_number')->unique();
-                $table->enum('payment_type', ['cash', 'gcash', 'credit', 'po', 'monthly_billing']);
+                $table->enum('payment_type', ['cash', 'gcash', 'bank', 'credit', 'po', 'monthly_billing']);
                 $table->decimal('amount', 12, 2);
                 $table->text('remarks')->nullable();
                 $table->timestamp('paid_at')->nullable();

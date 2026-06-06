@@ -3,7 +3,24 @@
 @section('page_title', 'Cycle Monitoring')
 
 @section('content')
-<div class="space-y-4">
+@php($dateRangeValue = request('date_range') ?: ($dateFrom && $dateTo ? $dateFrom.' to '.$dateTo : ''))
+<div
+    x-data="{
+        dateRange: @js($dateRangeValue),
+        init() {
+            this.$nextTick(() => {
+                if (!window.flatpickr) return;
+                window.flatpickr(this.$refs.dateRange, {
+                    mode: 'range',
+                    dateFormat: 'Y-m-d',
+                    defaultDate: this.dateRange ? this.dateRange.split(' to ') : null,
+                    onClose: (dates, value) => this.dateRange = value,
+                });
+            });
+        },
+    }"
+    class="space-y-4"
+>
     <div class="flex flex-col gap-3 rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:flex-row sm:items-center sm:justify-between">
         <div>
             <div class="mb-2 inline-flex items-center gap-1.5 rounded-md border border-border bg-smoke px-2.5 py-1 text-xs font-medium text-muted dark:border-gray-800 dark:bg-gray-900">
@@ -14,14 +31,46 @@
             <p class="text-sm text-muted">Start active laundry cycles, then mark orders ready or completed.</p>
         </div>
 
-        <form method="GET" class="flex gap-2">
+        <form method="GET" class="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(12rem,1fr)_12rem_14rem_16rem_12rem_auto]">
+            <div class="flex h-9 items-center gap-2 rounded-md border border-border bg-white px-3 dark:border-gray-800 dark:bg-gray-950">
+                <span data-lucide="search" class="h-4 w-4 text-muted"></span>
+                <input name="search" value="{{ request('search') }}" type="search" placeholder="Search job or customer..." class="w-full bg-transparent text-sm outline-none">
+            </div>
+            @if($canChooseBranch)
+                <select name="branch_id" onchange="this.form.customer_id.value = ''; this.form.submit()" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
+                    <option value="">All branches</option>
+                    @foreach($branches as $branch)
+                        <option value="{{ $branch->id }}" @selected((int) $selectedBranchId === (int) $branch->id)>{{ $branch->name }}</option>
+                    @endforeach
+                </select>
+            @endif
+            <select name="customer_id" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
+                <option value="">All customers</option>
+                @if($canChooseBranch && ! $selectedBranchId)
+                    <option value="" disabled>Select a branch to list customers</option>
+                @elseif($customers->isEmpty())
+                    <option value="" disabled>No customers in selected branch</option>
+                @else
+                    <optgroup label="{{ $canChooseBranch ? 'Customers in selected branch' : 'Customers in your branch' }}">
+                        @foreach($customers as $customer)
+                            <option value="{{ $customer->id }}" @selected((int) $selectedCustomerId === (int) $customer->id)>
+                                {{ $customer->name }}
+                            </option>
+                        @endforeach
+                    </optgroup>
+                @endif
+            </select>
+            <div class="flex h-9 items-center gap-2 rounded-md border border-border bg-white px-3 dark:border-gray-800 dark:bg-gray-950">
+                <span data-lucide="calendar" class="h-4 w-4 text-muted"></span>
+                <input x-ref="dateRange" x-model="dateRange" name="date_range" type="text" placeholder="Date range" autocomplete="off" class="w-full bg-transparent text-sm outline-none">
+            </div>
             <select name="status" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
                 <option value="">All active</option>
                 @foreach($statusFilters as $status)
                     <option value="{{ $status }}" @selected(request('status') === $status)>{{ $statusLabels[$status] ?? str_replace('_', ' ', ucfirst($status)) }}</option>
                 @endforeach
             </select>
-            <button class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
+            <button type="submit" title="Filter" aria-label="Filter cycles" class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
                 <span data-lucide="search" class="h-4 w-4"></span>
             </button>
         </form>

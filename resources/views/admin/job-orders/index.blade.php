@@ -3,6 +3,7 @@
 @section('page_title', 'Job Orders')
 
 @section('content')
+@php($dateRangeValue = request('date_range') ?: ($dateFrom && $dateTo ? $dateFrom.' to '.$dateTo : ''))
 <style>
     @media print {
         body * { visibility: hidden !important; }
@@ -19,7 +20,27 @@
         .receipt-print-actions { display: none !important; }
     }
 </style>
-<div x-data="{ statusOpen: null, cancelOpen: null, paymentOpen: null, receiptOpen: null }" class="space-y-4">
+<div
+    x-data="{
+        statusOpen: null,
+        cancelOpen: null,
+        paymentOpen: null,
+        receiptOpen: null,
+        dateRange: @js($dateRangeValue),
+        init() {
+            this.$nextTick(() => {
+                if (!window.flatpickr) return;
+                window.flatpickr(this.$refs.dateRange, {
+                    mode: 'range',
+                    dateFormat: 'Y-m-d',
+                    defaultDate: this.dateRange ? this.dateRange.split(' to ') : null,
+                    onClose: (dates, value) => this.dateRange = value,
+                });
+            });
+        },
+    }"
+    class="space-y-4"
+>
     <div class="flex flex-col gap-3 rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:flex-row sm:items-center sm:justify-between">
         <div>
             <div class="mb-2 inline-flex items-center gap-1.5 rounded-md border border-border bg-smoke px-2.5 py-1 text-xs font-medium text-muted dark:border-gray-800 dark:bg-gray-900">
@@ -27,16 +48,18 @@
                 {{ in_array(auth()->user()->role, ['branch_manager', 'cashier'], true) ? 'Cashier POS' : 'Laundry operations' }}
             </div>
             <h1 class="text-xl font-semibold">Job Orders</h1>
-            <p class="text-sm text-muted">Create and monitor laundry transactions.</p>
+            <p class="text-sm text-muted">Create, filter, review, and edit laundry transactions.</p>
         </div>
-        <a href="{{ route('admin.job-orders.create') }}" class="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-white hover:opacity-90">
-            <span data-lucide="plus" class="h-4 w-4"></span>
-            New POS
-        </a>
+        <div class="flex flex-wrap gap-2">
+            <a href="{{ route('admin.job-orders.create') }}" class="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-white hover:opacity-90">
+                <span data-lucide="plus" class="h-4 w-4"></span>
+                New POS
+            </a>
+        </div>
     </div>
 
     <div class="rounded-lg border border-border bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-        <form method="GET" class="grid grid-cols-1 gap-2 md:grid-cols-[1fr_12rem_auto]">
+        <form method="GET" class="grid grid-cols-1 gap-2 md:grid-cols-[1fr_12rem_16rem_auto]">
             <input name="search" value="{{ request('search') }}" placeholder="Search JO or customer..." class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
             <select name="status" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
                 <option value="">All status</option>
@@ -44,6 +67,10 @@
                     <option value="{{ $status }}" @selected(request('status') === $status)>{{ \App\Support\StatusBadge::label($status) }}</option>
                 @endforeach
             </select>
+            <div class="flex h-9 items-center gap-2 rounded-md border border-border bg-white px-3 dark:border-gray-800 dark:bg-gray-950">
+                <span data-lucide="calendar" class="h-4 w-4 text-muted"></span>
+                <input x-ref="dateRange" x-model="dateRange" name="date_range" type="text" placeholder="Date range" autocomplete="off" class="w-full bg-transparent text-sm outline-none">
+            </div>
             <button class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-smoke dark:border-gray-800"><span data-lucide="search" class="h-4 w-4"></span></button>
         </form>
     </div>
@@ -59,7 +86,10 @@
                 @forelse($orders as $order)
                     <tr>
                         <td class="px-4 py-3 font-medium">{{ $order->job_order_number }}</td>
-                        <td class="px-4 py-3">{{ $order->customer?->name }}</td>
+                        <td class="px-4 py-3">
+                            <p>{{ $order->customer?->name }}</p>
+                            <span class="{{ \App\Support\StatusBadge::classes($order->transaction_type === 'delivery' ? 'delivery' : 'regular') }}">{{ $order->transaction_type === 'delivery' ? 'Delivery' : 'Walk-in' }}</span>
+                        </td>
                         <td class="px-4 py-3">{{ $order->branch?->name }}</td>
                         <td class="px-4 py-3">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $order->total, 2) }}</td>
                         <td class="px-4 py-3">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $order->balance, 2) }}</td>
@@ -67,6 +97,9 @@
                         <td class="px-4 py-3 text-right">
                             <a href="{{ route('admin.job-orders.show', $order) }}" title="View" aria-label="View job order" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border hover:bg-smoke dark:border-gray-700 dark:hover:bg-gray-800">
                                 <span data-lucide="eye" class="h-4 w-4"></span>
+                            </a>
+                            <a href="{{ route('admin.job-orders.edit', $order) }}" title="Edit" aria-label="Edit job order" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border hover:bg-smoke dark:border-gray-700 dark:hover:bg-gray-800">
+                                <span data-lucide="settings" class="h-4 w-4"></span>
                             </a>
                             <button type="button" @click="paymentOpen = {{ $order->id }}" title="Payment history" aria-label="View payment history" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border hover:bg-smoke dark:border-gray-700 dark:hover:bg-gray-800">
                                 <span data-lucide="payments" class="h-4 w-4"></span>
@@ -121,19 +154,20 @@
                 <div class="overflow-hidden rounded-md border border-border dark:border-gray-800">
                     <table class="w-full text-left text-sm">
                         <thead class="bg-smoke text-xs uppercase text-muted dark:bg-gray-950">
-                            <tr><th class="px-3 py-2">Payment #</th><th class="px-3 py-2">Type</th><th class="px-3 py-2">Received By</th><th class="px-3 py-2">Date</th><th class="px-3 py-2 text-right">Amount</th></tr>
+                            <tr><th class="px-3 py-2">Payment #</th><th class="px-3 py-2">Type</th><th class="px-3 py-2">Reference</th><th class="px-3 py-2">Received By</th><th class="px-3 py-2">Date</th><th class="px-3 py-2 text-right">Amount</th></tr>
                         </thead>
                         <tbody class="divide-y divide-border dark:divide-gray-800">
                             @forelse($order->payments->sortByDesc('paid_at') as $payment)
                                 <tr>
                                     <td class="px-3 py-2 font-medium">{{ $payment->payment_number }}</td>
                                     <td class="px-3 py-2"><span class="{{ \App\Support\StatusBadge::classes($payment->payment_type) }}">{{ \App\Support\StatusBadge::label($payment->payment_type) }}</span></td>
+                                    <td class="px-3 py-2">{{ $payment->reference_no ?: 'N/A' }}</td>
                                     <td class="px-3 py-2">{{ $payment->receiver?->name ?? 'N/A' }}</td>
                                     <td class="px-3 py-2">{{ $payment->paid_at?->format('M d, Y h:i A') }}</td>
                                     <td class="px-3 py-2 text-right font-semibold">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $payment->amount, 2) }}</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="5" class="px-3 py-8 text-center text-muted">No payments recorded.</td></tr>
+                                <tr><td colspan="6" class="px-3 py-8 text-center text-muted">No payments recorded.</td></tr>
                             @endforelse
                         </tbody>
                     </table>

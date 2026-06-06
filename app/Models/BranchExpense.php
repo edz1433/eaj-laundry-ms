@@ -9,6 +9,7 @@ class BranchExpense extends Model
     protected $fillable = [
         'branch_id',
         'category',
+        'expense_type',
         'title',
         'amount',
         'expense_date',

@@ -3,11 +3,14 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Branch;
+use App\Models\Customer;
 use App\Models\CycleRecord;
 use App\Models\JobOrder;
 use App\Support\Activity;
 use App\Support\SmsNotifier;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
@@ -29,6 +32,12 @@ class CycleController extends Controller
 
     public function index(Request $request)
     {
+        $user = $request->user();
+        $canChooseBranch = $user->canManageAllBranches();
+        $selectedBranchId = $canChooseBranch ? ($request->integer('branch_id') ?: null) : $user->branch_id;
+        $selectedCustomerId = $request->integer('customer_id') ?: null;
+        $customerBranchId = $selectedBranchId ?: (! $canChooseBranch ? $user->branch_id : null);
+        [$dateFrom, $dateTo] = $this->dateRange($request);
         $statusLabels = [
             'pending' => 'Pending',
             'washing' => 'Washing',
@@ -38,13 +47,43 @@ class CycleController extends Controller
             'completed' => 'Completed',
         ];
 
+        $branches = Branch::query()
+            ->where('is_active', true)
+            ->when(! $canChooseBranch, fn ($query) => $query->whereKey($user->branch_id))
+            ->orderBy('name')
+            ->get();
+
+        $customers = Customer::query()
+            ->with('branch:id,name')
+            ->where('is_active', true)
+            ->when($customerBranchId, fn ($query) => $query->where('branch_id', $customerBranchId))
+            ->when(! $customerBranchId, fn ($query) => $query->whereRaw('1 = 0'))
+            ->orderBy('name')
+            ->get(['id', 'branch_id', 'name', 'phone']);
+
+        if ($selectedCustomerId && ! $customers->contains('id', $selectedCustomerId)) {
+            $selectedCustomerId = null;
+        }
+
         $orders = JobOrder::with(['branch', 'customer', 'cycles.user'])
             ->whereNotIn('status', ['completed', 'cancelled'])
-            ->when(! in_array($request->user()->role, ['super_admin', 'admin'], true), fn ($q) => $q->where('branch_id', $request->user()->branch_id))
+            ->when($selectedBranchId, fn ($q) => $q->where('branch_id', $selectedBranchId))
+            ->when(! $canChooseBranch, fn ($q) => $q->where('branch_id', $user->branch_id))
+            ->when($selectedCustomerId, fn ($q) => $q->where('customer_id', $selectedCustomerId))
+            ->when($dateFrom, fn ($q) => $q->whereDate('created_at', '>=', $dateFrom))
+            ->when($dateTo, fn ($q) => $q->whereDate('created_at', '<=', $dateTo))
             ->when(
                 in_array($request->status, self::ACTIVE_STATUSES, true),
                 fn ($q) => $q->where('status', $request->status)
             )
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $search = $request->search;
+
+                $q->where(fn ($query) => $query
+                    ->where('job_order_number', 'like', "%{$search}%")
+                    ->orWhereHas('customer', fn ($query) => $query->where('name', 'like', "%{$search}%")
+                        ->orWhere('phone', 'like', "%{$search}%")));
+            })
             ->latest()
             ->paginate(12)
             ->withQueryString();
@@ -55,8 +94,13 @@ class CycleController extends Controller
             ->whereNotNull('machine_number')
             ->whereNull('ended_at')
             ->whereHas('jobOrder', function ($query) use ($request) {
+                $user = $request->user();
+                $canChooseBranch = $user->canManageAllBranches();
+                $selectedBranchId = $canChooseBranch ? ($request->integer('branch_id') ?: null) : $user->branch_id;
+
                 $query->whereNotIn('status', ['completed', 'cancelled'])
-                    ->when(! in_array($request->user()->role, ['super_admin', 'admin'], true), fn ($query) => $query->where('branch_id', $request->user()->branch_id));
+                    ->when($selectedBranchId, fn ($query) => $query->where('branch_id', $selectedBranchId))
+                    ->when(! $canChooseBranch, fn ($query) => $query->where('branch_id', $user->branch_id));
             })
             ->get()
             ->groupBy(fn (CycleRecord $cycle) => $cycle->jobOrder?->branch_id)
@@ -69,7 +113,14 @@ class CycleController extends Controller
 
         return view('admin.cycles.index', [
             'activeMachinesByBranch' => $activeMachinesByBranch,
+            'branches' => $branches,
+            'canChooseBranch' => $canChooseBranch,
+            'customers' => $customers,
             'orders' => $orders,
+            'dateFrom' => $dateFrom,
+            'dateTo' => $dateTo,
+            'selectedBranchId' => $selectedBranchId,
+            'selectedCustomerId' => $selectedCustomerId,
             'statusFilters' => self::ACTIVE_STATUSES,
             'cycleTypes' => self::CYCLE_TYPES,
             'completionStatuses' => self::COMPLETION_STATUSES,
@@ -227,5 +278,35 @@ class CycleController extends Controller
         }
 
         abort_unless((int) $jobOrder->branch_id === (int) $request->user()->branch_id, 403);
+    }
+
+    private function dateRange(Request $request): array
+    {
+        if ($request->filled('date_range')) {
+            $parts = preg_split('/\s+to\s+/', $request->date_range);
+
+            return [
+                $this->parseDate($parts[0] ?? null),
+                $this->parseDate($parts[1] ?? $parts[0] ?? null),
+            ];
+        }
+
+        return [
+            $this->parseDate($request->date_from),
+            $this->parseDate($request->date_to ?: $request->date),
+        ];
+    }
+
+    private function parseDate(?string $date): ?string
+    {
+        if (! $date) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($date)->toDateString();
+        } catch (\Throwable) {
+            return null;
+        }
     }
 }

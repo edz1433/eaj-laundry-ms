@@ -130,6 +130,7 @@ class SystemSettingController extends Controller
 
             $validated['business_logo'] = $request->file('business_logo')
                 ->store('settings', 'public');
+            Storage::disk('public')->setVisibility($validated['business_logo'], 'public');
         }
 
         $branch->update([

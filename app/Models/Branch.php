@@ -48,4 +48,9 @@ class Branch extends Model
     {
         return $this->hasMany(BranchExpense::class);
     }
+
+    public function dailyTasks()
+    {
+        return $this->hasMany(DailyTask::class);
+    }
 }

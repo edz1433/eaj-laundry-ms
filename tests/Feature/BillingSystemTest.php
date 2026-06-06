@@ -91,7 +91,7 @@ class BillingSystemTest extends TestCase
             ->assertDontSee('Subscription Expired');
     }
 
-    public function test_expired_trial_allows_unpaid_branch_with_warning_but_locks_missing_subscription(): void
+    public function test_expired_trial_allows_unpaid_and_missing_subscription_with_warnings(): void
     {
         $this->completeSystemSettings();
         $this->expiredTrial(graceDays: 2);
@@ -145,8 +145,9 @@ class BillingSystemTest extends TestCase
 
         $this->actingAs($missingUser)
             ->get(route('dashboard'))
-            ->assertStatus(402)
-            ->assertSee('No active branch subscription was found for May 2026');
+            ->assertOk()
+            ->assertSee('No active branch subscription was found for May 2026')
+            ->assertSee('Subscription Warning');
     }
 
     public function test_unpaid_branch_can_access_with_dismissible_warning(): void
@@ -178,7 +179,67 @@ class BillingSystemTest extends TestCase
             ->assertSee('Dismiss billing notice');
     }
 
-    public function test_suspended_current_subscription_locks_branch_users(): void
+    public function test_paid_current_subscription_suppresses_warning_even_with_other_open_record(): void
+    {
+        $this->completeSystemSettings();
+        $this->expiredTrial(graceDays: 0);
+        $this->travelTo(Carbon::parse('2026-06-15'));
+
+        $branch = $this->createBranch('Paid Current Branch', 'PCUR');
+        $user = User::factory()->create([
+            'role' => 'admin',
+            'branch_id' => $branch->id,
+            'access' => ['dashboard'],
+        ]);
+
+        BranchBillingRecord::create([
+            'branch_id' => $branch->id,
+            'billing_month' => 6,
+            'billing_year' => 2026,
+            'subscription_start_date' => '2026-06-01',
+            'subscription_end_date' => '2026-06-30',
+            'amount' => 1000,
+            'due_date' => '2026-06-05',
+            'status' => 'paid',
+        ]);
+
+        BranchBillingRecord::create([
+            'branch_id' => $branch->id,
+            'billing_month' => 6,
+            'billing_year' => 2026,
+            'subscription_start_date' => '2026-06-01',
+            'subscription_end_date' => '2026-06-30',
+            'amount' => 500,
+            'due_date' => '2026-06-05',
+            'status' => 'unpaid',
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertDontSee('Subscription Warning')
+            ->assertDontSee('Branch subscription has expired')
+            ->assertDontSee('Your branch subscription');
+    }
+
+    public function test_global_admin_without_branch_does_not_show_branch_expired_warning(): void
+    {
+        $this->completeSystemSettings();
+        $this->expiredTrial(graceDays: 0);
+
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'branch_id' => null,
+            'access' => ['dashboard'],
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertDontSee('Branch subscription has expired');
+    }
+
+    public function test_suspended_current_subscription_warns_branch_users_without_locking(): void
     {
         $this->completeSystemSettings();
         $this->expiredTrial(graceDays: 0);
@@ -202,8 +263,9 @@ class BillingSystemTest extends TestCase
 
         $this->actingAs($user)
             ->get(route('dashboard'))
-            ->assertStatus(402)
-            ->assertSee('Branch subscription has been suspended');
+            ->assertOk()
+            ->assertSee('Branch subscription has been suspended')
+            ->assertSee('Subscription Warning');
     }
 
     public function test_super_admin_generates_billing_and_updates_only_unpaid_records(): void
@@ -224,11 +286,10 @@ class BillingSystemTest extends TestCase
         $this->actingAs($superAdmin)
             ->post(route('admin.billing.generate'), [
                 'branches' => [$branch->id],
-                'billing_year' => 2026,
-                'start_month' => 5,
-                'end_month' => 6,
+                'subscription_start_date' => '2026-05-01',
+                'subscription_end_date' => '2026-06-30',
                 'prices' => [$branch->id => 1500],
-                'due_day' => 10,
+                'due_date' => '2026-05-10',
                 'update_unpaid' => 1,
             ])
             ->assertRedirect();
@@ -243,10 +304,48 @@ class BillingSystemTest extends TestCase
 
         $this->assertDatabaseHas('branch_billing_records', [
             'branch_id' => $branch->id,
-            'billing_month' => 6,
+            'billing_month' => 5,
             'billing_year' => 2026,
+            'subscription_start_date' => '2026-05-01 00:00:00',
+            'subscription_end_date' => '2026-06-30 00:00:00',
             'amount' => 1500,
             'status' => 'unpaid',
+        ]);
+    }
+
+    public function test_super_admin_can_generate_multiple_exact_date_subscriptions_in_same_month(): void
+    {
+        $this->completeSystemSettings();
+        $superAdmin = User::factory()->create(['role' => 'super_admin']);
+        $branch = $this->createBranch('Date Range Branch', 'DATE');
+
+        foreach ([
+            ['start' => '2026-06-01', 'end' => '2026-06-15', 'amount' => 700],
+            ['start' => '2026-06-16', 'end' => '2026-06-30', 'amount' => 800],
+        ] as $range) {
+            $this->actingAs($superAdmin)
+                ->post(route('admin.billing.generate'), [
+                    'branches' => [$branch->id],
+                    'subscription_start_date' => $range['start'],
+                    'subscription_end_date' => $range['end'],
+                    'prices' => [$branch->id => $range['amount']],
+                    'due_date' => $range['start'],
+                ])
+                ->assertRedirect();
+        }
+
+        $this->assertSame(2, BranchBillingRecord::where('branch_id', $branch->id)->count());
+        $this->assertDatabaseHas('branch_billing_records', [
+            'branch_id' => $branch->id,
+            'subscription_start_date' => '2026-06-01 00:00:00',
+            'subscription_end_date' => '2026-06-15 00:00:00',
+            'amount' => 700,
+        ]);
+        $this->assertDatabaseHas('branch_billing_records', [
+            'branch_id' => $branch->id,
+            'subscription_start_date' => '2026-06-16 00:00:00',
+            'subscription_end_date' => '2026-06-30 00:00:00',
+            'amount' => 800,
         ]);
     }
 
@@ -269,6 +368,8 @@ class BillingSystemTest extends TestCase
             'payment_method' => 'Bank Transfer',
             'reference_no' => 'REF-001',
             'remarks' => 'Paid in full',
+            'add_to_expenses' => '1',
+            'paid_from' => 'store_cash',
         ];
 
         $this->actingAs($superAdmin)
@@ -291,8 +392,38 @@ class BillingSystemTest extends TestCase
             'amount' => 1200,
             'source' => 'branch_billing',
             'source_id' => $record->id,
+            'paid_from' => 'store_cash',
             'created_by' => $superAdmin->id,
         ]);
+    }
+
+    public function test_marking_billing_paid_can_skip_branch_expense(): void
+    {
+        $this->completeSystemSettings();
+        $superAdmin = User::factory()->create(['role' => 'super_admin']);
+        $branch = $this->createBranch('No Expense Branch', 'NOEXP');
+        $record = BranchBillingRecord::create([
+            'branch_id' => $branch->id,
+            'billing_month' => 5,
+            'billing_year' => 2026,
+            'amount' => 1200,
+            'due_date' => '2026-05-05',
+            'status' => 'unpaid',
+        ]);
+
+        $this->actingAs($superAdmin)
+            ->patch(route('admin.billing.records.mark-paid', $record), [
+                'payment_date' => '2026-05-12',
+                'payment_method' => 'GCash',
+                'reference_no' => 'GCASH-001',
+            ])
+            ->assertRedirect();
+
+        $record->refresh();
+
+        $this->assertSame('paid', $record->status);
+        $this->assertNull($record->expense_id);
+        $this->assertSame(0, BranchExpense::where('source', 'branch_billing')->where('source_id', $record->id)->count());
     }
 
     private function completeSystemSettings(): void

@@ -15,6 +15,7 @@ use App\Models\SystemSetting;
 use App\Support\Activity;
 use App\Support\SmsNotifier;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -26,20 +27,26 @@ class JobOrderController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
+        [$dateFrom, $dateTo] = $this->dateRange($request);
 
         $orders = JobOrder::with(['branch.setting', 'customer', 'items', 'payments.receiver'])
             ->when($user->role !== 'super_admin' && $user->role !== 'admin', fn ($q) => $q->where('branch_id', $user->branch_id))
             ->when(in_array($request->status, self::STATUSES, true), fn ($q) => $q->where('status', $request->status))
+            ->when($dateFrom, fn ($q) => $q->whereDate('created_at', '>=', $dateFrom))
+            ->when($dateTo, fn ($q) => $q->whereDate('created_at', '<=', $dateTo))
             ->when($request->filled('search'), function ($q) use ($request) {
                 $search = $request->search;
-                $q->where('job_order_number', 'like', "%{$search}%")
-                    ->orWhereHas('customer', fn ($q) => $q->where('name', 'like', "%{$search}%"));
+                $q->where(fn ($query) => $query
+                    ->where('job_order_number', 'like', "%{$search}%")
+                    ->orWhereHas('customer', fn ($q) => $q->where('name', 'like', "%{$search}%")));
             })
             ->latest()
-            ->paginate(10)
+            ->paginate(15)
             ->withQueryString();
 
         return view('admin.job-orders.index', [
+            'dateFrom' => $dateFrom,
+            'dateTo' => $dateTo,
             'orders' => $orders,
             'statuses' => self::STATUSES,
         ]);
@@ -103,6 +110,57 @@ class JobOrderController extends Controller
         return view('admin.job-orders.create', compact('branches', 'customers', 'services', 'branchId', 'selectedCustomerId'));
     }
 
+    public function edit(Request $request, JobOrder $jobOrder)
+    {
+        $this->authorizeJobOrder($request, $jobOrder);
+
+        $jobOrder->load(['branch', 'customer', 'items.service', 'payments']);
+        $user = $request->user();
+        $branchId = $jobOrder->branch_id;
+        $serviceIds = $jobOrder->items->pluck('laundry_service_id')->filter()->unique()->values();
+
+        $customers = Customer::query()
+            ->where('branch_id', $branchId)
+            ->where(fn ($query) => $query
+                ->where('is_active', true)
+                ->orWhere('id', $jobOrder->customer_id))
+            ->orderBy('name')
+            ->get(['id', 'branch_id', 'name', 'phone', 'billing_type']);
+
+        $services = LaundryService::query()
+            ->where('branch_id', $branchId)
+            ->where(fn ($query) => $query
+                ->where('is_active', true)
+                ->orWhereIn('id', $serviceIds))
+            ->orderBy('name')
+            ->get(['id', 'branch_id', 'name', 'pricing_type', 'price']);
+
+        $branches = Branch::query()
+            ->whereKey($branchId)
+            ->get();
+
+        $selectedCustomerId = (string) $jobOrder->customer_id;
+        $initialItems = $jobOrder->items
+            ->map(fn ($item) => [
+                'id' => $item->laundry_service_id,
+                'name' => $item->description,
+                'quantity' => (float) $item->quantity,
+                'price' => (float) $item->unit_price,
+            ])
+            ->values();
+
+        return view('admin.job-orders.edit', [
+            'branches' => $branches,
+            'customers' => $customers,
+            'services' => $services,
+            'branchId' => $branchId,
+            'selectedCustomerId' => $selectedCustomerId,
+            'jobOrder' => $jobOrder,
+            'initialItems' => $initialItems,
+            'statuses' => self::STATUSES,
+        ]);
+    }
+
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -115,7 +173,9 @@ class JobOrderController extends Controller
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
             'discount' => ['nullable', 'numeric', 'min:0'],
             'paid_amount' => ['nullable', 'numeric', 'min:0'],
-            'payment_type' => ['nullable', Rule::in(['cash', 'gcash', 'credit', 'po', 'monthly_billing'])],
+            'payment_type' => ['nullable', Rule::in(['cash', 'gcash', 'bank', 'credit', 'po', 'monthly_billing'])],
+            'payment_reference_no' => ['nullable', 'string', 'max:255'],
+            'transaction_type' => ['nullable', Rule::in(['walk_in', 'delivery'])],
             'notes' => ['nullable', 'string'],
         ]);
 
@@ -162,6 +222,7 @@ class JobOrderController extends Controller
                 'created_by' => $user->id,
                 'job_order_number' => $this->nextJobOrderNumber((int) $validated['branch_id']),
                 'status' => 'pending',
+                'transaction_type' => $validated['transaction_type'] ?? 'walk_in',
                 'subtotal' => $subtotal,
                 'discount' => $discount,
                 'tax' => $tax,
@@ -202,6 +263,7 @@ class JobOrderController extends Controller
                     'received_by' => $user->id,
                     'payment_number' => $this->nextPaymentNumber(),
                     'payment_type' => $validated['payment_type'] ?? 'cash',
+                    'reference_no' => $validated['payment_reference_no'] ?? null,
                     'amount' => $paid,
                     'paid_at' => now(),
                 ]);
@@ -224,6 +286,117 @@ class JobOrderController extends Controller
             ], $order->branch_id);
 
             return redirect()->route('admin.job-orders.index')->with('success', 'Job order created successfully.');
+        });
+    }
+
+    public function update(Request $request, JobOrder $jobOrder)
+    {
+        $this->authorizeJobOrder($request, $jobOrder);
+
+        $validated = $request->validate([
+            'customer_id' => ['required', 'exists:customers,id'],
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.laundry_service_id' => ['required', 'exists:laundry_services,id'],
+            'items.*.description' => ['required', 'string', 'max:255'],
+            'items.*.quantity' => ['required', 'numeric', 'min:0.01'],
+            'items.*.unit_price' => ['required', 'numeric', 'min:0'],
+            'discount' => ['nullable', 'numeric', 'min:0'],
+            'status' => ['required', Rule::in(self::STATUSES)],
+            'transaction_type' => ['nullable', Rule::in(['walk_in', 'delivery'])],
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        $customerBelongsToBranch = Customer::query()
+            ->whereKey($validated['customer_id'])
+            ->where('branch_id', $jobOrder->branch_id)
+            ->exists();
+
+        if (! $customerBelongsToBranch) {
+            throw ValidationException::withMessages([
+                'customer_id' => 'Please choose a customer from this job order branch.',
+            ]);
+        }
+
+        $serviceIds = collect($validated['items'])->pluck('laundry_service_id')->unique()->values();
+        $servicesBelongToBranch = LaundryService::query()
+            ->whereIn('id', $serviceIds)
+            ->where('branch_id', $jobOrder->branch_id)
+            ->count() === $serviceIds->count();
+
+        if (! $servicesBelongToBranch) {
+            throw ValidationException::withMessages([
+                'items' => 'All services must belong to this job order branch.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($request, $validated, $jobOrder) {
+            $settings = SystemSetting::current();
+            $subtotal = collect($validated['items'])->sum(fn ($item) => (float) $item['quantity'] * (float) $item['unit_price']);
+            $discount = min((float) ($validated['discount'] ?? 0), $subtotal);
+            $taxable = max($subtotal - $discount, 0);
+            $tax = $settings->vat_enabled ? ($taxable * ((float) $settings->vat_rate / 100)) : 0;
+            $total = $taxable + $tax;
+            $paid = (float) $jobOrder->payments()->sum('amount');
+
+            $jobOrder->items()->delete();
+            foreach ($validated['items'] as $item) {
+                $jobOrder->items()->create([
+                    'laundry_service_id' => $item['laundry_service_id'],
+                    'description' => $item['description'],
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $item['unit_price'],
+                    'total' => (float) $item['quantity'] * (float) $item['unit_price'],
+                ]);
+            }
+
+            $jobOrder->update([
+                'customer_id' => $validated['customer_id'],
+                'status' => $validated['status'],
+                'transaction_type' => $validated['transaction_type'] ?? 'walk_in',
+                'subtotal' => $subtotal,
+                'discount' => $discount,
+                'tax' => $tax,
+                'total' => $total,
+                'paid_amount' => $paid,
+                'balance' => max($total - $paid, 0),
+                'notes' => $validated['notes'] ?? null,
+                'completed_at' => $validated['status'] === 'completed' ? ($jobOrder->completed_at ?: now()) : null,
+            ]);
+
+            Payment::query()
+                ->where('job_order_id', $jobOrder->id)
+                ->update([
+                    'customer_id' => $jobOrder->customer_id,
+                    'branch_id' => $jobOrder->branch_id,
+                ]);
+
+            CustomerLedger::query()
+                ->where('job_order_id', $jobOrder->id)
+                ->where('entry_type', 'debit')
+                ->update([
+                    'branch_id' => $jobOrder->branch_id,
+                    'customer_id' => $jobOrder->customer_id,
+                    'amount' => $total,
+                    'description' => "Edited job order {$jobOrder->job_order_number}",
+                ]);
+
+            CustomerLedger::query()
+                ->where('job_order_id', $jobOrder->id)
+                ->where('entry_type', 'credit')
+                ->update([
+                    'branch_id' => $jobOrder->branch_id,
+                    'customer_id' => $jobOrder->customer_id,
+                ]);
+
+            Activity::log($request, 'job_order_updated', $jobOrder, [
+                'job_order_number' => $jobOrder->job_order_number,
+                'status' => $jobOrder->status,
+                'total' => $jobOrder->total,
+            ], $jobOrder->branch_id);
+
+            return redirect()
+                ->route('admin.job-orders.show', $jobOrder)
+                ->with('success', 'Job order updated successfully.');
         });
     }
 
@@ -362,6 +535,36 @@ class JobOrderController extends Controller
             $inventory->update([
                 'quantity' => (float) $inventory->quantity - $quantity,
             ]);
+        }
+    }
+
+    private function dateRange(Request $request): array
+    {
+        if ($request->filled('date_range')) {
+            $parts = preg_split('/\s+to\s+/', $request->date_range);
+
+            return [
+                $this->parseDate($parts[0] ?? null),
+                $this->parseDate($parts[1] ?? $parts[0] ?? null),
+            ];
+        }
+
+        return [
+            $this->parseDate($request->date_from),
+            $this->parseDate($request->date_to),
+        ];
+    }
+
+    private function parseDate(?string $date): ?string
+    {
+        if (! $date) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($date)->toDateString();
+        } catch (\Throwable) {
+            return null;
         }
     }
 }

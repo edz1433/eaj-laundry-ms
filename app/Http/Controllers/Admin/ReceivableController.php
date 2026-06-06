@@ -76,7 +76,8 @@ class ReceivableController extends Controller
         }
 
         $validated = $request->validate([
-            'payment_type' => ['required', Rule::in(['cash', 'gcash', 'credit', 'po', 'monthly_billing'])],
+            'payment_type' => ['required', Rule::in(['cash', 'gcash', 'bank', 'credit', 'po', 'monthly_billing'])],
+            'reference_no' => ['nullable', 'string', 'max:255'],
             'amount' => ['required', 'numeric', 'min:0.01', 'max:'.$jobOrder->balance],
             'remarks' => ['nullable', 'string', 'max:500'],
         ]);
@@ -91,6 +92,7 @@ class ReceivableController extends Controller
                 'received_by' => $request->user()->id,
                 'payment_number' => $this->nextPaymentNumber(),
                 'payment_type' => $validated['payment_type'],
+                'reference_no' => $validated['reference_no'] ?? null,
                 'amount' => $amount,
                 'remarks' => $validated['remarks'] ?? null,
                 'paid_at' => now(),

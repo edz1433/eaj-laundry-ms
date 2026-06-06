@@ -15,16 +15,57 @@
 </head>
 
 <body class="app-surface text-dark dark:text-gray-100">
-    <div x-data="{ sidebarOpen: false }" class="min-h-screen flex">
+    @php($sidebarAutoCollapsed = request()->routeIs('admin.job-orders.create'))
+
+    <div
+        x-data="{
+            sidebarOpen: false,
+            desktopSidebarOpen: @js(! $sidebarAutoCollapsed),
+            isDesktop: false,
+            init() {
+                const query = window.matchMedia('(min-width: 1280px)');
+                const sync = () => {
+                    this.isDesktop = query.matches;
+                    if (this.isDesktop) {
+                        this.sidebarOpen = false;
+                    }
+                };
+
+                sync();
+                query.addEventListener('change', sync);
+            },
+            toggleSidebar() {
+                if (this.isDesktop) {
+                    this.desktopSidebarOpen = ! this.desktopSidebarOpen;
+                    return;
+                }
+
+                this.sidebarOpen = true;
+            },
+            closeSidebar() {
+                if (this.isDesktop) {
+                    this.desktopSidebarOpen = false;
+                    return;
+                }
+
+                this.sidebarOpen = false;
+            },
+            get sidebarVisible() {
+                return this.sidebarOpen || (this.isDesktop && this.desktopSidebarOpen);
+            }
+        }"
+        class="min-h-screen flex"
+    >
 
         @include('partials.sidebar')
 
-        <div class="flex-1 flex flex-col min-w-0 lg:pl-64">
+        <div class="flex-1 flex flex-col min-w-0 transition-[padding] duration-200" :class="desktopSidebarOpen ? 'xl:pl-64' : 'xl:pl-0'">
             @include('partials.topbar')
 
             <main class="flex-1 p-4 sm:p-6 lg:p-8">
                 @include('partials.alerts')
                 @include('partials.billing-banner')
+                @include('partials.assistant-widget')
 
                 {{ $slot ?? '' }}
 

@@ -28,10 +28,15 @@
             </div>
             <h1 class="text-xl font-semibold tracking-normal">{{ $order->customer?->name }}</h1>
             <p class="text-sm text-muted">{{ $order->branch?->name }} - {{ $order->created_at->format('M d, Y h:i A') }}</p>
+            <span class="{{ \App\Support\StatusBadge::classes($order->transaction_type === 'delivery' ? 'delivery' : 'regular') }}">{{ $order->transaction_type === 'delivery' ? 'Delivery' : 'Walk-in' }}</span>
         </div>
 
         <div class="flex gap-2">
             <a href="{{ route('admin.job-orders.index') }}" class="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">Back</a>
+            <a href="{{ route('admin.job-orders.edit', $order) }}" class="inline-flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
+                <span data-lucide="settings" class="h-4 w-4"></span>
+                Edit
+            </a>
             <button type="button" @click="receiptOpen = true" class="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-white hover:opacity-90">
                 <span data-lucide="receipt" class="h-4 w-4"></span>
                 Receipt
@@ -71,7 +76,7 @@
                         <div class="flex items-center justify-between rounded-md border border-border p-3 text-sm dark:border-gray-800">
                             <div>
                                 <p class="font-medium">{{ $payment->payment_number }}</p>
-                                <p class="text-xs text-muted">{{ \App\Support\StatusBadge::label($payment->payment_type) }} - {{ $payment->paid_at?->format('M d, Y h:i A') }}</p>
+                                <p class="text-xs text-muted">{{ \App\Support\StatusBadge::label($payment->payment_type) }} - {{ $payment->paid_at?->format('M d, Y h:i A') }}{{ $payment->reference_no ? ' - Ref: '.$payment->reference_no : '' }}</p>
                             </div>
                             <span class="font-semibold">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $payment->amount, 2) }}</span>
                         </div>

@@ -22,6 +22,7 @@ class BillingController extends Controller
             'branch_id' => ['nullable', 'exists:branches,id'],
             'billing_year' => ['nullable', 'integer', 'min:2000', 'max:2100'],
             'billing_month' => ['nullable', 'integer', 'min:1', 'max:12'],
+            'subscription_date' => ['nullable', 'date'],
             'status' => ['nullable', Rule::in(['unpaid', 'paid', 'overdue', 'suspended'])],
         ]);
 
@@ -31,7 +32,11 @@ class BillingController extends Controller
             ->when($filters['branch_id'] ?? null, fn ($query, $branchId) => $query->where('branch_id', $branchId))
             ->when($filters['billing_year'] ?? null, fn ($query, $year) => $query->where('billing_year', $year))
             ->when($filters['billing_month'] ?? null, fn ($query, $month) => $query->where('billing_month', $month))
+            ->when($filters['subscription_date'] ?? null, fn ($query, $date) => $query
+                ->whereDate('subscription_start_date', '<=', $date)
+                ->whereDate('subscription_end_date', '>=', $date))
             ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
+            ->orderByDesc('subscription_end_date')
             ->orderByDesc('billing_year')
             ->orderByDesc('billing_month')
             ->latest('id')
@@ -79,12 +84,11 @@ class BillingController extends Controller
         $validated = $request->validate([
             'branches' => ['required', 'array', 'min:1'],
             'branches.*' => ['integer', 'exists:branches,id'],
-            'billing_year' => ['required', 'integer', 'min:2000', 'max:2100'],
-            'start_month' => ['required', 'integer', 'min:1', 'max:12'],
-            'end_month' => ['required', 'integer', 'min:1', 'max:12', 'gte:start_month'],
+            'subscription_start_date' => ['required', 'date'],
+            'subscription_end_date' => ['required', 'date', 'after_or_equal:subscription_start_date'],
             'prices' => ['required', 'array'],
             'prices.*' => ['required', 'numeric', 'min:0'],
-            'due_day' => ['required', 'integer', 'min:1', 'max:31'],
+            'due_date' => ['required', 'date', 'after_or_equal:subscription_start_date'],
             'update_unpaid' => ['nullable', 'boolean'],
         ]);
 
@@ -101,42 +105,49 @@ class BillingController extends Controller
         $skipped = 0;
 
         DB::transaction(function () use ($validated, $request, &$created, &$updated, &$skipped): void {
+            $startDate = Carbon::parse($validated['subscription_start_date'])->toDateString();
+            $endDate = Carbon::parse($validated['subscription_end_date'])->toDateString();
+            $dueDate = Carbon::parse($validated['due_date'])->toDateString();
+            $billingMonth = Carbon::parse($startDate)->month;
+            $billingYear = Carbon::parse($startDate)->year;
+
             foreach ($validated['branches'] as $branchId) {
                 $amount = (float) ($validated['prices'][$branchId] ?? 0);
 
-                for ($month = (int) $validated['start_month']; $month <= (int) $validated['end_month']; $month++) {
-                    $dueDate = $this->dueDate((int) $validated['billing_year'], $month, (int) $validated['due_day']);
-                    $record = BranchBillingRecord::where('branch_id', $branchId)
-                        ->where('billing_year', $validated['billing_year'])
-                        ->where('billing_month', $month)
-                        ->first();
+                $record = BranchBillingRecord::where('branch_id', $branchId)
+                    ->whereDate('subscription_start_date', $startDate)
+                    ->whereDate('subscription_end_date', $endDate)
+                    ->first();
 
-                    if (! $record) {
-                        BranchBillingRecord::create([
-                            'branch_id' => $branchId,
-                            'billing_year' => $validated['billing_year'],
-                            'billing_month' => $month,
-                            'amount' => $amount,
-                            'due_date' => $dueDate,
-                            'status' => 'unpaid',
-                            'generated_by' => $request->user()->id,
-                        ]);
-                        $created++;
-                        continue;
-                    }
-
-                    if (($validated['update_unpaid'] ?? false) && $record->status !== 'paid') {
-                        $record->update([
-                            'amount' => $amount,
-                            'due_date' => $dueDate,
-                            'generated_by' => $request->user()->id,
-                        ]);
-                        $updated++;
-                        continue;
-                    }
-
-                    $skipped++;
+                if (! $record) {
+                    BranchBillingRecord::create([
+                        'branch_id' => $branchId,
+                        'billing_year' => $billingYear,
+                        'billing_month' => $billingMonth,
+                        'subscription_start_date' => $startDate,
+                        'subscription_end_date' => $endDate,
+                        'amount' => $amount,
+                        'due_date' => $dueDate,
+                        'status' => 'unpaid',
+                        'generated_by' => $request->user()->id,
+                    ]);
+                    $created++;
+                    continue;
                 }
+
+                if (($validated['update_unpaid'] ?? false) && $record->status !== 'paid') {
+                    $record->update([
+                        'billing_year' => $billingYear,
+                        'billing_month' => $billingMonth,
+                        'amount' => $amount,
+                        'due_date' => $dueDate,
+                        'generated_by' => $request->user()->id,
+                    ]);
+                    $updated++;
+                    continue;
+                }
+
+                $skipped++;
             }
         });
 
@@ -167,15 +178,18 @@ class BillingController extends Controller
             'payment_method' => ['required', 'string', 'max:100'],
             'reference_no' => ['nullable', 'string', 'max:255'],
             'remarks' => ['nullable', 'string'],
+            'add_to_expenses' => ['nullable', 'boolean'],
+            'paid_from' => ['nullable', Rule::in(['store_cash', 'owner'])],
         ]);
 
         DB::transaction(function () use ($billingRecord, $validated, $request): void {
             $billingRecord->loadMissing('branch');
 
             $expense = $billingRecord->expense;
+            $shouldAddExpense = (bool) ($validated['add_to_expenses'] ?? false);
 
-            if (! $expense) {
-                $expense = BranchExpense::firstOrCreate(
+            if ($shouldAddExpense) {
+                $expense = BranchExpense::updateOrCreate(
                     [
                         'source' => 'branch_billing',
                         'source_id' => $billingRecord->id,
@@ -183,15 +197,20 @@ class BillingController extends Controller
                     [
                         'branch_id' => $billingRecord->branch_id,
                         'category' => 'System Monthly Subscription',
+                        'expense_type' => 'regular',
                         'title' => 'System Billing - '.$billingRecord->periodLabel(),
                         'amount' => $billingRecord->amount,
                         'expense_date' => $validated['payment_date'],
                         'payment_method' => $validated['payment_method'],
+                        'paid_from' => $validated['paid_from'] ?? 'store_cash',
                         'reference_no' => $validated['reference_no'] ?? null,
                         'remarks' => $validated['remarks'] ?? null,
                         'created_by' => $request->user()->id,
                     ]
                 );
+            } elseif ($expense && $expense->source === 'branch_billing') {
+                $expense->delete();
+                $expense = null;
             }
 
             $billingRecord->update([
@@ -201,7 +220,7 @@ class BillingController extends Controller
                 'reference_no' => $validated['reference_no'] ?? null,
                 'remarks' => $validated['remarks'] ?? null,
                 'paid_by' => $request->user()->id,
-                'expense_id' => $expense->id,
+                'expense_id' => $expense?->id,
             ]);
         });
 

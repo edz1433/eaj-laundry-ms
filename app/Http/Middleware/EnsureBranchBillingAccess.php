@@ -45,22 +45,57 @@ class EnsureBranchBillingAccess
         }
 
         if (! $user->branch_id) {
-            return response()->view('billing.locked', [
+            if ($user->canManageAllBranches()) {
+                return $next($request);
+            }
+
+            View::share('billingBanner', [
+                'type' => 'danger',
+                'dismissible' => false,
+                'key' => 'billing-missing-branch-'.$user->id,
                 'message' => 'Branch subscription has expired. Please contact your administrator to continue using the system.',
-            ], 402);
+            ]);
+
+            return $next($request);
         }
 
         $today = now();
-        $record = BranchBillingRecord::query()
+        $matchingRecords = BranchBillingRecord::query()
             ->where('branch_id', $user->branch_id)
-            ->where('billing_month', (int) $today->month)
-            ->where('billing_year', (int) $today->year)
-            ->first();
+            ->where(function ($query) use ($today) {
+                $query
+                    ->where(function ($query) use ($today) {
+                        $query
+                            ->whereDate('subscription_start_date', '<=', $today->toDateString())
+                            ->whereDate('subscription_end_date', '>=', $today->toDateString());
+                    })
+                    ->orWhere(function ($query) use ($today) {
+                        $query
+                            ->whereNull('subscription_start_date')
+                            ->whereNull('subscription_end_date')
+                            ->where('billing_month', (int) $today->month)
+                            ->where('billing_year', (int) $today->year);
+                    });
+            })
+            ->orderByRaw("CASE status WHEN 'paid' THEN 0 WHEN 'unpaid' THEN 1 WHEN 'overdue' THEN 2 WHEN 'suspended' THEN 3 ELSE 4 END")
+            ->latest('subscription_end_date')
+            ->latest('due_date');
+
+        if ((clone $matchingRecords)->where('status', 'paid')->exists()) {
+            return $next($request);
+        }
+
+        $record = $matchingRecords->first();
 
         if (! $record) {
-            return response()->view('billing.locked', [
+            View::share('billingBanner', [
+                'type' => 'danger',
+                'dismissible' => false,
+                'key' => 'billing-missing-'.$user->branch_id.'-'.$today->year.'-'.$today->month,
                 'message' => 'No active branch subscription was found for '.$today->format('F Y').'. Please contact your administrator to continue using the system.',
-            ], 402);
+            ]);
+
+            return $next($request);
         }
 
         if ($record->status === 'paid') {
@@ -68,9 +103,14 @@ class EnsureBranchBillingAccess
         }
 
         if ($record->status === 'suspended') {
-            return response()->view('billing.locked', [
+            View::share('billingBanner', [
+                'type' => 'danger',
+                'dismissible' => false,
+                'key' => 'billing-'.$record->id.'-'.$record->status,
                 'message' => 'Branch subscription has been suspended. Please contact your administrator to continue using the system.',
-            ], 402);
+            ]);
+
+            return $next($request);
         }
 
         if ($record->status === 'unpaid' && $record->due_date->toDateString() < $today->toDateString()) {
@@ -79,9 +119,9 @@ class EnsureBranchBillingAccess
         }
 
         View::share('billingBanner', [
-            'type' => 'billing',
+            'type' => 'danger',
             'dismissible' => true,
-            'key' => 'billing-'.$record->branch_id.'-'.$record->billing_year.'-'.$record->billing_month.'-'.$record->status,
+            'key' => 'billing-'.$record->id.'-'.$record->status,
             'message' => 'Your branch subscription for '.$record->periodLabel().' is '.str_replace('_', ' ', $record->status).'. Please contact your administrator.',
         ]);
 

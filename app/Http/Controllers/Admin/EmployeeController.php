@@ -3,10 +3,11 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AttendanceEmployee;
 use App\Models\Branch;
-use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 
 class EmployeeController extends Controller
 {
@@ -14,20 +15,19 @@ class EmployeeController extends Controller
     {
         $user = $request->user();
 
-        $employees = User::query()
+        $employees = AttendanceEmployee::query()
             ->with('branch')
-            ->visibleTo($user)
-            ->whereIn('role', ['admin', 'branch_manager', 'cashier', 'staff'])
-            ->when($user->role === 'branch_manager', fn ($query) => $query->where('branch_id', $user->branch_id))
+            ->when(! $user->isAdmin(), fn ($query) => $query->where('branch_id', $user->branch_id))
             ->when($request->filled('branch_id') && $user->isAdmin(), fn ($query) => $query->where('branch_id', $request->branch_id))
             ->when($request->filled('search'), function ($query) use ($request) {
                 $search = $request->search;
                 $query->where(fn ($query) => $query
-                    ->where('name', 'like', "%{$search}%")
+                    ->where('first_name', 'like', "%{$search}%")
+                    ->orWhere('last_name', 'like', "%{$search}%")
                     ->orWhere('username', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%"));
+                    ->orWhere('phone', 'like', "%{$search}%"));
             })
-            ->orderBy('name')
+            ->orderBy('first_name')
             ->paginate(12)
             ->withQueryString();
 
@@ -40,58 +40,75 @@ class EmployeeController extends Controller
         return view('admin.employees.index', compact('branches', 'employees'));
     }
 
-    public function update(Request $request, User $employee)
+    public function store(Request $request)
+    {
+        $validated = $request->validate($this->rules($request));
+        $validated = $this->normalizeBranch($request, $validated);
+        $validated['password'] = Hash::make($validated['password'] ?? 'password123');
+        $validated['daily_rate'] = 0;
+        $validated['status'] = $request->boolean('is_active', true) ? 'active' : 'inactive';
+
+        AttendanceEmployee::create($validated);
+
+        return back()->with('success', 'Employee added successfully.');
+    }
+
+    public function update(Request $request, AttendanceEmployee $employee)
     {
         $this->authorizeEmployee($request, $employee);
 
-        $validated = $request->validate([
-            'monthly_salary' => ['nullable', 'numeric', 'min:0'],
-            'face_image' => ['nullable', 'string'],
-            'face_descriptors' => ['nullable', 'json'],
-        ]);
+        $validated = $request->validate($this->rules($request, $employee));
+        $validated = $this->normalizeBranch($request, $validated);
+        $validated['daily_rate'] = 0;
+        $validated['status'] = $request->boolean('is_active') ? 'active' : 'inactive';
 
-        $updates = [
-            'monthly_salary' => $validated['monthly_salary'] ?? 0,
-        ];
-
-        if (! empty($validated['face_image']) && ! empty($validated['face_descriptors'])) {
-            $descriptors = json_decode($validated['face_descriptors'], true);
-
-            abort_unless(is_array($descriptors) && count($descriptors) >= 4, 422, 'Register at least 4 face samples.');
-
-            foreach ($descriptors as $descriptor) {
-                abort_unless(is_array($descriptor) && count($descriptor) === 128, 422, 'Invalid face descriptor.');
-            }
-
-            $updates['face_image_path'] = $this->storeFaceImage($validated['face_image'], 'employee-faces');
-            $updates['face_descriptors'] = $descriptors;
-            $updates['face_enrolled_at'] = now();
+        if (! empty($validated['password'])) {
+            $validated['password'] = Hash::make($validated['password']);
+        } else {
+            unset($validated['password']);
         }
 
-        $employee->update($updates);
+        $employee->update($validated);
 
-        return back()->with('success', 'Employee profile updated successfully.');
+        return back()->with('success', 'Employee updated successfully.');
     }
 
-    private function authorizeEmployee(Request $request, User $employee): void
+    public function destroy(Request $request, AttendanceEmployee $employee)
+    {
+        $this->authorizeEmployee($request, $employee);
+        $employee->delete();
+
+        return back()->with('success', 'Employee removed successfully.');
+    }
+
+    private function rules(Request $request, ?AttendanceEmployee $employee = null): array
+    {
+        return [
+            'branch_id' => [$request->user()->isAdmin() ? 'required' : 'nullable', 'exists:branches,id'],
+            'first_name' => ['required', 'string', 'max:255'],
+            'last_name' => ['required', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:50'],
+            'username' => ['required', 'string', 'max:100', Rule::unique('attendance_employees', 'username')->ignore($employee?->id)],
+            'password' => ['nullable', 'string', 'min:6'],
+            'is_active' => ['nullable', 'boolean'],
+        ];
+    }
+
+    private function normalizeBranch(Request $request, array $validated): array
+    {
+        if (! $request->user()->isAdmin()) {
+            $validated['branch_id'] = $request->user()->branch_id;
+        }
+
+        return $validated;
+    }
+
+    private function authorizeEmployee(Request $request, AttendanceEmployee $employee): void
     {
         if ($request->user()->isAdmin()) {
             return;
         }
 
         abort_unless((int) $request->user()->branch_id === (int) $employee->branch_id, 403);
-    }
-
-    private function storeFaceImage(string $image, string $directory): string
-    {
-        abort_unless(str_starts_with($image, 'data:image/'), 422, 'Invalid face image.');
-
-        [$meta, $contents] = explode(',', $image, 2);
-        $extension = str_contains($meta, 'image/png') ? 'png' : 'jpg';
-        $path = $directory.'/'.uniqid('face_', true).'.'.$extension;
-
-        Storage::disk('public')->put($path, base64_decode($contents));
-
-        return $path;
     }
 }

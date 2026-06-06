@@ -10,7 +10,7 @@ use Illuminate\Support\Carbon;
 
 class PaymentController extends Controller
 {
-    private const PAYMENT_TYPES = ['cash', 'gcash', 'credit', 'po', 'monthly_billing'];
+    private const PAYMENT_TYPES = ['cash', 'gcash', 'bank', 'credit', 'po', 'monthly_billing'];
 
     public function index(Request $request)
     {
@@ -36,6 +36,7 @@ class PaymentController extends Controller
 
                 $query->where(function ($query) use ($search) {
                     $query->where('payment_number', 'like', "%{$search}%")
+                        ->orWhere('reference_no', 'like', "%{$search}%")
                         ->orWhereHas('jobOrder', fn ($query) => $query->where('job_order_number', 'like', "%{$search}%"))
                         ->orWhereHas('customer', fn ($query) => $query->where('name', 'like', "%{$search}%")
                             ->orWhere('phone', 'like', "%{$search}%"))
