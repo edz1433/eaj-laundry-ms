@@ -604,6 +604,57 @@ class CycleMonitoringTest extends TestCase
         $this->assertSame($productionBranch->id, $order->processing_branch_id);
     }
 
+    public function test_pos_only_prompts_for_receiving_branch_when_user_must_choose_one(): void
+    {
+        $this->completeSystemSettings();
+        $this->activeTrial();
+
+        $productionBranch = $this->createBranch([
+            'name' => 'Production Branch',
+            'code' => 'PROD-POS',
+            'branch_type' => 'full_service',
+            'machine_count' => 3,
+        ]);
+        $dropoffBranch = $this->createBranch([
+            'name' => 'Pickup Branch',
+            'code' => 'DROP-POS',
+            'branch_type' => 'pickup_dropoff',
+            'machine_count' => 0,
+        ]);
+
+        $productionCashier = User::factory()->create([
+            'role' => 'cashier',
+            'branch_id' => $productionBranch->id,
+            'access' => ['job_orders'],
+        ]);
+        $dropoffManager = User::factory()->create([
+            'role' => 'branch_manager',
+            'branch_id' => $dropoffBranch->id,
+            'access' => ['job_orders'],
+        ]);
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'branch_id' => $productionBranch->id,
+            'access' => ['job_orders'],
+        ]);
+
+        $this->actingAs($productionCashier)
+            ->get(route('admin.job-orders.create'))
+            ->assertOk()
+            ->assertDontSee('Receiving Production Branch')
+            ->assertSee('name="processing_branch_id" value="'.$productionBranch->id.'"', false);
+
+        $this->actingAs($dropoffManager)
+            ->get(route('admin.job-orders.create'))
+            ->assertOk()
+            ->assertSee('Receiving Production Branch');
+
+        $this->actingAs($admin)
+            ->get(route('admin.job-orders.create', ['branch_id' => $productionBranch->id]))
+            ->assertOk()
+            ->assertSee('Receiving Production Branch');
+    }
+
     public function test_job_order_number_does_not_duplicate_branch_code_when_prefix_matches_branch_code(): void
     {
         $this->completeSystemSettings();

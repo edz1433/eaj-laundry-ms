@@ -99,15 +99,24 @@
                         <input type="hidden" name="branch_id" value="{{ $branchId }}">
                     @endif
 
-                    <div>
-                        <label class="mb-1.5 block text-xs font-medium text-muted">Receiving Production Branch</label>
-                        <select name="processing_branch_id" x-model="processingBranchId" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950" required>
-                            <template x-for="branch in processingBranches" :key="branch.id">
-                                <option :value="branch.id" x-text="`${branch.name} - receives by QR scan`"></option>
-                            </template>
-                        </select>
-                        <p class="mt-1 text-[11px] text-muted" x-text="selectedBranch && selectedBranch.branch_type === 'pickup_dropoff' ? 'This only assigns where the laundry should be received. It enters that branch cycle after they scan the QR.' : 'Production defaults to the selected full-service branch.'"></p>
-                    </div>
+                    @php
+                        $selectedBranch = $branches->firstWhere('id', (int) $branchId);
+                        $canSelectProcessingBranch = auth()->user()->isAdmin() || $selectedBranch?->isPickupDropoff();
+                    @endphp
+
+                    @if($canSelectProcessingBranch)
+                        <div>
+                            <label class="mb-1.5 block text-xs font-medium text-muted">Receiving Production Branch</label>
+                            <select name="processing_branch_id" x-model="processingBranchId" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950" required>
+                                <template x-for="branch in processingBranches" :key="branch.id">
+                                    <option :value="branch.id" x-text="`${branch.name} - receives by QR scan`"></option>
+                                </template>
+                            </select>
+                            <p class="mt-1 text-[11px] text-muted" x-text="selectedBranch && selectedBranch.branch_type === 'pickup_dropoff' ? 'This only assigns where the laundry should be received. It enters that branch cycle after they scan the QR.' : 'Production defaults to the selected full-service branch.'"></p>
+                        </div>
+                    @else
+                        <input type="hidden" name="processing_branch_id" value="{{ $branchId }}">
+                    @endif
 
                     <div>
                         <div class="mb-1.5 flex items-center justify-between gap-2">
