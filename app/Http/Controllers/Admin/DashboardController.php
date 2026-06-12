@@ -101,7 +101,13 @@ class DashboardController extends Controller
             ->whereDate('paid_at', '>=', $dateFrom)
             ->whereDate('paid_at', '<=', $dateTo);
 
+        $collections = Payment::query()
+            ->when($branchId, fn ($query) => $query->where('collected_branch_id', $branchId))
+            ->whereDate('paid_at', '>=', $dateFrom)
+            ->whereDate('paid_at', '<=', $dateTo);
+
         $salesTotal = (float) (clone $payments)->sum('amount');
+        $collectionsTotal = (float) (clone $collections)->sum('amount');
         $ordersCount = (clone $ordersInRange)->count();
         $openOrders = (clone $orders)->whereNotIn('status', ['completed', 'cancelled'])->count();
         $readyForPickup = (clone $orders)->where('status', 'ready_for_pickup')->count();
@@ -155,6 +161,7 @@ class DashboardController extends Controller
             'generated_at' => now()->format('M d, Y h:i:s A'),
             'stats' => [
                 'sales' => $this->money($currency, $salesTotal),
+                'collections' => $this->money($currency, $collectionsTotal),
                 'orders' => number_format($ordersCount),
                 'open_orders' => number_format($openOrders),
                 'ready_for_pickup' => number_format($readyForPickup),
@@ -214,6 +221,11 @@ class DashboardController extends Controller
             ->whereDate('paid_at', '>=', $dateFrom)
             ->whereDate('paid_at', '<=', $dateTo);
 
+        $collections = Payment::query()
+            ->when($branchId, fn ($query) => $query->where('collected_branch_id', $branchId))
+            ->whereDate('paid_at', '>=', $dateFrom)
+            ->whereDate('paid_at', '<=', $dateTo);
+
         $expenses = BranchExpense::query()
             ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
             ->whereDate('expense_date', '>=', $dateFrom)
@@ -225,10 +237,10 @@ class DashboardController extends Controller
             ->whereDate('movement_date', '<=', $dateTo);
 
         $answer = match ($preset) {
-            'daily_sales' => $this->salesAssistant($payments, $orders, $currency),
-            'payment_mix' => $this->paymentMixAssistant($payments, $currency),
+            'daily_sales' => $this->salesAssistant($payments, $collections, $orders, $currency),
+            'payment_mix' => $this->paymentMixAssistant($collections, $currency),
             'expenses' => $this->expenseAssistant($expenses, $currency),
-            'cash_drawer' => $this->cashDrawerAssistant($payments, $expenses, $movements, $currency),
+            'cash_drawer' => $this->cashDrawerAssistant($collections, $expenses, $movements, $currency),
             'petty_cash' => $this->pettyCashAssistant($movements, $currency),
             'receivables' => $this->receivablesAssistant($branchId, $currency),
             'unpaid_orders' => $this->unpaidOrdersAssistant($branchId, $currency),
@@ -274,18 +286,20 @@ class DashboardController extends Controller
         };
     }
 
-    private function salesAssistant($payments, $orders, string $currency): array
+    private function salesAssistant($payments, $collections, $orders, string $currency): array
     {
         $sales = (float) (clone $payments)->sum('amount');
-        $count = (clone $payments)->count();
+        $collectionsTotal = (float) (clone $collections)->sum('amount');
+        $count = (clone $collections)->count();
         $ordersCount = (clone $orders)->count();
 
         return [
             'title' => 'Daily Sales Summary',
-            'summary' => "Collected {$this->money($currency, $sales)} from {$count} payment(s), with {$ordersCount} job order(s) created in the selected period.",
+            'summary' => "Sales ownership is {$this->money($currency, $sales)}. Physical collections counted in this branch are {$this->money($currency, $collectionsTotal)} from {$count} payment(s), with {$ordersCount} job order(s) created in the selected period.",
             'metrics' => [
-                ['label' => 'Sales', 'value' => $this->money($currency, $sales)],
-                ['label' => 'Payments', 'value' => number_format($count)],
+                ['label' => 'Sales Owned', 'value' => $this->money($currency, $sales)],
+                ['label' => 'Physical Collections', 'value' => $this->money($currency, $collectionsTotal)],
+                ['label' => 'Collection Count', 'value' => number_format($count)],
                 ['label' => 'Job Orders', 'value' => number_format($ordersCount)],
             ],
         ];
@@ -301,8 +315,8 @@ class DashboardController extends Controller
         $top = $rows->first();
 
         return [
-            'title' => 'Payment Method Mix',
-            'summary' => $top ? StatusBadge::label($top->payment_type).' is the leading payment method at '.$this->money($currency, (float) $top->total_amount).'.' : 'No payments found for the selected period.',
+            'title' => 'Physical Collection Mix',
+            'summary' => $top ? StatusBadge::label($top->payment_type).' is the leading collected payment method at '.$this->money($currency, (float) $top->total_amount).'.' : 'No payments found for the selected period.',
             'metrics' => $rows->map(fn ($row) => [
                 'label' => StatusBadge::label($row->payment_type).' ('.$row->payments_count.')',
                 'value' => $this->money($currency, (float) $row->total_amount),
@@ -339,9 +353,9 @@ class DashboardController extends Controller
 
         return [
             'title' => 'Expected Cash Drawer',
-            'summary' => 'Expected drawer is cash payments minus store-cash expenses plus deposits minus withdrawals/remittances.',
+            'summary' => 'Expected drawer uses cash physically collected in this branch, minus store-cash expenses, plus deposits, minus withdrawals/remittances.',
             'metrics' => [
-                ['label' => 'Cash Payments', 'value' => '+ '.$this->money($currency, $cash)],
+                ['label' => 'Cash Collected Here', 'value' => '+ '.$this->money($currency, $cash)],
                 ['label' => 'Store Expenses', 'value' => '- '.$this->money($currency, $storeCashExpenses)],
                 ['label' => 'Petty Cash In', 'value' => '+ '.$this->money($currency, $cashIn)],
                 ['label' => 'Petty Cash Out', 'value' => '- '.$this->money($currency, $cashOut)],
@@ -399,7 +413,11 @@ class DashboardController extends Controller
     private function activeCyclesAssistant(?int $branchId): array
     {
         $rows = JobOrder::query()
-            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->when($branchId, fn ($query) => $query->where(fn ($query) => $query
+                ->where('branch_id', $branchId)
+                ->orWhere(fn ($query) => $query
+                    ->where('processing_branch_id', $branchId)
+                    ->whereNotNull('production_accepted_at'))))
             ->whereIn('status', ['washing', 'drying', 'folding'])
             ->selectRaw('status, COUNT(*) as total')
             ->groupBy('status')
@@ -417,7 +435,13 @@ class DashboardController extends Controller
 
     private function readyPickupAssistant(?int $branchId): array
     {
-        $count = JobOrder::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->where('status', 'ready_for_pickup')->count();
+        $count = JobOrder::query()
+            ->when($branchId, fn ($query) => $query->where(fn ($query) => $query
+                ->where('branch_id', $branchId)
+                ->orWhere('release_branch_id', $branchId)
+                ->orWhere('current_branch_id', $branchId)))
+            ->where('status', 'ready_for_pickup')
+            ->count();
 
         return [
             'title' => 'Ready for Pickup',
@@ -473,6 +497,7 @@ class DashboardController extends Controller
         if (! $request->user()->canManageAllBranches()) {
             return $this->salesAssistant(
                 Payment::query()->where('branch_id', $request->user()->branch_id)->whereDate('paid_at', '>=', $dateFrom)->whereDate('paid_at', '<=', $dateTo),
+                Payment::query()->where('collected_branch_id', $request->user()->branch_id)->whereDate('paid_at', '>=', $dateFrom)->whereDate('paid_at', '<=', $dateTo),
                 JobOrder::query()->where('branch_id', $request->user()->branch_id)->whereDate('created_at', '>=', $dateFrom)->whereDate('created_at', '<=', $dateTo),
                 $currency
             );
@@ -490,7 +515,7 @@ class DashboardController extends Controller
 
         return [
             'title' => 'Branch Comparison',
-            'summary' => 'Branches are ranked by collected payments in the selected period.',
+            'summary' => 'Branches are ranked by sales-owner payments in the selected period. Use Payment Audit or Z Reading for physical collections.',
             'metrics' => $rows->map(fn ($row) => [
                 'label' => $row->name,
                 'value' => $this->money($currency, (float) $row->total_amount),
@@ -520,7 +545,12 @@ class DashboardController extends Controller
 
     private function dailyTaskAssistant(?int $branchId): array
     {
-        $tasks = DailyTask::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->where('is_active', true)->count();
+        $tasks = DailyTask::query()
+            ->when($branchId, fn ($query) => $query->where(fn ($query) => $query
+                ->whereNull('branch_id')
+                ->orWhere('branch_id', $branchId)))
+            ->where('is_active', true)
+            ->count();
         $completed = DailyTaskCompletion::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->whereDate('work_date', today())->count();
 
         return [

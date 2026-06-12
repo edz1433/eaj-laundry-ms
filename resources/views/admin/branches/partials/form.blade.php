@@ -28,6 +28,14 @@
         </div>
 
         <div class="md:col-span-2">
+            <label class="mb-1.5 block text-sm font-medium">Branch Type</label>
+            <select name="branch_type" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950" required>
+                <option value="full_service" @selected(old('branch_type', $branch->branch_type ?? 'full_service') === 'full_service')>Full Service - with production/machines</option>
+                <option value="pickup_dropoff" @selected(old('branch_type', $branch->branch_type ?? 'full_service') === 'pickup_dropoff')>Pickup & Drop-off Only - no machines</option>
+            </select>
+        </div>
+
+        <div class="md:col-span-2">
             <label class="mb-1.5 block text-sm font-medium">Address</label>
             <textarea name="address" rows="3" class="w-full rounded-md border border-border bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950">{{ old('address', $branch->address) }}</textarea>
         </div>

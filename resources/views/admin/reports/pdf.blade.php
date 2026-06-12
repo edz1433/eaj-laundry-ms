@@ -118,6 +118,48 @@
         </tbody>
     </table>
 
+    <h2>Physical Collections by Branch</h2>
+    <table class="report">
+        <thead>
+            <tr><th>Collected At</th><th class="right">Payments</th><th class="right">Cash</th><th class="right">GCash</th><th class="right">Bank</th><th class="right">Collected</th></tr>
+        </thead>
+        <tbody>
+            @forelse($collectionsByBranch as $row)
+                <tr>
+                    <td>{{ $row->branch_name }}</td>
+                    <td class="right">{{ $row->payments_count }}</td>
+                    <td class="right">{{ $currency }} {{ number_format((float) $row->cash_amount, 2) }}</td>
+                    <td class="right">{{ $currency }} {{ number_format((float) $row->gcash_amount, 2) }}</td>
+                    <td class="right">{{ $currency }} {{ number_format((float) $row->bank_amount, 2) }}</td>
+                    <td class="right">{{ $currency }} {{ number_format((float) $row->total_amount, 2) }}</td>
+                </tr>
+            @empty
+                <tr><td colspan="6" class="empty">No branch collections found.</td></tr>
+            @endforelse
+        </tbody>
+    </table>
+
+    <h2>Cross-Branch Collections for Remittance</h2>
+    <table class="report">
+        <thead>
+            <tr><th>Payment</th><th>JO #</th><th>Sales Branch</th><th>Collected At</th><th>Status</th><th class="right">Amount</th></tr>
+        </thead>
+        <tbody>
+            @forelse($crossBranchCollections as $payment)
+                <tr>
+                    <td>{{ $payment->payment_number }}</td>
+                    <td>{{ $payment->jobOrder?->job_order_number }}</td>
+                    <td>{{ $payment->branch?->name }}</td>
+                    <td>{{ $payment->collectedBranch?->name }}</td>
+                    <td>{{ \App\Support\StatusBadge::label($payment->settlement_status ?: 'pending') }}</td>
+                    <td class="right">{{ $currency }} {{ number_format((float) $payment->amount, 2) }}</td>
+                </tr>
+            @empty
+                <tr><td colspan="6" class="empty">No cross-branch collections found.</td></tr>
+            @endforelse
+        </tbody>
+    </table>
+
     <h2>Receivables</h2>
     <table class="report">
         <thead>
@@ -158,7 +200,7 @@
         </tbody>
     </table>
 
-    <h2>Payment Type</h2>
+    <h2>Sales Payment Type</h2>
     <table class="report">
         <thead>
             <tr><th>Type</th><th class="right">Count</th><th class="right">Total</th></tr>

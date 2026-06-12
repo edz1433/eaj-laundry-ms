@@ -14,6 +14,7 @@ class Branch extends Model
         'code',
         'address',
         'contact_number',
+        'branch_type',
         'latitude',
         'longitude',
         'attendance_radius_meters',
@@ -28,6 +29,16 @@ class Branch extends Model
         'machine_count' => 'integer',
         'is_active' => 'boolean',
     ];
+
+    public function isPickupDropoff(): bool
+    {
+        return $this->branch_type === 'pickup_dropoff';
+    }
+
+    public function isFullService(): bool
+    {
+        return $this->branch_type !== 'pickup_dropoff';
+    }
 
     public function users()
     {

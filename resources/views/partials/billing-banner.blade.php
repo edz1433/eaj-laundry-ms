@@ -36,7 +36,7 @@
         }"
         x-show="visible"
         x-transition
-        class="fixed bottom-24 right-4 z-50 print:hidden"
+        class="fixed bottom-24 right-4 z-[55] print:hidden"
     >
         <div class="relative">
             <button

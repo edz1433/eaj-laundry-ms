@@ -28,6 +28,14 @@
             </div>
             <h1 class="text-xl font-semibold tracking-normal">{{ $order->customer?->name }}</h1>
             <p class="text-sm text-muted">{{ $order->branch?->name }} - {{ $order->created_at->format('M d, Y h:i A') }}</p>
+            @if($order->processingBranch && (int) $order->processing_branch_id !== (int) $order->branch_id)
+                <p class="text-sm text-muted">Assigned receiving branch: {{ $order->processingBranch->name }}</p>
+                @if($order->production_accepted_at)
+                    <p class="text-sm text-emerald-600">Received by QR scan {{ $order->production_accepted_at->format('M d, Y h:i A') }}</p>
+                @else
+                    <p class="text-sm text-amber-600">Waiting for {{ $order->processingBranch->name }} to scan QR before cycle starts.</p>
+                @endif
+            @endif
             <span class="{{ \App\Support\StatusBadge::classes($order->transaction_type === 'delivery' ? 'delivery' : 'regular') }}">{{ $order->transaction_type === 'delivery' ? 'Delivery' : 'Walk-in' }}</span>
         </div>
 

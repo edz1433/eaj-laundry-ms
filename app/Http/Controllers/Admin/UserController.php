@@ -7,6 +7,7 @@ use App\Models\Branch;
 use App\Models\User;
 use App\Support\Menu;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rule;
 
 class UserController extends Controller
@@ -40,8 +41,9 @@ class UserController extends Controller
             ->get();
         $menuItems = Menu::items();
         $roles = $this->availableRoles();
+        $roleAccessPresets = $this->roleAccessPresets($viewer);
 
-        return view('admin.users.index', compact('users', 'branches', 'menuItems', 'roles', 'canChooseBranch'));
+        return view('admin.users.index', compact('users', 'branches', 'menuItems', 'roles', 'roleAccessPresets', 'canChooseBranch'));
     }
 
     public function create()
@@ -71,6 +73,7 @@ class UserController extends Controller
             $validated['branch_id'] = $viewer->branch_id;
         }
 
+        $this->ensureBranchRoleHasBranch($validated['role'], $validated['branch_id'] ?? null);
         $validated['access'] = $this->normalizedAccess($validated['role'], $validated['access'] ?? []);
 
         User::create($validated);
@@ -130,6 +133,8 @@ class UserController extends Controller
             $validated['branch_id'] = $viewer->branch_id;
         }
 
+        $this->ensureBranchRoleHasBranch($validated['role'], $validated['branch_id'] ?? null);
+
         if (empty($validated['password'])) {
             unset($validated['password']);
         }
@@ -183,7 +188,69 @@ class UserController extends Controller
             return Menu::keys();
         }
 
+        if ($access === []) {
+            return $this->roleAccessPresets()[$role] ?? [];
+        }
+
         return array_values(array_intersect($access, Menu::assignableKeysForRole($role)));
+    }
+
+    private function roleAccessPresets(?User $viewer = null): array
+    {
+        $viewer ??= auth()->user();
+        $assignable = fn (array $keys, string $role): array => array_values(array_intersect($keys, Menu::assignableKeysForRole($role)));
+
+        $presets = [
+            'super_admin' => Menu::keys(),
+            'admin' => $assignable(Menu::keys(), 'admin'),
+            'branch_manager' => $assignable([
+                'dashboard',
+                'job_orders',
+                'cycles',
+                'customers',
+                'services',
+                'inventory',
+                'payments',
+                'receivables',
+                'expenses',
+                'petty_cash',
+                'z_readings',
+                'employees',
+                'attendance',
+                'daily_tasks',
+                'reports',
+                'branches',
+                'users',
+                'sms_logs',
+                'settings',
+            ], 'branch_manager'),
+            'cashier' => $assignable([
+                'dashboard',
+                'job_orders',
+                'cycles',
+                'customers',
+                'payments',
+                'receivables',
+                'reports',
+            ], 'cashier'),
+            'staff' => $assignable([
+                'dashboard',
+                'cycles',
+                'daily_tasks',
+                'attendance',
+            ], 'staff'),
+        ];
+
+        return array_intersect_key($presets, array_flip($this->availableRoles($viewer)));
+    }
+
+    private function ensureBranchRoleHasBranch(string $role, mixed $branchId): void
+    {
+        if (in_array($role, ['branch_manager', 'cashier', 'staff'], true) && empty($branchId)) {
+            throw ValidationException::withMessages([
+                'branch_id' => 'Please choose a branch for this role.',
+            ]);
+        }
     }
 
     private function authorizeUserAccess(User $user): void

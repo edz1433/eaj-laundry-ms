@@ -5,7 +5,7 @@
 
 @section('content')
 <div
-    x-data="posPage(@js($services), @js($customers), @js((float) ($appSettings?->vat_rate ?? 0)), @js((bool) ($appSettings?->vat_enabled ?? false)))"
+    x-data="posPage(@js($branches), @js($processingBranches), @js($services), @js($customers), @js((float) ($appSettings?->vat_rate ?? 0)), @js((bool) ($appSettings?->vat_enabled ?? false)))"
 >
     <form
         method="POST"
@@ -98,6 +98,16 @@
                     @else
                         <input type="hidden" name="branch_id" value="{{ $branchId }}">
                     @endif
+
+                    <div>
+                        <label class="mb-1.5 block text-xs font-medium text-muted">Receiving Production Branch</label>
+                        <select name="processing_branch_id" x-model="processingBranchId" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950" required>
+                            <template x-for="branch in processingBranches" :key="branch.id">
+                                <option :value="branch.id" x-text="`${branch.name} - receives by QR scan`"></option>
+                            </template>
+                        </select>
+                        <p class="mt-1 text-[11px] text-muted" x-text="selectedBranch && selectedBranch.branch_type === 'pickup_dropoff' ? 'This only assigns where the laundry should be received. It enters that branch cycle after they scan the QR.' : 'Production defaults to the selected full-service branch.'"></p>
+                    </div>
 
                     <div>
                         <div class="mb-1.5 flex items-center justify-between gap-2">
@@ -286,9 +296,12 @@
 </div>
 
 <script>
-function posPage(services, customers, vatRate, vatEnabled) {
+function posPage(branches, processingBranches, services, customers, vatRate, vatEnabled) {
     return {
         branchId: @js((string) $branchId),
+        branches,
+        processingBranches,
+        processingBranchId: '',
         services,
         customers,
         items: [],
@@ -309,12 +322,14 @@ function posPage(services, customers, vatRate, vatEnabled) {
             { value: 'custom', label: 'Custom', icon: 'sparkles' },
         ],
         init() {
+            this.setDefaultProcessingBranch();
             this.syncSelectedCustomer();
             this.$watch('branchId', () => {
                 this.items = [];
                 this.discount = 0;
                 this.paid = 0;
                 this.serviceSearch = '';
+                this.setDefaultProcessingBranch();
 
                 if (!this.selectedCustomerId) {
                     this.$nextTick(() => window.renderLucideIcons());
@@ -329,6 +344,20 @@ function posPage(services, customers, vatRate, vatEnabled) {
                 this.$nextTick(() => window.renderLucideIcons());
             });
             this.$watch('quickCustomerOpen', () => this.refreshIcons());
+        },
+        get selectedBranch() {
+            return this.branches.find(branch => String(branch.id) === String(this.branchId));
+        },
+        setDefaultProcessingBranch() {
+            const branch = this.selectedBranch;
+            const fullService = this.processingBranches.find(option => String(option.id) === String(this.branchId));
+
+            if (branch && branch.branch_type !== 'pickup_dropoff' && fullService) {
+                this.processingBranchId = fullService.id;
+                return;
+            }
+
+            this.processingBranchId = this.processingBranches[0]?.id || '';
         },
         get availableCustomers() {
             return this.customers.filter(customer => String(customer.branch_id) === String(this.branchId));

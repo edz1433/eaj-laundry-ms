@@ -53,7 +53,7 @@
             'sales' => 'Sales',
             'receivables' => 'Receivables',
             'inventory' => 'Inventory Usage',
-            'payments' => 'Payment Type',
+            'payments' => 'Payments',
             'expenses' => 'Expenses',
             'ledger' => 'Customer Ledger',
             'activity' => 'Activity Logs',
@@ -78,6 +78,26 @@
                 <tr><td class="px-4 py-3">{{ $row->branch_name }}</td><td class="px-4 py-3 text-right">{{ $row->payments_count }}</td><td class="px-4 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->cash_amount, 2) }}</td><td class="px-4 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->gcash_amount, 2) }}</td><td class="px-4 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->bank_amount, 2) }}</td><td class="px-4 py-3 text-right font-medium">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->total_amount, 2) }}</td></tr>
             @empty
                 <tr><td colspan="6" class="px-4 py-10 text-center text-muted">No branch sales found.</td></tr>
+            @endforelse
+        </x-report-table>
+    </div>
+
+    <div x-show="tab === 'sales'" class="grid gap-4 xl:grid-cols-2">
+        <x-report-table title="Physical Collections by Branch">
+            <x-slot:head><th class="px-4 py-3">Collected At</th><th class="px-4 py-3 text-right">Payments</th><th class="px-4 py-3 text-right">Cash</th><th class="px-4 py-3 text-right">GCash</th><th class="px-4 py-3 text-right">Bank</th><th class="px-4 py-3 text-right">Collected</th></x-slot:head>
+            @forelse($collectionsByBranch as $row)
+                <tr><td class="px-4 py-3">{{ $row->branch_name }}</td><td class="px-4 py-3 text-right">{{ $row->payments_count }}</td><td class="px-4 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->cash_amount, 2) }}</td><td class="px-4 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->gcash_amount, 2) }}</td><td class="px-4 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->bank_amount, 2) }}</td><td class="px-4 py-3 text-right font-medium">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->total_amount, 2) }}</td></tr>
+            @empty
+                <tr><td colspan="6" class="px-4 py-10 text-center text-muted">No branch collections found.</td></tr>
+            @endforelse
+        </x-report-table>
+
+        <x-report-table title="Cross-Branch Collections for Remittance">
+            <x-slot:head><th class="px-4 py-3">Payment</th><th class="px-4 py-3">JO #</th><th class="px-4 py-3">Sales Branch</th><th class="px-4 py-3">Collected At</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Amount</th></x-slot:head>
+            @forelse($crossBranchCollections as $payment)
+                <tr><td class="px-4 py-3 font-medium">{{ $payment->payment_number }}</td><td class="px-4 py-3">{{ $payment->jobOrder?->job_order_number }}</td><td class="px-4 py-3">{{ $payment->branch?->name }}</td><td class="px-4 py-3">{{ $payment->collectedBranch?->name }}</td><td class="px-4 py-3"><span class="{{ \App\Support\StatusBadge::classes('pending') }}">{{ \App\Support\StatusBadge::label($payment->settlement_status ?: 'pending') }}</span></td><td class="px-4 py-3 text-right font-medium">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $payment->amount, 2) }}</td></tr>
+            @empty
+                <tr><td colspan="6" class="px-4 py-10 text-center text-muted">No cross-branch collections found.</td></tr>
             @endforelse
         </x-report-table>
     </div>
@@ -109,7 +129,7 @@
         @endforelse
     </x-report-table>
 
-    <x-report-table title="Payment Type" x-show="tab === 'payments'">
+    <x-report-table title="Sales Payment Type" x-show="tab === 'payments'">
         <x-slot:head><th class="px-4 py-3">Type</th><th class="px-4 py-3 text-right">Count</th><th class="px-4 py-3 text-right">Total</th></x-slot:head>
         @forelse($paymentTypes as $row)
             <tr><td class="px-4 py-3">{{ str_replace('_', ' ', ucfirst($row->payment_type)) }}</td><td class="px-4 py-3 text-right">{{ $row->payments_count }}</td><td class="px-4 py-3 text-right font-medium">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->total_amount, 2) }}</td></tr>

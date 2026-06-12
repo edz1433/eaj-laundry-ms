@@ -8,6 +8,7 @@ use App\Models\DailyTask;
 use App\Models\DailyTaskCompletion;
 use App\Models\JobOrder;
 use App\Models\LaundryService;
+use App\Models\SmsLog;
 use App\Models\SystemSetting;
 use App\Models\SystemTrialSetting;
 use App\Models\User;
@@ -178,6 +179,72 @@ class UserManagementAccessTest extends TestCase
         $this->assertDatabaseMissing('users', ['username' => 'global-admin']);
     }
 
+    public function test_admin_can_create_branch_manager_with_default_access_preset(): void
+    {
+        $this->completeSystemSettings();
+
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'access' => ['users'],
+        ]);
+        $branch = Branch::query()->create([
+            'name' => 'Branch 3',
+            'code' => 'B0003',
+            'branch_type' => 'pickup_dropoff',
+            'is_active' => true,
+        ]);
+
+        $this
+            ->actingAs($admin)
+            ->post(route('admin.users.store'), [
+                'name' => 'Branch 3 Manager',
+                'username' => 'branch3-manager',
+                'email' => 'branch3-manager@example.com',
+                'password' => 'password',
+                'password_confirmation' => 'password',
+                'role' => 'branch_manager',
+                'branch_id' => $branch->id,
+                'status' => 'active',
+            ])
+            ->assertRedirect(route('admin.users.index'));
+
+        $created = User::where('username', 'branch3-manager')->firstOrFail();
+
+        $this->assertSame('branch_manager', $created->role);
+        $this->assertSame($branch->id, $created->branch_id);
+        $this->assertContains('job_orders', $created->access);
+        $this->assertContains('cycles', $created->access);
+        $this->assertContains('users', $created->access);
+        $this->assertNotContains('billing', $created->access);
+    }
+
+    public function test_branch_level_roles_require_branch_assignment(): void
+    {
+        $this->completeSystemSettings();
+
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'access' => ['users'],
+        ]);
+
+        $this
+            ->actingAs($admin)
+            ->post(route('admin.users.store'), [
+                'name' => 'No Branch Cashier',
+                'username' => 'no-branch-cashier',
+                'email' => 'no-branch-cashier@example.com',
+                'password' => 'password',
+                'password_confirmation' => 'password',
+                'role' => 'cashier',
+                'branch_id' => null,
+                'status' => 'active',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('branch_id');
+
+        $this->assertDatabaseMissing('users', ['username' => 'no-branch-cashier']);
+    }
+
     public function test_branch_manager_cannot_edit_other_branch_job_order(): void
     {
         $this->completeSystemSettings();
@@ -344,6 +411,58 @@ class UserManagementAccessTest extends TestCase
             'branch_id' => $branchA->id,
             'name' => 'Clean delivery shelf',
         ]);
+    }
+
+    public function test_non_admin_user_with_branch_access_only_sees_own_branch(): void
+    {
+        $this->completeSystemSettings();
+
+        [$branchA, $branchB] = $this->twoBranches();
+        $cashier = User::factory()->create([
+            'role' => 'cashier',
+            'branch_id' => $branchA->id,
+            'access' => ['branches'],
+        ]);
+
+        $this
+            ->actingAs($cashier)
+            ->get(route('admin.branches.index'))
+            ->assertOk()
+            ->assertSee('Branch A')
+            ->assertDontSee('Branch B');
+    }
+
+    public function test_sms_log_search_does_not_leak_other_branch_messages(): void
+    {
+        $this->completeSystemSettings();
+
+        [$branchA, $branchB] = $this->twoBranches();
+        $manager = User::factory()->create([
+            'role' => 'branch_manager',
+            'branch_id' => $branchA->id,
+            'access' => ['sms_logs'],
+        ]);
+
+        SmsLog::query()->create([
+            'branch_id' => $branchA->id,
+            'recipient' => '09170000001',
+            'message' => 'Ready for pickup',
+            'status' => 'sent',
+        ]);
+        SmsLog::query()->create([
+            'branch_id' => $branchB->id,
+            'recipient' => '09170000002',
+            'message' => 'Secret customer ready for pickup',
+            'status' => 'sent',
+        ]);
+
+        $this
+            ->actingAs($manager)
+            ->get(route('admin.sms-logs.index', ['search' => 'ready']))
+            ->assertOk()
+            ->assertSee('09170000001')
+            ->assertDontSee('09170000002')
+            ->assertDontSee('Secret customer');
     }
 
     private function completeSystemSettings(): void

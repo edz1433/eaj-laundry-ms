@@ -52,8 +52,14 @@ class ReportController extends Controller
             ->get();
 
         $payments = Payment::query()
-            ->with(['branch', 'customer', 'jobOrder', 'receiver'])
+            ->with(['branch', 'collectedBranch', 'customer', 'jobOrder', 'receiver'])
             ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->whereDate('paid_at', '>=', $dateFrom)
+            ->whereDate('paid_at', '<=', $dateTo);
+
+        $collections = Payment::query()
+            ->with(['branch', 'collectedBranch', 'customer', 'jobOrder', 'receiver'])
+            ->when($branchId, fn ($query) => $query->where('collected_branch_id', $branchId))
             ->whereDate('paid_at', '>=', $dateFrom)
             ->whereDate('paid_at', '<=', $dateTo);
 
@@ -78,6 +84,19 @@ class ReportController extends Controller
 
         $gcashPayments = (clone $payments)
             ->where('payment_type', 'gcash')
+            ->latest('paid_at')
+            ->limit(80)
+            ->get();
+
+        $collectionsByBranch = (clone $collections)
+            ->join('branches', 'payments.collected_branch_id', '=', 'branches.id')
+            ->selectRaw("branches.name as branch_name, COALESCE(SUM(payments.amount), 0) as total_amount, COALESCE(SUM(CASE WHEN payments.payment_type = 'cash' THEN payments.amount ELSE 0 END), 0) as cash_amount, COALESCE(SUM(CASE WHEN payments.payment_type = 'gcash' THEN payments.amount ELSE 0 END), 0) as gcash_amount, COALESCE(SUM(CASE WHEN payments.payment_type = 'bank' THEN payments.amount ELSE 0 END), 0) as bank_amount, COUNT(*) as payments_count")
+            ->groupBy('branches.name')
+            ->orderByDesc('total_amount')
+            ->get();
+
+        $crossBranchCollections = (clone $collections)
+            ->whereColumn('collected_branch_id', '!=', 'branch_id')
             ->latest('paid_at')
             ->limit(80)
             ->get();
@@ -153,6 +172,8 @@ class ReportController extends Controller
             'expenses' => $expenses,
             'expenseSummary' => $expenseSummary,
             'cashAdvanceTotal' => $cashAdvanceTotal,
+            'collectionsByBranch' => $collectionsByBranch,
+            'crossBranchCollections' => $crossBranchCollections,
             'gcashPayments' => $gcashPayments,
             'inventoryUsage' => $inventoryUsage,
             'paymentTypes' => $paymentTypes,

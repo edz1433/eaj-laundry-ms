@@ -8,6 +8,7 @@ use App\Models\Branch;
 use App\Models\DailyTask;
 use App\Models\DailyTaskCompletion;
 use App\Models\EmployeeAttendanceRecord;
+use App\Models\JobOrder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -77,26 +78,37 @@ class AttendanceController extends Controller
             ->orderBy('name')
             ->get();
 
-        $employees = AttendanceEmployee::query()
+        $employeesQuery = AttendanceEmployee::query()
             ->with('branch')
             ->where('status', 'active')
             ->when($selectedBranchId, fn ($query) => $query->where('branch_id', $selectedBranchId))
             ->when(! $canChooseBranch, fn ($query) => $query->where('branch_id', $user->branch_id))
+            ->when($selectedEmployeeId, fn ($query) => $query->whereKey($selectedEmployeeId))
             ->orderBy('first_name')
-            ->orderBy('last_name')
+            ->orderBy('last_name');
+
+        $employees = (clone $employeesQuery)
             ->get();
 
-        $records = EmployeeAttendanceRecord::query()
+        $records = $employeesQuery
+            ->paginate(20)
+            ->withQueryString();
+
+        $attendanceByEmployee = EmployeeAttendanceRecord::query()
             ->with(['employee', 'branch'])
-            ->when($selectedBranchId, fn ($query) => $query->where('branch_id', $selectedBranchId))
-            ->when(! $canChooseBranch, fn ($query) => $query->where('branch_id', $user->branch_id))
-            ->when($selectedEmployeeId, fn ($query) => $query->where('attendance_employee_id', $selectedEmployeeId))
+            ->whereIn('attendance_employee_id', $records->getCollection()->pluck('id'))
             ->whereDate('work_date', '>=', $dateFrom)
             ->whereDate('work_date', '<=', $dateTo)
             ->latest('work_date')
             ->latest()
-            ->paginate(20)
-            ->withQueryString();
+            ->get()
+            ->groupBy('attendance_employee_id');
+
+        $records->through(fn (AttendanceEmployee $employee) => $this->attendanceRowForEmployee(
+            $employee,
+            $attendanceByEmployee->get($employee->id)?->first(),
+            $dateFrom
+        ));
 
         return view('admin.attendance.index', compact('branches', 'employees', 'records', 'selectedBranchId', 'selectedEmployeeId', 'workDate', 'dateFrom', 'dateTo', 'canChooseBranch'));
     }
@@ -234,6 +246,28 @@ class AttendanceController extends Controller
         );
 
         return back()->with('success', 'End-of-day proof uploaded successfully.');
+    }
+
+    public function publicScanJobOrder(Request $request)
+    {
+        $employee = $this->employeeFromAttendanceSession();
+        $validated = $request->validate([
+            'qr_text' => ['required', 'string', 'max:1000'],
+        ]);
+
+        $jobOrder = $this->jobOrderFromQrText($validated['qr_text']);
+        $productionBranch = app(JobOrderController::class)
+            ->acceptProductionByBranch($request, $jobOrder, (int) $employee->branch_id);
+
+        $jobOrder->refresh();
+
+        return response()->json([
+            'message' => "Accepted {$jobOrder->job_order_number} for production at {$productionBranch->name}.",
+            'job_order_number' => $jobOrder->job_order_number,
+            'dropoff_branch' => $jobOrder->branch?->name,
+            'processing_branch' => $productionBranch->name,
+            'status' => $jobOrder->status,
+        ]);
     }
 
     private function validateAttendanceRequest(Request $request): array
@@ -374,6 +408,54 @@ class AttendanceController extends Controller
                 'clock_in_locations' => [],
                 'clock_out_locations' => [],
         ]);
+    }
+
+    private function attendanceRowForEmployee(AttendanceEmployee $employee, ?EmployeeAttendanceRecord $record, string $dateFrom): EmployeeAttendanceRecord
+    {
+        if ($record) {
+            $record->setRelation('employee', $employee);
+            $record->setRelation('branch', $employee->branch);
+
+            return $record;
+        }
+
+        $emptyRecord = new EmployeeAttendanceRecord([
+            'attendance_employee_id' => $employee->id,
+            'branch_id' => $employee->branch_id,
+            'work_date' => $dateFrom,
+            'clock_in' => [],
+            'clock_out' => [],
+            'clock_in_photos' => [],
+            'clock_out_photos' => [],
+            'clock_in_locations' => [],
+            'clock_out_locations' => [],
+        ]);
+
+        $emptyRecord->exists = false;
+        $emptyRecord->setRelation('employee', $employee);
+        $emptyRecord->setRelation('branch', $employee->branch);
+
+        return $emptyRecord;
+    }
+
+    private function jobOrderFromQrText(string $qrText): JobOrder
+    {
+        $qrText = trim($qrText);
+        $path = parse_url($qrText, PHP_URL_PATH) ?: $qrText;
+
+        if (preg_match('#/job-orders/(\d+)/(?:scan|receipt)#', $path, $matches)) {
+            return JobOrder::query()->findOrFail((int) $matches[1]);
+        }
+
+        if (preg_match('/\bJO[-A-Z0-9]+\b/i', $qrText, $matches)) {
+            return JobOrder::query()
+                ->where('job_order_number', strtoupper($matches[0]))
+                ->firstOrFail();
+        }
+
+        return JobOrder::query()
+            ->where('job_order_number', $qrText)
+            ->firstOrFail();
     }
 
     private function locationPayload(array $validated): array

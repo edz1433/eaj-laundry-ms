@@ -1,4 +1,13 @@
-<form method="POST" action="{{ $action }}" class="space-y-4">
+<form
+    method="POST"
+    action="{{ $action }}"
+    x-data="userAccessForm({
+        role: @js(old('role', $user->role ?: 'cashier')),
+        access: @js(array_values(old('access', $user->access ?? []))),
+        presets: @js($roleAccessPresets),
+    })"
+    class="space-y-4"
+>
     @csrf
     @if($method !== 'POST')
         @method($method)
@@ -42,7 +51,7 @@
 
         <div>
             <label class="mb-1.5 block text-sm font-medium">Role</label>
-            <select name="role" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
+            <select name="role" x-model="role" @change="applyPreset(role)" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
                 @foreach($roles as $role)
                     <option value="{{ $role }}" @selected(old('role', $user->role) === $role)>{{ str_replace('_', ' ', ucfirst($role)) }}</option>
                 @endforeach
@@ -60,7 +69,17 @@
     </div>
 
     <div>
-        <p class="mb-2 text-sm font-medium">Menu Access</p>
+        <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <p class="text-sm font-medium">Menu Access</p>
+            <div class="flex flex-wrap gap-1.5">
+                @foreach($roles as $presetRole)
+                    <button type="button" @click="role = @js($presetRole); applyPreset(@js($presetRole)); refreshIcons()" class="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2 text-xs font-medium hover:bg-smoke dark:border-gray-700 dark:hover:bg-gray-950">
+                        <span data-lucide="check" class="h-3.5 w-3.5"></span>
+                        {{ \App\Support\StatusBadge::label($presetRole) }}
+                    </button>
+                @endforeach
+            </div>
+        </div>
         <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             @foreach($menuItems as $key => $item)
                 @continue(! empty($item['super_admin']) && ! auth()->user()->isSuperAdmin())
@@ -69,7 +88,7 @@
                         type="checkbox"
                         name="access[]"
                         value="{{ $key }}"
-                        @checked(in_array($key, old('access', $user->access ?? []), true))
+                        x-model="access"
                         class="rounded border-border text-primary"
                     >
                     <span>
@@ -95,3 +114,19 @@
         </button>
     </div>
 </form>
+
+<script>
+    function userAccessForm(config) {
+        return {
+            role: config.role,
+            access: config.access,
+            presets: config.presets,
+            applyPreset(role) {
+                this.access = [...(this.presets[role] || [])];
+            },
+            refreshIcons() {
+                this.$nextTick(() => window.renderLucideIcons());
+            },
+        };
+    }
+</script>

@@ -20,7 +20,7 @@ class BranchController extends Controller
         $user = $request->user();
 
         $branches = Branch::query()
-            ->when($user->role === 'branch_manager', fn ($query) => $query->whereKey($user->branch_id))
+            ->when(! $user->canManageAllBranches(), fn ($query) => $query->whereKey($user->branch_id))
             ->when(in_array($request->status, ['active', 'inactive'], true), fn ($query) => $query->where('is_active', $request->status === 'active'))
             ->when($request->filled('search'), function ($query) use ($request) {
                 $search = $request->search;
@@ -49,6 +49,7 @@ class BranchController extends Controller
         abort_unless(auth()->user()->isSuperAdmin(), 403);
 
         $validated = $request->validate($this->rules());
+        $validated['branch_type'] = $validated['branch_type'] ?? 'full_service';
 
         DB::transaction(function () use ($request, $validated) {
             $branch = Branch::create($validated + ['is_active' => $request->boolean('is_active')]);
@@ -75,6 +76,7 @@ class BranchController extends Controller
         $this->authorizeBranch($branch);
 
         $validated = $request->validate($this->rules($branch));
+        $validated['branch_type'] = $validated['branch_type'] ?? 'full_service';
         $validated['is_active'] = $request->boolean('is_active');
 
         $branch->update($validated);
@@ -146,6 +148,7 @@ class BranchController extends Controller
             ],
             'address' => ['nullable', 'string', 'max:255'],
             'contact_number' => ['nullable', 'string', 'max:50'],
+            'branch_type' => ['nullable', Rule::in(['full_service', 'pickup_dropoff'])],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'attendance_radius_meters' => ['nullable', 'integer', 'min:25', 'max:5000'],
@@ -158,11 +161,11 @@ class BranchController extends Controller
     {
         $user = auth()->user();
 
-        if ($user->isSuperAdmin() || $user->role === 'admin') {
+        if ($user->canManageAllBranches()) {
             return;
         }
 
-        abort_unless($user->role === 'branch_manager' && (int) $user->branch_id === (int) $branch->id, 403);
+        abort_unless((int) $user->branch_id === (int) $branch->id, 403);
     }
 
     private function authorizeBranchTask(Branch $branch, DailyTask $task): void

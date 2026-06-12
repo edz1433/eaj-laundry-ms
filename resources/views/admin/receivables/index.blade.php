@@ -71,7 +71,8 @@
                     <tr>
                         <th class="px-4 py-3">Job Order</th>
                         <th class="px-4 py-3">Customer</th>
-                        <th class="px-4 py-3">Branch</th>
+                        <th class="px-4 py-3">Sales Branch</th>
+                        <th class="px-4 py-3">Release At</th>
                         <th class="px-4 py-3">Billing</th>
                         <th class="px-4 py-3 text-right">Total</th>
                         <th class="px-4 py-3 text-right">Paid</th>
@@ -92,6 +93,7 @@
                                 <p class="text-xs text-muted">{{ $order->customer?->phone ?: 'No phone' }}</p>
                             </td>
                             <td class="px-4 py-3">{{ $order->branch?->name ?? 'N/A' }}</td>
+                            <td class="px-4 py-3">{{ $order->releaseBranch?->name ?? $order->currentBranch?->name ?? $order->branch?->name ?? 'N/A' }}</td>
                             <td class="px-4 py-3"><span class="{{ \App\Support\StatusBadge::classes($order->customer?->billing_type ?? 'regular') }}">{{ \App\Support\StatusBadge::label($order->customer?->billing_type ?? 'regular') }}</span></td>
                             <td class="px-4 py-3 text-right">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $order->total, 2) }}</td>
                             <td class="px-4 py-3 text-right">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $order->paid_amount, 2) }}</td>
@@ -109,7 +111,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="9" class="px-4 py-10 text-center text-muted">No receivables found.</td>
+                            <td colspan="10" class="px-4 py-10 text-center text-muted">No receivables found.</td>
                         </tr>
                     @endforelse
                 </tbody>

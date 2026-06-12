@@ -28,7 +28,7 @@
                 Operations board
             </div>
             <h1 class="text-xl font-semibold">Cycle Monitoring</h1>
-            <p class="text-sm text-muted">Start active laundry cycles, then mark orders ready or completed.</p>
+            <p class="text-sm text-muted">Start active laundry cycles by processing branch, then mark orders ready or completed.</p>
         </div>
 
         <form method="GET" class="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(12rem,1fr)_12rem_14rem_16rem_12rem_auto]">
@@ -38,7 +38,7 @@
             </div>
             @if($canChooseBranch)
                 <select name="branch_id" onchange="this.form.customer_id.value = ''; this.form.submit()" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
-                    <option value="">All branches</option>
+                    <option value="">All processing branches</option>
                     @foreach($branches as $branch)
                         <option value="{{ $branch->id }}" @selected((int) $selectedBranchId === (int) $branch->id)>{{ $branch->name }}</option>
                     @endforeach
@@ -78,28 +78,70 @@
 
     <div class="grid gap-3 xl:grid-cols-2">
         @forelse($orders as $order)
+            @php($processingBranch = $order->processingBranch ?: $order->branch)
+            @php($processingBranchId = $order->processing_branch_id ?: $order->branch_id)
+            @php($currentBranch = $order->currentBranch ?: $processingBranch)
+            @php($releaseBranch = $order->releaseBranch ?: $currentBranch)
+            @php($activeMachines = $activeMachinesByBranch[$processingBranchId] ?? [])
+            @php($userBranchId = auth()->user()->branch_id)
+            @php($canManageAllBranches = auth()->user()->canManageAllBranches())
+            @php($canReleaseHere = $canManageAllBranches || (int) ($releaseBranch?->id ?? $order->branch_id) === (int) $userBranchId)
+            @php($canReturnToDropoff = (int) $processingBranchId !== (int) $order->branch_id && ($canManageAllBranches || (int) $processingBranchId === (int) $userBranchId))
+            @php($isCrossBranchProduction = (int) $processingBranchId !== (int) $order->branch_id)
             <div class="rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
                 <div class="mb-3 flex items-start justify-between gap-3">
                     <div class="min-w-0">
                         <p class="font-semibold">{{ $order->job_order_number }}</p>
-                        <p class="truncate text-sm text-muted">{{ $order->customer?->name }} · {{ $order->branch?->name }}</p>
+                        <p class="truncate text-sm text-muted">
+                            {{ $order->customer?->name }} - Drop-off: {{ $order->branch?->name }} - Receiving/Processing: {{ $processingBranch?->name }} - Release: {{ $releaseBranch?->name }}
+                        </p>
+                        @if($isCrossBranchProduction)
+                            @if($order->production_accepted_at)
+                                <p class="text-xs text-emerald-600">Received by QR scan {{ $order->production_accepted_at->format('M d, h:i A') }}</p>
+                            @else
+                                <p class="text-xs text-amber-600">Assigned only. Waiting for {{ $processingBranch?->name }} QR scan before branch cycle.</p>
+                            @endif
+                        @endif
                     </div>
                     <span class="shrink-0 {{ \App\Support\StatusBadge::classes($order->status) }}">
                         {{ $statusLabels[$order->status] ?? str_replace('_', ' ', ucfirst($order->status)) }}
                     </span>
                 </div>
 
+                <div class="mb-3 grid gap-2 text-xs text-muted sm:grid-cols-4">
+                    <div class="rounded-md bg-smoke px-2.5 py-2 dark:bg-gray-950">
+                        <span class="block font-medium text-ink dark:text-gray-100">Drop-off</span>
+                        {{ $order->branch?->name ?? 'Unassigned' }}
+                    </div>
+                    <div class="rounded-md bg-smoke px-2.5 py-2 dark:bg-gray-950">
+                        <span class="block font-medium text-ink dark:text-gray-100">Receiving</span>
+                        {{ $processingBranch?->name ?? 'Unassigned' }}
+                        @if($isCrossBranchProduction)
+                            <span class="block {{ $order->production_accepted_at ? 'text-emerald-600' : 'text-amber-600' }}">
+                                {{ $order->production_accepted_at ? 'QR received' : 'Pending QR scan' }}
+                            </span>
+                        @endif
+                    </div>
+                    <div class="rounded-md bg-smoke px-2.5 py-2 dark:bg-gray-950">
+                        <span class="block font-medium text-ink dark:text-gray-100">Current</span>
+                        {{ $currentBranch?->name ?? 'Unassigned' }}
+                    </div>
+                    <div class="rounded-md bg-smoke px-2.5 py-2 dark:bg-gray-950">
+                        <span class="block font-medium text-ink dark:text-gray-100">Release</span>
+                        {{ $releaseBranch?->name ?? 'Unassigned' }}
+                    </div>
+                </div>
+
                 <div class="mb-3 flex flex-wrap gap-2">
                     @foreach($cycleTypes as $type => $label)
-                        @php($activeMachines = $activeMachinesByBranch[$order->branch_id] ?? [])
                         <form method="POST" action="{{ route('admin.cycles.store', $order) }}">
                             @csrf
                             <input type="hidden" name="cycle_type" value="{{ $type }}">
                             <div class="flex overflow-hidden rounded-md border border-border dark:border-gray-800">
-                                @if($type === 'wash' && (int) ($order->branch?->machine_count ?? 0) > 0)
+                                @if($type === 'wash' && (int) ($processingBranch?->machine_count ?? 0) > 0)
                                     <select name="machine_number" aria-label="Machine" class="h-8 w-20 border-r border-border bg-white px-2 text-xs dark:border-gray-800 dark:bg-gray-950">
                                         <option value="">Machine</option>
-                                        @for($machine = 1; $machine <= (int) $order->branch->machine_count; $machine++)
+                                        @for($machine = 1; $machine <= (int) $processingBranch->machine_count; $machine++)
                                             @php($usingOrder = $activeMachines[$machine] ?? null)
                                             <option value="{{ $machine }}" @disabled($usingOrder)>#{{ $machine }}{{ $usingOrder ? ' - In use' : '' }}</option>
                                         @endfor
@@ -115,7 +157,7 @@
                 </div>
 
                 <div class="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border bg-smoke p-2 dark:border-gray-800 dark:bg-gray-950">
-                    <span class="text-xs font-medium text-muted">Finish order:</span>
+                    <span class="text-xs font-medium text-muted">Production status:</span>
                     @foreach($completionStatuses as $status => $label)
                         <form method="POST" action="{{ route('admin.cycles.status', $order) }}">
                             @csrf
@@ -128,11 +170,43 @@
                     @endforeach
                 </div>
 
+                @if($order->status === 'ready_for_pickup')
+                    <div class="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border bg-white p-2 dark:border-gray-800 dark:bg-gray-950">
+                        <span class="text-xs font-medium text-muted">Customer release:</span>
+                        <a href="{{ route('admin.cycles.receipt', $order) }}" target="_blank" class="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-900">
+                            <span data-lucide="receipt" class="h-3.5 w-3.5"></span>
+                            Print Receipt
+                        </a>
+                        @if($canReleaseHere)
+                            <form method="POST" action="{{ route('admin.cycles.release', $order) }}">
+                                @csrf
+                                @method('PATCH')
+                                <input type="hidden" name="action" value="release_here">
+                                <button class="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-2.5 text-xs font-medium text-white">
+                                    <span data-lucide="package-check" class="h-3.5 w-3.5"></span>
+                                    {{ $releaseActions['release_here'] }}
+                                </button>
+                            </form>
+                        @endif
+                        @if($canReturnToDropoff)
+                            <form method="POST" action="{{ route('admin.cycles.release', $order) }}">
+                                @csrf
+                                @method('PATCH')
+                                <input type="hidden" name="action" value="return_to_dropoff">
+                                <button class="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-900">
+                                    <span data-lucide="truck" class="h-3.5 w-3.5"></span>
+                                    {{ $releaseActions['return_to_dropoff'] }}
+                                </button>
+                            </form>
+                        @endif
+                    </div>
+                @endif
+
                 <div class="space-y-2 border-t border-border pt-3 dark:border-gray-800">
-                    @if((int) ($order->branch?->machine_count ?? 0) > 0)
+                    @if((int) ($processingBranch?->machine_count ?? 0) > 0)
                         <div class="flex flex-wrap gap-1.5">
-                            @for($machine = 1; $machine <= (int) $order->branch->machine_count; $machine++)
-                                @php($usingOrder = ($activeMachinesByBranch[$order->branch_id] ?? [])[$machine] ?? null)
+                            @for($machine = 1; $machine <= (int) $processingBranch->machine_count; $machine++)
+                                @php($usingOrder = ($activeMachinesByBranch[$processingBranchId] ?? [])[$machine] ?? null)
                                 <span class="{{ \App\Support\StatusBadge::classes($usingOrder ? 'washing' : 'ok') }}" title="{{ $usingOrder ? 'Used by '.$usingOrder : 'Available' }}">
                                     Machine #{{ $machine }} {{ $usingOrder ? 'Busy' : 'Open' }}
                                 </span>

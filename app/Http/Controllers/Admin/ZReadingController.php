@@ -203,7 +203,7 @@ class ZReadingController extends Controller
     private function summary(int $branchId, string $businessDate): array
     {
         $payments = Payment::query()
-            ->where('branch_id', $branchId)
+            ->where('collected_branch_id', $branchId)
             ->whereDate('paid_at', $businessDate);
 
         $paymentBreakdown = (clone $payments)

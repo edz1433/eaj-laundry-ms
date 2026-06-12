@@ -74,6 +74,21 @@
                     </label>
                 </div>
 
+                <label class="mt-3 block text-sm font-medium">Receiving Production Branch
+                    <select name="processing_branch_id" class="mt-1.5 h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950" required>
+                        @foreach($processingBranches as $processingBranch)
+                            <option value="{{ $processingBranch->id }}" @selected((int) old('processing_branch_id', $jobOrder->processing_branch_id ?: $jobOrder->branch_id) === (int) $processingBranch->id)>
+                                {{ $processingBranch->name }} - receives by QR scan
+                            </option>
+                        @endforeach
+                    </select>
+                    @if(($jobOrder->branch?->branch_type ?? 'full_service') === 'pickup_dropoff')
+                        <span class="mt-1 block text-xs font-normal text-muted">
+                            Pickup/drop-off orders are assigned here first, then added to this branch cycle only after QR scan acceptance.
+                        </span>
+                    @endif
+                </label>
+
                 <textarea name="notes" rows="3" placeholder="Notes / instructions" class="mt-3 w-full rounded-md border border-border bg-white px-3 py-2 text-sm shadow-sm dark:border-gray-800 dark:bg-gray-950">{{ old('notes', $jobOrder->notes) }}</textarea>
             </div>
 

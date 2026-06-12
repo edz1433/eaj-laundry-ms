@@ -65,7 +65,9 @@
             <main class="flex-1 p-4 sm:p-6 lg:p-8">
                 @include('partials.alerts')
                 @include('partials.billing-banner')
-                @include('partials.assistant-widget')
+                @unless(request()->routeIs('admin.job-orders.create'))
+                    @include('partials.assistant-widget')
+                @endunless
 
                 {{ $slot ?? '' }}
 

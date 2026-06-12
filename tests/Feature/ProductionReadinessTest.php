@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\Branch;
 use App\Models\Customer;
+use App\Models\DailyTask;
+use App\Models\DailyTaskCompletion;
 use App\Models\JobOrder;
 use App\Models\Payment;
 use App\Models\SystemSetting;
@@ -284,5 +286,92 @@ class ProductionReadinessTest extends TestCase
         $this->actingAs($cashier)
             ->postJson(route('dashboard.assistant'), $payload)
             ->assertForbidden();
+    }
+
+    public function test_assistant_active_cycles_include_processing_branch_work(): void
+    {
+        SystemSetting::query()->create([
+            'business_name' => 'EAJ Laundry',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'primary_color' => '#0EA5E9',
+            'is_completed' => true,
+        ]);
+
+        $dropoffBranch = Branch::query()->create(['name' => 'Pickup Branch', 'code' => 'PICK', 'branch_type' => 'pickup_dropoff', 'is_active' => true]);
+        $productionBranch = Branch::query()->create(['name' => 'Production Branch', 'code' => 'PROD', 'branch_type' => 'full_service', 'is_active' => true]);
+        $customer = Customer::query()->create(['branch_id' => $dropoffBranch->id, 'name' => 'Pickup Customer', 'billing_type' => 'regular', 'is_active' => true]);
+        JobOrder::query()->create([
+            'branch_id' => $dropoffBranch->id,
+            'processing_branch_id' => $productionBranch->id,
+            'production_accepted_at' => now(),
+            'customer_id' => $customer->id,
+            'job_order_number' => 'JO-PROCESSING-001',
+            'status' => 'washing',
+            'subtotal' => 0,
+            'discount' => 0,
+            'tax' => 0,
+            'total' => 0,
+            'paid_amount' => 0,
+            'balance' => 0,
+        ]);
+        $manager = User::factory()->create([
+            'role' => 'branch_manager',
+            'branch_id' => $productionBranch->id,
+            'access' => ['dashboard'],
+        ]);
+
+        $this->actingAs($manager)
+            ->postJson(route('dashboard.assistant'), [
+                'preset' => 'active_cycles',
+                'date_range' => today()->toDateString().' to '.today()->toDateString(),
+            ])
+            ->assertOk()
+            ->assertJsonPath('scope', 'Production Branch')
+            ->assertJsonPath('metrics.0.value', '1');
+    }
+
+    public function test_assistant_daily_tasks_include_global_branch_tasks(): void
+    {
+        SystemSetting::query()->create([
+            'business_name' => 'EAJ Laundry',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'primary_color' => '#0EA5E9',
+            'is_completed' => true,
+        ]);
+
+        $branch = Branch::query()->create(['name' => 'Branch A', 'code' => 'A', 'is_active' => true]);
+        $globalTask = DailyTask::query()->create(['branch_id' => null, 'name' => 'Clean front desk', 'requires_photo' => true, 'is_active' => true]);
+        DailyTask::query()->create(['branch_id' => $branch->id, 'name' => 'Count cash drawer', 'requires_photo' => true, 'is_active' => true]);
+        DailyTaskCompletion::query()->create([
+            'daily_task_id' => $globalTask->id,
+            'branch_id' => $branch->id,
+            'work_date' => today()->toDateString(),
+            'photo_path' => 'daily-tasks/proof.jpg',
+            'completed_at' => now(),
+        ]);
+        $manager = User::factory()->create([
+            'role' => 'branch_manager',
+            'branch_id' => $branch->id,
+            'access' => ['dashboard'],
+        ]);
+
+        $this->actingAs($manager)
+            ->postJson(route('dashboard.assistant'), [
+                'preset' => 'eod_tasks',
+                'date_range' => today()->toDateString().' to '.today()->toDateString(),
+            ])
+            ->assertOk()
+            ->assertJsonPath('scope', 'Branch A')
+            ->assertJsonPath('metrics.0.value', '2')
+            ->assertJsonPath('metrics.1.value', '1')
+            ->assertJsonPath('metrics.2.value', '1');
     }
 }

@@ -45,7 +45,6 @@ class EmployeeController extends Controller
         $validated = $request->validate($this->rules($request));
         $validated = $this->normalizeBranch($request, $validated);
         $validated['password'] = Hash::make($validated['password'] ?? 'password123');
-        $validated['daily_rate'] = 0;
         $validated['status'] = $request->boolean('is_active', true) ? 'active' : 'inactive';
 
         AttendanceEmployee::create($validated);
@@ -59,7 +58,6 @@ class EmployeeController extends Controller
 
         $validated = $request->validate($this->rules($request, $employee));
         $validated = $this->normalizeBranch($request, $validated);
-        $validated['daily_rate'] = 0;
         $validated['status'] = $request->boolean('is_active') ? 'active' : 'inactive';
 
         if (! empty($validated['password'])) {

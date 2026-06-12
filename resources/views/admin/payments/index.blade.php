@@ -35,18 +35,26 @@
             <p class="text-sm text-muted">Review POS collections, receivable payments, and cashier activity.</p>
         </div>
 
-        <div class="grid grid-cols-3 gap-2 sm:min-w-[30rem]">
+        <div class="grid grid-cols-2 gap-2 sm:min-w-[48rem] lg:grid-cols-5">
             <div class="rounded-lg border border-border bg-smoke p-3 dark:border-gray-800 dark:bg-gray-950">
                 <p class="text-xs font-medium text-muted">Payments</p>
                 <p class="mt-1 text-lg font-semibold">{{ number_format((int) ($summary->payments_count ?? 0)) }}</p>
             </div>
             <div class="rounded-lg border border-border bg-smoke p-3 dark:border-gray-800 dark:bg-gray-950">
-                <p class="text-xs font-medium text-muted">Filtered Total</p>
-                <p class="mt-1 text-lg font-semibold">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) ($summary->total_amount ?? 0), 2) }}</p>
+                <p class="text-xs font-medium text-muted">Sales Owned</p>
+                <p class="mt-1 text-lg font-semibold">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $salesOwnerTotal, 2) }}</p>
             </div>
             <div class="rounded-lg border border-border bg-smoke p-3 dark:border-gray-800 dark:bg-gray-950">
-                <p class="text-xs font-medium text-muted">Today</p>
-                <p class="mt-1 text-lg font-semibold">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $todayTotal, 2) }}</p>
+                <p class="text-xs font-medium text-muted">Collected Here</p>
+                <p class="mt-1 text-lg font-semibold">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $physicalCollectionTotal, 2) }}</p>
+            </div>
+            <div class="rounded-lg border border-border bg-smoke p-3 dark:border-gray-800 dark:bg-gray-950">
+                <p class="text-xs font-medium text-muted">Collected Today</p>
+                <p class="mt-1 text-lg font-semibold">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $todayCollectionTotal, 2) }}</p>
+            </div>
+            <div class="rounded-lg border border-border bg-smoke p-3 dark:border-gray-800 dark:bg-gray-950">
+                <p class="text-xs font-medium text-muted">Cross-Branch</p>
+                <p class="mt-1 text-lg font-semibold">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $crossBranchTotal, 2) }}</p>
             </div>
         </div>
     </div>
@@ -62,7 +70,7 @@
                 <div class="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
                     @if($canChooseBranch)
                         <select name="branch_id" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
-                            <option value="">All branches</option>
+                            <option value="">All sales/collection branches</option>
                             @foreach($branches as $branch)
                                 <option value="{{ $branch->id }}" @selected(request('branch_id') == $branch->id)>{{ $branch->name }}</option>
                             @endforeach
@@ -150,9 +158,11 @@
                         <th class="px-4 py-3">Payment</th>
                         <th class="px-4 py-3">Job Order</th>
                         <th class="px-4 py-3">Customer</th>
-                        <th class="px-4 py-3">Branch</th>
+                        <th class="px-4 py-3">Sales Branch</th>
+                        <th class="px-4 py-3">Collected At</th>
                         <th class="px-4 py-3">Type</th>
                         <th class="px-4 py-3">Reference</th>
+                        <th class="px-4 py-3">Settlement</th>
                         <th class="px-4 py-3 text-right">Amount</th>
                         <th class="px-4 py-3">Received By</th>
                         <th class="px-4 py-3">Remarks</th>
@@ -174,11 +184,24 @@
                             </td>
                             <td class="px-4 py-3">{{ $payment->branch?->name ?? 'N/A' }}</td>
                             <td class="px-4 py-3">
+                                <p class="font-medium">{{ $payment->collectedBranch?->name ?? $payment->branch?->name ?? 'N/A' }}</p>
+                                @if((int) ($payment->collected_branch_id ?: $payment->branch_id) !== (int) $payment->branch_id)
+                                    <p class="text-xs text-amber-700 dark:text-amber-300">For remittance</p>
+                                @endif
+                            </td>
+                            <td class="px-4 py-3">
                                 <span class="{{ \App\Support\StatusBadge::classes($payment->payment_type) }}">
                                     {{ \App\Support\StatusBadge::label($payment->payment_type) }}
                                 </span>
                             </td>
                             <td class="px-4 py-3">{{ $payment->reference_no ?: 'N/A' }}</td>
+                            <td class="px-4 py-3">
+                                @if((int) ($payment->collected_branch_id ?: $payment->branch_id) !== (int) $payment->branch_id)
+                                    <span class="{{ \App\Support\StatusBadge::classes('pending') }}">{{ \App\Support\StatusBadge::label($payment->settlement_status ?: 'pending') }}</span>
+                                @else
+                                    <span class="{{ \App\Support\StatusBadge::classes('ok') }}">Local</span>
+                                @endif
+                            </td>
                             <td class="px-4 py-3 text-right font-semibold">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $payment->amount, 2) }}</td>
                             <td class="px-4 py-3">{{ $payment->receiver?->name ?? 'System' }}</td>
                             <td class="max-w-56 px-4 py-3">
@@ -187,7 +210,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="9" class="px-4 py-10 text-center text-muted">No payments found.</td>
+                            <td colspan="11" class="px-4 py-10 text-center text-muted">No payments found.</td>
                         </tr>
                     @endforelse
                 </tbody>

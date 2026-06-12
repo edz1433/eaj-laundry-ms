@@ -127,7 +127,7 @@
             @include('admin.users.partials.form', [
                 'action' => route('admin.users.store'),
                 'method' => 'POST',
-                'user' => new \App\Models\User(['status' => 'active', 'access' => []]),
+                'user' => new \App\Models\User(['role' => 'cashier', 'status' => 'active', 'access' => []]),
             ])
         </div>
     </div>

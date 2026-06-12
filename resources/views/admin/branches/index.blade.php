@@ -46,6 +46,7 @@
                     <tr>
                         <th class="px-4 py-3">Branch</th>
                         <th class="px-4 py-3">Contact</th>
+                        <th class="px-4 py-3">Type</th>
                         <th class="px-4 py-3">Machines</th>
                         <th class="px-4 py-3">Users</th>
                         <th class="px-4 py-3">Status</th>
@@ -61,6 +62,12 @@
                                 <p class="text-xs text-muted">{{ $branch->latitude !== null && $branch->longitude !== null ? 'Geofence: '.($branch->attendance_radius_meters ?: 150).'m' : 'Geofence not set' }}</p>
                             </td>
                             <td class="px-4 py-3">{{ $branch->contact_number ?: 'N/A' }}</td>
+                            <td class="px-4 py-3">
+                                <span class="inline-flex items-center gap-1.5 rounded-md bg-smoke px-2 py-1 text-xs font-medium text-muted dark:bg-gray-950">
+                                    <span data-lucide="{{ ($branch->branch_type ?? 'full_service') === 'pickup_dropoff' ? 'map-pin' : 'laundry' }}" class="h-3.5 w-3.5"></span>
+                                    {{ ($branch->branch_type ?? 'full_service') === 'pickup_dropoff' ? 'Pickup & Drop-off' : 'Full Service' }}
+                                </span>
+                            </td>
                             <td class="px-4 py-3">
                                 <span class="inline-flex items-center gap-1.5 rounded-md bg-smoke px-2 py-1 text-xs font-medium text-muted dark:bg-gray-950">
                                     <span data-lucide="laundry" class="h-3.5 w-3.5"></span>
@@ -98,7 +105,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="px-4 py-10 text-center text-muted">No branches found.</td>
+                            <td colspan="7" class="px-4 py-10 text-center text-muted">No branches found.</td>
                         </tr>
                     @endforelse
                 </tbody>
@@ -121,7 +128,7 @@
                 @include('admin.branches.partials.form', [
                     'action' => route('admin.branches.store'),
                     'method' => 'POST',
-                    'branch' => new \App\Models\Branch(['is_active' => true]),
+                    'branch' => new \App\Models\Branch(['is_active' => true, 'branch_type' => 'full_service']),
                 ])
             </div>
         </div>

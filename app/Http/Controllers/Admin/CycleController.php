@@ -30,6 +30,11 @@ class CycleController extends Controller
         'completed' => 'Completed',
     ];
 
+    private const RELEASE_ACTIONS = [
+        'release_here' => 'Release Here',
+        'return_to_dropoff' => 'Return to Drop-off',
+    ];
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -56,7 +61,17 @@ class CycleController extends Controller
         $customers = Customer::query()
             ->with('branch:id,name')
             ->where('is_active', true)
-            ->when($customerBranchId, fn ($query) => $query->where('branch_id', $customerBranchId))
+            ->when($customerBranchId, fn ($query) => $query->where(fn ($query) => $query
+                ->where('branch_id', $customerBranchId)
+                ->orWhereHas('jobOrders', fn ($query) => $query
+                    ->whereNotIn('status', ['completed', 'cancelled'])
+                    ->where(fn ($query) => $query
+                        ->where(fn ($query) => $query
+                            ->where('processing_branch_id', $customerBranchId)
+                            ->whereNotNull('production_accepted_at'))
+                        ->orWhere(fn ($query) => $query
+                            ->whereNull('processing_branch_id')
+                            ->where('branch_id', $customerBranchId))))))
             ->when(! $customerBranchId, fn ($query) => $query->whereRaw('1 = 0'))
             ->orderBy('name')
             ->get(['id', 'branch_id', 'name', 'phone']);
@@ -65,10 +80,28 @@ class CycleController extends Controller
             $selectedCustomerId = null;
         }
 
-        $orders = JobOrder::with(['branch', 'customer', 'cycles.user'])
+        $orders = JobOrder::with(['branch', 'processingBranch', 'currentBranch', 'releaseBranch', 'customer', 'cycles.user'])
             ->whereNotIn('status', ['completed', 'cancelled'])
-            ->when($selectedBranchId, fn ($q) => $q->where('branch_id', $selectedBranchId))
-            ->when(! $canChooseBranch, fn ($q) => $q->where('branch_id', $user->branch_id))
+            ->when($selectedBranchId, fn ($q) => $q->where(fn ($query) => $query
+                ->where('branch_id', $selectedBranchId)
+                ->orWhere(fn ($query) => $query
+                    ->where('processing_branch_id', $selectedBranchId)
+                    ->whereNotNull('production_accepted_at'))
+                ->orWhere('current_branch_id', $selectedBranchId)
+                ->orWhere('release_branch_id', $selectedBranchId)
+                ->orWhere(fn ($query) => $query
+                    ->whereNull('processing_branch_id')
+                    ->where('branch_id', $selectedBranchId))))
+            ->when(! $canChooseBranch, fn ($q) => $q->where(fn ($query) => $query
+                ->where('branch_id', $user->branch_id)
+                ->orWhere(fn ($query) => $query
+                    ->where('processing_branch_id', $user->branch_id)
+                    ->whereNotNull('production_accepted_at'))
+                ->orWhere('current_branch_id', $user->branch_id)
+                ->orWhere('release_branch_id', $user->branch_id)
+                ->orWhere(fn ($query) => $query
+                    ->whereNull('processing_branch_id')
+                    ->where('branch_id', $user->branch_id))))
             ->when($selectedCustomerId, fn ($q) => $q->where('customer_id', $selectedCustomerId))
             ->when($dateFrom, fn ($q) => $q->whereDate('created_at', '>=', $dateFrom))
             ->when($dateTo, fn ($q) => $q->whereDate('created_at', '<=', $dateTo))
@@ -89,7 +122,7 @@ class CycleController extends Controller
             ->withQueryString();
 
         $activeMachinesByBranch = CycleRecord::query()
-            ->with('jobOrder:id,branch_id,job_order_number')
+            ->with('jobOrder:id,branch_id,processing_branch_id,job_order_number')
             ->where('cycle_type', 'wash')
             ->whereNotNull('machine_number')
             ->whereNull('ended_at')
@@ -99,11 +132,23 @@ class CycleController extends Controller
                 $selectedBranchId = $canChooseBranch ? ($request->integer('branch_id') ?: null) : $user->branch_id;
 
                 $query->whereNotIn('status', ['completed', 'cancelled'])
-                    ->when($selectedBranchId, fn ($query) => $query->where('branch_id', $selectedBranchId))
-                    ->when(! $canChooseBranch, fn ($query) => $query->where('branch_id', $user->branch_id));
+                    ->when($selectedBranchId, fn ($query) => $query->where(fn ($query) => $query
+                        ->where(fn ($query) => $query
+                            ->where('processing_branch_id', $selectedBranchId)
+                            ->whereNotNull('production_accepted_at'))
+                        ->orWhere(fn ($query) => $query
+                            ->whereNull('processing_branch_id')
+                            ->where('branch_id', $selectedBranchId))))
+                    ->when(! $canChooseBranch, fn ($query) => $query->where(fn ($query) => $query
+                        ->where(fn ($query) => $query
+                            ->where('processing_branch_id', $user->branch_id)
+                            ->whereNotNull('production_accepted_at'))
+                        ->orWhere(fn ($query) => $query
+                            ->whereNull('processing_branch_id')
+                            ->where('branch_id', $user->branch_id))));
             })
             ->get()
-            ->groupBy(fn (CycleRecord $cycle) => $cycle->jobOrder?->branch_id)
+            ->groupBy(fn (CycleRecord $cycle) => $cycle->jobOrder?->processing_branch_id ?: $cycle->jobOrder?->branch_id)
             ->map(fn ($cycles) => $cycles
                 ->filter(fn (CycleRecord $cycle) => $cycle->jobOrder && $cycle->machine_number)
                 ->mapWithKeys(fn (CycleRecord $cycle) => [(int) $cycle->machine_number => $cycle->jobOrder->job_order_number])
@@ -124,6 +169,7 @@ class CycleController extends Controller
             'statusFilters' => self::ACTIVE_STATUSES,
             'cycleTypes' => self::CYCLE_TYPES,
             'completionStatuses' => self::COMPLETION_STATUSES,
+            'releaseActions' => self::RELEASE_ACTIONS,
             'statusLabels' => $statusLabels,
         ]);
     }
@@ -136,9 +182,14 @@ class CycleController extends Controller
             'status' => ['required', Rule::in(array_keys(self::COMPLETION_STATUSES))],
         ]);
 
+        $processingBranchId = $jobOrder->processing_branch_id ?: $jobOrder->branch_id;
         $jobOrder->update([
             'status' => $validated['status'],
             'completed_at' => $validated['status'] === 'completed' ? now() : null,
+            'production_completed_at' => $jobOrder->production_completed_at ?: now(),
+            'current_branch_id' => $processingBranchId,
+            'release_branch_id' => $processingBranchId,
+            'released_at' => $validated['status'] === 'completed' ? now() : null,
         ]);
 
         Activity::log($request, 'job_order_status_updated', $jobOrder, [
@@ -152,6 +203,58 @@ class CycleController extends Controller
         return back()->with('success', 'Job order status updated.');
     }
 
+    public function releaseAction(Request $request, JobOrder $jobOrder)
+    {
+        $this->authorizeReleaseAction($request, $jobOrder);
+        abort_unless($jobOrder->status === 'ready_for_pickup', 422);
+
+        $validated = $request->validate([
+            'action' => ['required', Rule::in(array_keys(self::RELEASE_ACTIONS))],
+        ]);
+
+        if ($validated['action'] === 'return_to_dropoff') {
+            $processingBranchId = $jobOrder->processing_branch_id ?: $jobOrder->branch_id;
+            abort_unless((int) $processingBranchId === (int) $request->user()->branch_id || $request->user()->canManageAllBranches(), 403);
+            abort_unless((int) $processingBranchId !== (int) $jobOrder->branch_id, 422);
+
+            $jobOrder->update([
+                'status' => 'ready_for_pickup',
+                'current_branch_id' => $jobOrder->branch_id,
+                'release_branch_id' => $jobOrder->branch_id,
+                'production_completed_at' => $jobOrder->production_completed_at ?: now(),
+                'returned_to_branch_at' => now(),
+                'completed_at' => null,
+                'released_at' => null,
+            ]);
+
+            Activity::log($request, 'job_order_returned_to_dropoff', $jobOrder, [
+                'job_order_number' => $jobOrder->job_order_number,
+                'dropoff_branch_id' => $jobOrder->branch_id,
+            ], $jobOrder->branch_id);
+
+            return back()->with('success', 'Laundry returned to drop-off branch for release.');
+        }
+
+        abort_unless((int) ($jobOrder->release_branch_id ?: $jobOrder->current_branch_id ?: $jobOrder->branch_id) === (int) $request->user()->branch_id || $request->user()->canManageAllBranches(), 403);
+
+        $jobOrder->update([
+            'status' => 'completed',
+            'completed_at' => now(),
+            'released_at' => now(),
+            'release_branch_id' => $jobOrder->release_branch_id ?: ($jobOrder->current_branch_id ?: $request->user()->branch_id),
+        ]);
+
+        Activity::log($request, 'job_order_released', $jobOrder, [
+            'job_order_number' => $jobOrder->job_order_number,
+            'release_branch_id' => $jobOrder->release_branch_id,
+        ], $jobOrder->release_branch_id);
+
+        $jobOrder->loadMissing('customer');
+        SmsNotifier::jobOrderStatus($jobOrder);
+
+        return back()->with('success', 'Laundry released successfully.');
+    }
+
     public function storeCycle(Request $request, JobOrder $jobOrder)
     {
         $this->authorizeOrder($request, $jobOrder);
@@ -162,7 +265,8 @@ class CycleController extends Controller
             'notes' => ['nullable', 'string', 'max:255'],
         ]);
 
-        $machineCount = (int) ($jobOrder->branch?->machine_count ?? 0);
+        $processingBranch = $jobOrder->processingBranch ?: $jobOrder->branch;
+        $machineCount = (int) ($processingBranch?->machine_count ?? 0);
         if ($validated['cycle_type'] === 'wash' && $machineCount > 0 && empty($validated['machine_number'])) {
             return back()->withErrors(['machine_number' => 'Please choose a machine.'])->withInput();
         }
@@ -192,7 +296,13 @@ class CycleController extends Controller
             'fold', 'iron' => 'folding',
         };
 
-        $jobOrder->update(['status' => $status]);
+        $jobOrder->update([
+            'status' => $status,
+            'current_branch_id' => $jobOrder->processing_branch_id ?: $jobOrder->branch_id,
+            'release_branch_id' => $jobOrder->processing_branch_id ?: $jobOrder->branch_id,
+            'completed_at' => null,
+            'released_at' => null,
+        ]);
 
         Activity::log($request, 'cycle_started', $cycle, [
             'job_order_number' => $jobOrder->job_order_number,
@@ -266,7 +376,11 @@ class CycleController extends Controller
             ->where('machine_number', $machineNumber)
             ->whereNull('ended_at')
             ->whereHas('jobOrder', fn ($query) => $query
-                ->where('branch_id', $jobOrder->branch_id)
+                ->where(fn ($query) => $query
+                    ->where('processing_branch_id', $jobOrder->processing_branch_id ?: $jobOrder->branch_id)
+                    ->orWhere(fn ($query) => $query
+                        ->whereNull('processing_branch_id')
+                        ->where('branch_id', $jobOrder->processing_branch_id ?: $jobOrder->branch_id)))
                 ->whereNotIn('status', ['completed', 'cancelled']))
             ->exists();
     }
@@ -277,7 +391,28 @@ class CycleController extends Controller
             return;
         }
 
-        abort_unless((int) $jobOrder->branch_id === (int) $request->user()->branch_id, 403);
+        abort_unless(
+            (int) $jobOrder->branch_id === (int) $request->user()->branch_id
+                || (
+                    (int) ($jobOrder->processing_branch_id ?: $jobOrder->branch_id) === (int) $request->user()->branch_id
+                    && $jobOrder->production_accepted_at
+                ),
+            403
+        );
+    }
+
+    private function authorizeReleaseAction(Request $request, JobOrder $jobOrder): void
+    {
+        if ($request->user()->canManageAllBranches()) {
+            return;
+        }
+
+        abort_unless(in_array((int) $request->user()->branch_id, [
+            (int) $jobOrder->branch_id,
+            (int) ($jobOrder->processing_branch_id ?: $jobOrder->branch_id),
+            (int) ($jobOrder->current_branch_id ?: $jobOrder->branch_id),
+            (int) ($jobOrder->release_branch_id ?: $jobOrder->branch_id),
+        ], true), 403);
     }
 
     private function dateRange(Request $request): array

@@ -23,11 +23,16 @@ class PaymentController extends Controller
             ->when(! $canChooseBranch, fn ($query) => $query->whereKey($user->branch_id))
             ->orderBy('name')
             ->get();
+        $selectedBranchId = $canChooseBranch ? ($request->integer('branch_id') ?: null) : $user->branch_id;
 
         $baseQuery = Payment::query()
-            ->with(['branch', 'customer', 'jobOrder', 'receiver'])
-            ->when(! $canChooseBranch, fn ($query) => $query->where('branch_id', $user->branch_id))
-            ->when($request->filled('branch_id') && $canChooseBranch, fn ($query) => $query->where('branch_id', $request->branch_id))
+            ->with(['branch', 'collectedBranch', 'customer', 'jobOrder', 'receiver'])
+            ->when(! $canChooseBranch, fn ($query) => $query->where(fn ($query) => $query
+                ->where('branch_id', $user->branch_id)
+                ->orWhere('collected_branch_id', $user->branch_id)))
+            ->when($request->filled('branch_id') && $canChooseBranch, fn ($query) => $query->where(fn ($query) => $query
+                ->where('branch_id', $request->branch_id)
+                ->orWhere('collected_branch_id', $request->branch_id)))
             ->when(in_array($request->payment_type, self::PAYMENT_TYPES, true), fn ($query) => $query->where('payment_type', $request->payment_type))
             ->when($dateFrom, fn ($query) => $query->whereDate('paid_at', '>=', $dateFrom))
             ->when($dateTo, fn ($query) => $query->whereDate('paid_at', '<=', $dateTo))
@@ -52,11 +57,21 @@ class PaymentController extends Controller
             ->whereDate('paid_at', today())
             ->sum('amount');
 
+        $salesOwnerTotal = $this->filteredPaymentQuery($request, $selectedBranchId, 'branch_id')->sum('amount');
+        $physicalCollectionTotal = $this->filteredPaymentQuery($request, $selectedBranchId, 'collected_branch_id')->sum('amount');
+        $todayCollectionTotal = $this->filteredPaymentQuery($request, $selectedBranchId, 'collected_branch_id')
+            ->whereDate('paid_at', today())
+            ->sum('amount');
+
         $paymentsByType = (clone $baseQuery)
             ->selectRaw('payment_type, COALESCE(SUM(amount), 0) as total_amount, COUNT(*) as payments_count')
             ->groupBy('payment_type')
             ->orderByDesc('total_amount')
             ->get();
+
+        $crossBranchTotal = (clone $baseQuery)
+            ->whereColumn('collected_branch_id', '!=', 'branch_id')
+            ->sum('amount');
 
         $payments = $baseQuery
             ->latest('paid_at')
@@ -68,6 +83,10 @@ class PaymentController extends Controller
             'canChooseBranch',
             'payments',
             'paymentsByType',
+            'crossBranchTotal',
+            'salesOwnerTotal',
+            'physicalCollectionTotal',
+            'todayCollectionTotal',
             'summary',
             'todayTotal',
             'dateFrom',
@@ -78,6 +97,37 @@ class PaymentController extends Controller
     private function canChooseBranch($user): bool
     {
         return $user->isSuperAdmin() || $user->role === 'admin';
+    }
+
+    private function filteredPaymentQuery(Request $request, ?int $branchId, string $branchColumn)
+    {
+        return Payment::query()
+            ->when($branchId, fn ($query) => $query->where($branchColumn, $branchId))
+            ->when(in_array($request->payment_type, self::PAYMENT_TYPES, true), fn ($query) => $query->where('payment_type', $request->payment_type))
+            ->when($request->filled('date_range'), function ($query) use ($request) {
+                [$dateFrom, $dateTo] = $this->dateRange($request);
+                $query
+                    ->when($dateFrom, fn ($query) => $query->whereDate('paid_at', '>=', $dateFrom))
+                    ->when($dateTo, fn ($query) => $query->whereDate('paid_at', '<=', $dateTo));
+            })
+            ->when(! $request->filled('date_range'), function ($query) use ($request) {
+                [$dateFrom, $dateTo] = $this->dateRange($request);
+                $query
+                    ->when($dateFrom, fn ($query) => $query->whereDate('paid_at', '>=', $dateFrom))
+                    ->when($dateTo, fn ($query) => $query->whereDate('paid_at', '<=', $dateTo));
+            })
+            ->when($request->filled('search'), function ($query) use ($request) {
+                $search = $request->search;
+
+                $query->where(function ($query) use ($search) {
+                    $query->where('payment_number', 'like', "%{$search}%")
+                        ->orWhere('reference_no', 'like', "%{$search}%")
+                        ->orWhereHas('jobOrder', fn ($query) => $query->where('job_order_number', 'like', "%{$search}%"))
+                        ->orWhereHas('customer', fn ($query) => $query->where('name', 'like', "%{$search}%")
+                            ->orWhere('phone', 'like', "%{$search}%"))
+                        ->orWhereHas('receiver', fn ($query) => $query->where('name', 'like', "%{$search}%"));
+                });
+            });
     }
 
     private function dateRange(Request $request): array

@@ -31,9 +31,10 @@ class SmsLogController extends Controller
             ->when($request->filled('search'), function ($query) use ($request) {
                 $search = $request->search;
 
-                $query->where('recipient', 'like', "%{$search}%")
+                $query->where(fn ($query) => $query
+                    ->where('recipient', 'like', "%{$search}%")
                     ->orWhere('message', 'like', "%{$search}%")
-                    ->orWhereHas('customer', fn ($query) => $query->where('name', 'like', "%{$search}%"));
+                    ->orWhereHas('customer', fn ($query) => $query->where('name', 'like', "%{$search}%")));
             })
             ->latest()
             ->paginate(10)

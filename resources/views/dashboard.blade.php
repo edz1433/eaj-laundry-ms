@@ -17,7 +17,7 @@
                 {{ $canChooseBranch ? 'Business Dashboard' : auth()->user()->branch?->name.' Dashboard' }}
             </h1>
             <p class="text-sm text-muted">
-                Live sales, workflow, receivables, and inventory signals.
+                Live sales, physical collections, workflow, receivables, and inventory signals.
                 <span class="ml-1" x-text="`Updated ${data.generated_at}`"></span>
             </p>
         </div>
@@ -46,7 +46,7 @@
         </form>
     </div>
 
-    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
         <template x-for="card in statCards" :key="card.key">
             <div class="rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
                 <div class="mb-3 flex h-8 w-8 items-center justify-center rounded-md bg-smoke text-primary dark:bg-gray-950">
@@ -63,7 +63,7 @@
             <div class="mb-4 flex items-center justify-between">
                 <div>
                     <h2 class="text-base font-semibold">Sales Trend</h2>
-                    <p class="text-sm text-muted">Payments received in the selected date range.</p>
+                    <p class="text-sm text-muted">Sales owned by branch in the selected date range.</p>
                 </div>
                 <span data-lucide="payments" class="h-4 w-4 text-primary"></span>
             </div>
@@ -155,6 +155,7 @@ function dashboardPage(fetchUrl, initialData, initialDateRange) {
         statusChart: null,
         statCards: [
             { key: 'sales', label: 'Sales', icon: 'payments' },
+            { key: 'collections', label: 'Collected', icon: 'receipt' },
             { key: 'orders', label: 'Orders', icon: 'jobOrders' },
             { key: 'open_orders', label: 'Open', icon: 'activity' },
             { key: 'ready_for_pickup', label: 'Ready', icon: 'laundry' },

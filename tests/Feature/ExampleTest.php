@@ -96,6 +96,46 @@ class ExampleTest extends TestCase
         $this->assertNotNull(session('attendance_employee_id'));
     }
 
+    public function test_attendance_kiosk_uses_uploaded_business_logo(): void
+    {
+        Storage::fake('public');
+
+        $logoPath = 'settings/brand.png';
+        Storage::disk('public')->put($logoPath, 'fake-logo');
+        SystemSetting::query()->create([
+            'business_name' => 'EAJ Laundry',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'primary_color' => '#2E7D32',
+            'business_logo' => $logoPath,
+            'is_completed' => true,
+        ]);
+
+        $branch = Branch::query()->create([
+            'name' => 'Branch A',
+            'code' => 'A',
+            'is_active' => true,
+        ]);
+        $employee = AttendanceEmployee::query()->create([
+            'branch_id' => $branch->id,
+            'first_name' => 'Logo',
+            'last_name' => 'Tester',
+            'username' => 'logo-tester',
+            'password' => Hash::make('password'),
+            'status' => 'active',
+        ]);
+
+        $this
+            ->withSession(['attendance_employee_id' => $employee->id])
+            ->get(route('attendance.kiosk'))
+            ->assertOk()
+            ->assertSee(asset('storage/'.$logoPath), false)
+            ->assertDontSee(asset('logo.png'), false);
+    }
+
     public function test_system_login_does_not_accept_attendance_employee_credentials(): void
     {
         $branch = Branch::query()->create([
@@ -174,8 +214,46 @@ class ExampleTest extends TestCase
         $response->assertRedirect();
 
         $employee = AttendanceEmployee::where('username', 'maria')->firstOrFail();
-        $this->assertSame('0.00', $employee->daily_rate);
         $this->assertTrue(Hash::check('password123', $employee->password));
+    }
+
+    public function test_attendance_module_displays_active_employee_even_without_logs(): void
+    {
+        SystemSetting::query()->create([
+            'business_name' => 'EAJ Laundry',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'primary_color' => '#2E7D32',
+            'is_completed' => true,
+        ]);
+
+        $branch = Branch::query()->create(['name' => 'Branch A', 'code' => 'A', 'is_active' => true]);
+        $manager = User::factory()->create([
+            'role' => 'branch_manager',
+            'branch_id' => $branch->id,
+            'access' => ['attendance'],
+        ]);
+
+        AttendanceEmployee::query()->create([
+            'branch_id' => $branch->id,
+            'first_name' => 'Ana',
+            'last_name' => 'No Logs',
+            'username' => 'ana-no-logs',
+            'password' => Hash::make('password'),
+            'status' => 'active',
+        ]);
+
+        $this
+            ->actingAs($manager)
+            ->get(route('admin.attendance.index', ['date' => today()->toDateString()]))
+            ->assertOk()
+            ->assertSee('Ana No Logs')
+            ->assertSee('ana-no-logs')
+            ->assertSee('No time-in proof')
+            ->assertSee('No time-out proof');
     }
 
     public function test_attendance_module_is_filtered_log_list_without_manual_time_clock(): void

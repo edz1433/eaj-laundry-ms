@@ -41,6 +41,7 @@ Route::get('/time-clock/challenge', [AttendanceController::class, 'challenge'])-
 Route::post('/time-clock/prepare', [AttendanceController::class, 'preparePublicAttendance'])->name('attendance.prepare');
 Route::post('/time-clock/time-in', [AttendanceController::class, 'publicTimeIn'])->name('attendance.public-time-in');
 Route::post('/time-clock/time-out', [AttendanceController::class, 'publicTimeOut'])->name('attendance.public-time-out');
+Route::post('/time-clock/job-orders/scan', [AttendanceController::class, 'publicScanJobOrder'])->name('attendance.job-orders.scan');
 Route::post('/time-clock/daily-tasks/{task}/complete', [AttendanceController::class, 'publicCompleteDailyTask'])->name('attendance.daily-tasks.complete');
 
 Route::middleware(['auth', 'settings.completed', 'billing.access'])->group(function () {
@@ -91,7 +92,10 @@ Route::middleware(['auth', 'settings.completed', 'billing.access'])->group(funct
         });
         Route::middleware('menu.access:cycles')->group(function () {
             Route::get('/cycles', [CycleController::class, 'index'])->name('cycles.index');
+            Route::get('/cycles/job-orders/{jobOrder}/scan', [JobOrderController::class, 'acceptProductionScan'])->name('cycles.scan');
+            Route::get('/cycles/job-orders/{jobOrder}/receipt', [JobOrderController::class, 'receipt'])->name('cycles.receipt');
             Route::patch('/cycles/job-orders/{jobOrder}/status', [CycleController::class, 'updateStatus'])->name('cycles.status');
+            Route::patch('/cycles/job-orders/{jobOrder}/release', [CycleController::class, 'releaseAction'])->name('cycles.release');
             Route::post('/cycles/job-orders/{jobOrder}', [CycleController::class, 'storeCycle'])->name('cycles.store');
             Route::patch('/cycles/{cycle}/end', [CycleController::class, 'endCycle'])->name('cycles.end');
             Route::delete('/cycles/{cycle}', [CycleController::class, 'destroyCycle'])->name('cycles.destroy');
