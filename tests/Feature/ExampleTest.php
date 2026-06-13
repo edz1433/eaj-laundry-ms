@@ -96,6 +96,55 @@ class ExampleTest extends TestCase
         $this->assertNotNull(session('attendance_employee_id'));
     }
 
+    public function test_failed_employee_login_returns_to_employee_login_page(): void
+    {
+        $response = $this
+            ->from(route('login'))
+            ->post(route('attendance.login.submit'), [
+                'login' => 'missing-employee',
+                'password' => 'wrong-password',
+            ]);
+
+        $response
+            ->assertRedirect(route('attendance.login'))
+            ->assertSessionHasErrors('login');
+    }
+
+    public function test_employee_login_page_is_available_while_system_user_is_authenticated(): void
+    {
+        $user = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($user)
+            ->get(route('attendance.login'))
+            ->assertOk()
+            ->assertSee('Employee Time Clock');
+    }
+
+    public function test_employee_logout_returns_to_employee_login_and_clears_session(): void
+    {
+        $this->withSession(['attendance_employee_id' => 123])
+            ->post(route('attendance.logout'))
+            ->assertRedirect(route('attendance.login'));
+
+        $this->assertNull(session('attendance_employee_id'));
+    }
+
+    public function test_expired_employee_session_redirects_kiosk_actions_to_employee_login(): void
+    {
+        $task = DailyTask::query()->create([
+            'name' => 'Closing task',
+            'is_active' => true,
+        ]);
+
+        $this->post(route('attendance.daily-tasks.complete', $task))
+            ->assertRedirect(route('attendance.login'))
+            ->assertSessionHasErrors('login');
+
+        $this->postJson(route('attendance.public-time-in'), [])
+            ->assertUnauthorized()
+            ->assertJsonPath('redirect', route('attendance.login'));
+    }
+
     public function test_attendance_kiosk_uses_uploaded_business_logo(): void
     {
         Storage::fake('public');
@@ -575,8 +624,8 @@ class ExampleTest extends TestCase
         ]);
 
         $response
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors(['employee']);
+            ->assertUnauthorized()
+            ->assertJsonPath('redirect', route('attendance.login'));
     }
 
     public function test_public_attendance_requires_employee_inside_assigned_branch(): void

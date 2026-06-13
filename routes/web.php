@@ -26,9 +26,10 @@ use App\Http\Controllers\Admin\ZReadingController;
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'showLogin'])->name('login');
     Route::post('/login', [LoginController::class, 'login'])->name('login.submit');
-    Route::get('/attendance-login', [LoginController::class, 'showAttendanceLogin'])->name('attendance.login');
-    Route::post('/attendance-login', [LoginController::class, 'attendanceLogin'])->name('attendance.login.submit');
 });
+
+Route::get('/attendance-login', [LoginController::class, 'showAttendanceLogin'])->name('attendance.login');
+Route::post('/attendance-login', [LoginController::class, 'attendanceLogin'])->name('attendance.login.submit');
 
 Route::post('/logout', [LoginController::class, 'logout'])
     ->middleware('auth')
@@ -36,13 +37,15 @@ Route::post('/logout', [LoginController::class, 'logout'])
 
 Route::post('/attendance-logout', [LoginController::class, 'attendanceLogout'])->name('attendance.logout');
 
-Route::get('/time-clock', [AttendanceController::class, 'kiosk'])->name('attendance.kiosk');
-Route::get('/time-clock/challenge', [AttendanceController::class, 'challenge'])->name('attendance.challenge');
-Route::post('/time-clock/prepare', [AttendanceController::class, 'preparePublicAttendance'])->name('attendance.prepare');
-Route::post('/time-clock/time-in', [AttendanceController::class, 'publicTimeIn'])->name('attendance.public-time-in');
-Route::post('/time-clock/time-out', [AttendanceController::class, 'publicTimeOut'])->name('attendance.public-time-out');
-Route::post('/time-clock/job-orders/scan', [AttendanceController::class, 'publicScanJobOrder'])->name('attendance.job-orders.scan');
-Route::post('/time-clock/daily-tasks/{task}/complete', [AttendanceController::class, 'publicCompleteDailyTask'])->name('attendance.daily-tasks.complete');
+Route::middleware('attendance.employee')->group(function () {
+    Route::get('/time-clock', [AttendanceController::class, 'kiosk'])->name('attendance.kiosk');
+    Route::get('/time-clock/challenge', [AttendanceController::class, 'challenge'])->name('attendance.challenge');
+    Route::post('/time-clock/prepare', [AttendanceController::class, 'preparePublicAttendance'])->name('attendance.prepare');
+    Route::post('/time-clock/time-in', [AttendanceController::class, 'publicTimeIn'])->name('attendance.public-time-in');
+    Route::post('/time-clock/time-out', [AttendanceController::class, 'publicTimeOut'])->name('attendance.public-time-out');
+    Route::post('/time-clock/job-orders/scan', [AttendanceController::class, 'publicScanJobOrder'])->name('attendance.job-orders.scan');
+    Route::post('/time-clock/daily-tasks/{task}/complete', [AttendanceController::class, 'publicCompleteDailyTask'])->name('attendance.daily-tasks.complete');
+});
 
 Route::middleware(['auth', 'settings.completed', 'billing.access'])->group(function () {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');

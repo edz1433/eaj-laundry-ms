@@ -584,6 +584,10 @@
 
                     const data = await response.json().catch(() => ({}));
 
+                    if (response.status === 401 && data.redirect) {
+                        window.location.assign(data.redirect);
+                    }
+
                     return {
                         ok: response.ok,
                         data,

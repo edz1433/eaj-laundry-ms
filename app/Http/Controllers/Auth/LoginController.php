@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
 use App\Models\AttendanceEmployee;
 use App\Models\User;
 
@@ -62,10 +63,17 @@ class LoginController extends Controller
 
     public function attendanceLogin(Request $request)
     {
-        $request->validate([
+        $validator = Validator::make($request->all(), [
             'login' => ['required', 'string'],
             'password' => ['required', 'string'],
         ]);
+
+        if ($validator->fails()) {
+            return redirect()
+                ->route('attendance.login')
+                ->withErrors($validator)
+                ->withInput($request->only('login'));
+        }
 
         $employee = AttendanceEmployee::query()
             ->where('username', $request->login)
@@ -73,7 +81,8 @@ class LoginController extends Controller
             ->first();
 
         if (! $employee || ! Hash::check($request->password, $employee->password)) {
-            return back()
+            return redirect()
+                ->route('attendance.login')
                 ->withErrors(['login' => 'Invalid employee username or password.'])
                 ->onlyInput('login');
         }

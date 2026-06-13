@@ -2,6 +2,7 @@
 
 use Illuminate\Foundation\Application;
 use App\Http\Middleware\EnsureBranchBillingAccess;
+use App\Http\Middleware\EnsureAttendanceEmployeeAuthenticated;
 use App\Http\Middleware\EnsureSystemSettingsCompleted;
 use App\Http\Middleware\EnsureMenuAccess;
 use App\Http\Middleware\EnsureSuperAdmin;
@@ -16,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
+            'attendance.employee' => EnsureAttendanceEmployeeAuthenticated::class,
             'billing.access' => EnsureBranchBillingAccess::class,
             'settings.completed' => EnsureSystemSettingsCompleted::class,
             'menu.access' => EnsureMenuAccess::class,
