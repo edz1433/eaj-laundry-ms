@@ -81,10 +81,6 @@
                     </span>
                 </button>
             </form>
-
-            <div class="mt-5 text-center">
-                <a href="{{ route('login') }}" class="text-sm font-medium text-primary">System admin login</a>
-            </div>
         </div>
     </main>
 
