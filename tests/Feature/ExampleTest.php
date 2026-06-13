@@ -145,6 +145,34 @@ class ExampleTest extends TestCase
             ->assertJsonPath('redirect', route('attendance.login'));
     }
 
+    public function test_employee_connectivity_check_requires_session_and_returns_fresh_status(): void
+    {
+        $this->getJson(route('attendance.connectivity'))
+            ->assertUnauthorized()
+            ->assertJsonPath('redirect', route('attendance.login'));
+
+        $branch = Branch::query()->create([
+            'name' => 'Branch A',
+            'code' => 'A-CONNECT',
+            'is_active' => true,
+        ]);
+        $employee = AttendanceEmployee::query()->create([
+            'branch_id' => $branch->id,
+            'first_name' => 'Online',
+            'last_name' => 'Employee',
+            'username' => 'online-employee',
+            'password' => Hash::make('password'),
+            'status' => 'active',
+        ]);
+
+        $response = $this->withSession(['attendance_employee_id' => $employee->id])
+            ->getJson(route('attendance.connectivity'))
+            ->assertOk()
+            ->assertJsonPath('online', true);
+
+        $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+    }
+
     public function test_attendance_kiosk_uses_uploaded_business_logo(): void
     {
         Storage::fake('public');

@@ -44,6 +44,13 @@ class AttendanceController extends Controller
         return view('attendance.kiosk', compact('employee', 'dailyTasks', 'workDate'));
     }
 
+    public function connectivity()
+    {
+        return response()
+            ->json(['online' => true, 'checked_at' => now()->toIso8601String()])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate');
+    }
+
     public function challenge()
     {
         $sequence = collect(['blink', 'left', 'right'])

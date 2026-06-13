@@ -39,6 +39,7 @@ Route::post('/attendance-logout', [LoginController::class, 'attendanceLogout'])-
 
 Route::middleware('attendance.employee')->group(function () {
     Route::get('/time-clock', [AttendanceController::class, 'kiosk'])->name('attendance.kiosk');
+    Route::get('/time-clock/connectivity', [AttendanceController::class, 'connectivity'])->name('attendance.connectivity');
     Route::get('/time-clock/challenge', [AttendanceController::class, 'challenge'])->name('attendance.challenge');
     Route::post('/time-clock/prepare', [AttendanceController::class, 'preparePublicAttendance'])->name('attendance.prepare');
     Route::post('/time-clock/time-in', [AttendanceController::class, 'publicTimeIn'])->name('attendance.public-time-in');
