@@ -1,28 +1,28 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Admin\AccountsPayableController;
+use App\Http\Controllers\Admin\AttendanceController;
+use App\Http\Controllers\Admin\BillingController;
 use App\Http\Controllers\Admin\BranchController;
 use App\Http\Controllers\Admin\CustomerController;
-use App\Http\Controllers\Admin\LaundryServiceController;
-use App\Http\Controllers\Admin\JobOrderController;
 use App\Http\Controllers\Admin\CycleController;
-use App\Http\Controllers\Admin\ReceivableController;
-use App\Http\Controllers\Admin\PaymentController;
-use App\Http\Controllers\Admin\EmployeeController;
-use App\Http\Controllers\Admin\AttendanceController;
-use App\Http\Controllers\Admin\InventoryController;
-use App\Http\Controllers\Admin\ExpenseController;
+use App\Http\Controllers\Admin\DailyTaskController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\EmployeeController;
+use App\Http\Controllers\Admin\ExpenseController;
+use App\Http\Controllers\Admin\InventoryController;
+use App\Http\Controllers\Admin\JobOrderController;
+use App\Http\Controllers\Admin\LaundryServiceController;
+use App\Http\Controllers\Admin\PaymentController;
+use App\Http\Controllers\Admin\PettyCashController;
+use App\Http\Controllers\Admin\ReceivableController;
 use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\SmsLogController;
-use App\Http\Controllers\Admin\UserController;
-use App\Http\Controllers\Admin\BillingController;
 use App\Http\Controllers\Admin\SystemSettingController;
-use App\Http\Controllers\Admin\DailyTaskController;
-use App\Http\Controllers\Admin\PettyCashController;
+use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\ZReadingController;
-use App\Http\Controllers\Admin\AccountsPayableController;
+use App\Http\Controllers\Auth\LoginController;
+use Illuminate\Support\Facades\Route;
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'showLogin'])->name('login');
@@ -113,6 +113,10 @@ Route::middleware(['auth', 'settings.completed', 'billing.access'])->group(funct
         });
         Route::middleware('menu.access:attendance')->group(function () {
             Route::get('/attendance', [AttendanceController::class, 'index'])->name('attendance.index');
+            Route::get('/attendance/{record}/proof/{type}/{index}', [AttendanceController::class, 'proof'])
+                ->whereIn('type', ['clock-in', 'clock-out'])
+                ->whereNumber('index')
+                ->name('attendance.proof');
             Route::post('/attendance/time-in', [AttendanceController::class, 'timeIn'])->name('attendance.time-in');
             Route::post('/attendance/time-out', [AttendanceController::class, 'timeOut'])->name('attendance.time-out');
         });

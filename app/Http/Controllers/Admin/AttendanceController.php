@@ -127,6 +127,32 @@ class AttendanceController extends Controller
         return view('admin.attendance.index', compact('branches', 'employees', 'records', 'selectedBranchId', 'selectedEmployeeId', 'workDate', 'dateFrom', 'dateTo', 'canChooseBranch'));
     }
 
+    public function proof(Request $request, EmployeeAttendanceRecord $record, string $type, int $index)
+    {
+        if (! $request->user()->canManageAllBranches()) {
+            abort_unless((int) $request->user()->branch_id === (int) $record->branch_id, 403);
+        }
+
+        $photos = match ($type) {
+            'clock-in' => $record->clock_in_photos ?? [],
+            'clock-out' => $record->clock_out_photos ?? [],
+            default => abort(404),
+        };
+        $path = $photos[$index] ?? null;
+
+        abort_unless(
+            is_string($path)
+                && str_starts_with($path, 'attendance-proofs/')
+                && Storage::disk('public')->exists($path),
+            404
+        );
+
+        return Storage::disk('public')->response($path, basename($path), [
+            'Cache-Control' => 'private, max-age=86400',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
     public function timeIn(Request $request)
     {
         $validated = $this->validateAttendanceRequest($request);
@@ -392,15 +418,15 @@ class AttendanceController extends Controller
         }
 
         return EmployeeAttendanceRecord::create([
-                'branch_id' => $branch->id,
-                'attendance_employee_id' => $employee->id,
-                'work_date' => today()->toDateString(),
-                'clock_in' => [],
-                'clock_out' => [],
-                'clock_in_photos' => [],
-                'clock_out_photos' => [],
-                'clock_in_locations' => [],
-                'clock_out_locations' => [],
+            'branch_id' => $branch->id,
+            'attendance_employee_id' => $employee->id,
+            'work_date' => today()->toDateString(),
+            'clock_in' => [],
+            'clock_out' => [],
+            'clock_in_photos' => [],
+            'clock_out_photos' => [],
+            'clock_in_locations' => [],
+            'clock_out_locations' => [],
         ]);
     }
 
@@ -533,5 +559,4 @@ class AttendanceController extends Controller
     {
         return 'attendance_challenge:'.$nonce;
     }
-
 }

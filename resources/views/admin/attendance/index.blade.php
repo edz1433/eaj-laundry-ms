@@ -94,7 +94,7 @@
                             <td class="px-4 py-3">
                                 <div class="flex flex-wrap gap-2">
                                     @forelse($record->clock_in_photos ?? [] as $index => $photo)
-                                        @php($proofUrl = asset('storage/'.$photo))
+                                        @php($proofUrl = route('admin.attendance.proof', ['record' => $record, 'type' => 'clock-in', 'index' => $index]))
                                         <div class="w-24 overflow-hidden rounded-md border border-border bg-white dark:border-gray-800 dark:bg-gray-950">
                                             <button
                                                 type="button"
@@ -133,7 +133,7 @@
                             <td class="px-4 py-3">
                                 <div class="flex flex-wrap gap-2">
                                     @forelse($record->clock_out_photos ?? [] as $index => $photo)
-                                        @php($proofUrl = asset('storage/'.$photo))
+                                        @php($proofUrl = route('admin.attendance.proof', ['record' => $record, 'type' => 'clock-out', 'index' => $index]))
                                         <div class="w-24 overflow-hidden rounded-md border border-border bg-white dark:border-gray-800 dark:bg-gray-950">
                                             <button
                                                 type="button"

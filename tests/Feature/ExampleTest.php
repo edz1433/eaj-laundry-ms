@@ -2,11 +2,11 @@
 
 namespace Tests\Feature;
 
-use App\Models\Branch;
-use App\Models\BranchExpense;
 use App\Models\AccountsPayable;
 use App\Models\AccountsPayablePayment;
 use App\Models\AttendanceEmployee;
+use App\Models\Branch;
+use App\Models\BranchExpense;
 use App\Models\Customer;
 use App\Models\DailyTask;
 use App\Models\DailyTaskCompletion;
@@ -439,6 +439,8 @@ class ExampleTest extends TestCase
 
     public function test_attendance_module_shows_attached_proof_buttons(): void
     {
+        Storage::fake('public');
+
         SystemSetting::query()->create([
             'business_name' => 'EAJ Laundry',
             'contact_number' => '09171234567',
@@ -465,7 +467,7 @@ class ExampleTest extends TestCase
             'status' => 'active',
         ]);
 
-        EmployeeAttendanceRecord::query()->create([
+        $record = EmployeeAttendanceRecord::query()->create([
             'attendance_employee_id' => $employee->id,
             'branch_id' => $branch->id,
             'work_date' => today()->toDateString(),
@@ -476,6 +478,8 @@ class ExampleTest extends TestCase
             'clock_in_locations' => [['latitude' => 14.1, 'longitude' => 121.1]],
             'clock_out_locations' => [['latitude' => 14.1, 'longitude' => 121.1]],
         ]);
+        Storage::disk('public')->put('attendance-proofs/in.jpg', $this->tinyJpeg());
+        Storage::disk('public')->put('attendance-proofs/out.jpg', $this->tinyJpeg());
 
         $this
             ->actingAs($manager)
@@ -485,8 +489,43 @@ class ExampleTest extends TestCase
             ->assertSee('Time Out Proof')
             ->assertSee('Time in proof 1', false)
             ->assertSee('Time out proof 1', false)
-            ->assertSee('storage\/attendance-proofs\/in.jpg', false)
-            ->assertSee('storage\/attendance-proofs\/out.jpg', false);
+            ->assertSee(route('admin.attendance.proof', [
+                'record' => $record,
+                'type' => 'clock-in',
+                'index' => 0,
+            ]), false)
+            ->assertSee(route('admin.attendance.proof', [
+                'record' => $record,
+                'type' => 'clock-out',
+                'index' => 0,
+            ]), false);
+
+        $this
+            ->actingAs($manager)
+            ->get(route('admin.attendance.proof', [
+                'record' => $record,
+                'type' => 'clock-in',
+                'index' => 0,
+            ]))
+            ->assertOk()
+            ->assertHeader('content-type', 'image/jpeg')
+            ->assertHeader('x-content-type-options', 'nosniff');
+
+        $otherBranch = Branch::query()->create(['name' => 'Branch B', 'code' => 'B', 'is_active' => true]);
+        $otherManager = User::factory()->create([
+            'role' => 'branch_manager',
+            'branch_id' => $otherBranch->id,
+            'access' => ['attendance'],
+        ]);
+
+        $this
+            ->actingAs($otherManager)
+            ->get(route('admin.attendance.proof', [
+                'record' => $record,
+                'type' => 'clock-in',
+                'index' => 0,
+            ]))
+            ->assertForbidden();
     }
 
     public function test_employee_kiosk_can_upload_daily_task_proof_for_assigned_branch(): void
@@ -722,7 +761,7 @@ class ExampleTest extends TestCase
             ->assertJsonPath('employee', $employee->name)
             ->assertJsonPath('branch', $branchB->name);
 
-        $record = \App\Models\EmployeeAttendanceRecord::query()->firstOrFail();
+        $record = EmployeeAttendanceRecord::query()->firstOrFail();
         $this->assertSame($employee->id, $record->attendance_employee_id);
         $this->assertSame($branchB->id, $record->branch_id);
 
@@ -788,7 +827,7 @@ class ExampleTest extends TestCase
             'branch_id' => $branch->id,
         ]);
 
-        $record = \App\Models\EmployeeAttendanceRecord::first();
+        $record = EmployeeAttendanceRecord::first();
         $this->assertCount(2, $record->clock_in);
         $this->assertCount(2, $record->clock_in_photos);
         Storage::disk('public')->assertExists($record->clock_in_photos[0]);
