@@ -26,8 +26,8 @@
                 <img src="{{ $appBusinessLogo }}" alt="{{ $appBusinessName }} logo" class="h-6 w-6 object-contain">
             </div>
             <div class="min-w-0">
-                <h1 class="truncate text-sm font-semibold leading-tight text-white">{{ $appBusinessName }}</h1>
-                <p class="truncate text-[11px] text-sky-200/80">Laundry management</p>
+                <h1 class="truncate text-sm font-semibold leading-tight text-white">{{ $appSystemName }}</h1>
+                <p class="truncate text-[11px] text-sky-200/80">{{ $appBusinessName }}</p>
             </div>
         </div>
 

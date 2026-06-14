@@ -46,7 +46,7 @@
         </form>
     </div>
 
-    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
+    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <template x-for="card in statCards" :key="card.key">
             <div class="rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
                 <div class="mb-3 flex h-8 w-8 items-center justify-center rounded-md bg-smoke text-primary dark:bg-gray-950">
@@ -144,6 +144,47 @@
             </div>
         </div>
     </div>
+
+    <div class="overflow-hidden rounded-lg border border-border bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div class="flex flex-col gap-2 border-b border-border px-4 py-3 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+                <h2 class="text-base font-semibold">Customers Who Trust {{ $appBusinessName }}</h2>
+                <p class="text-sm text-muted">Customers with 10 or more laundry orders, ranked by total orders entrusted to the store.</p>
+            </div>
+            @if(auth()->user()->hasMenuAccess('customers'))
+                <a href="{{ route('admin.customers.index') }}" class="inline-flex h-8 items-center justify-center rounded-md border border-border px-3 text-sm hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">View customers</a>
+            @endif
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm">
+                <thead class="border-b border-border bg-smoke text-xs uppercase text-muted dark:border-gray-800 dark:bg-gray-950">
+                    <tr>
+                        <th class="px-4 py-3">Customer</th>
+                        <th class="px-4 py-3">Contact</th>
+                        <th class="px-4 py-3">Branch</th>
+                        <th class="px-4 py-3 text-center">Laundry Orders</th>
+                        <th class="px-4 py-3">Latest Service</th>
+                        <th class="px-4 py-3">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-border dark:divide-gray-800">
+                    <template x-for="customer in data.trusted_customers" :key="customer.id">
+                        <tr>
+                            <td class="px-4 py-3 font-medium" x-text="customer.name"></td>
+                            <td class="px-4 py-3 text-muted" x-text="customer.phone"></td>
+                            <td class="px-4 py-3" x-text="customer.branch"></td>
+                            <td class="px-4 py-3 text-center font-semibold" x-text="customer.orders_count"></td>
+                            <td class="px-4 py-3" x-text="customer.latest_order"></td>
+                            <td class="px-4 py-3"><span :class="customer.status_badge" x-text="customer.status"></span></td>
+                        </tr>
+                    </template>
+                    <tr x-show="data.trusted_customers.length === 0">
+                        <td colspan="6" class="px-4 py-10 text-center text-muted">Customer laundry history will appear here after the first job order.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -154,13 +195,17 @@ function dashboardPage(fetchUrl, initialData, initialDateRange) {
         salesChart: null,
         statusChart: null,
         statCards: [
-            { key: 'sales', label: 'Sales', icon: 'payments' },
-            { key: 'collections', label: 'Collected', icon: 'receipt' },
-            { key: 'orders', label: 'Orders', icon: 'jobOrders' },
-            { key: 'open_orders', label: 'Open', icon: 'activity' },
-            { key: 'ready_for_pickup', label: 'Ready', icon: 'laundry' },
-            { key: 'receivables', label: 'Receivables', icon: 'receivables' },
-            { key: 'low_stock', label: 'Low Stock', icon: 'inventory' },
+            { key: 'sales', label: 'Sales Owned', icon: 'payments' },
+            { key: 'collections', label: 'Physical Collections', icon: 'receipt' },
+            { key: 'cash_drawer', label: 'Expected Cash Drawer', icon: 'wallet' },
+            { key: 'gcash', label: 'Expected GCash', icon: 'payments' },
+            { key: 'expenses', label: 'Recorded Expenses', icon: 'expenses' },
+            { key: 'accounts_payable', label: 'Accounts Payable', icon: 'receivables' },
+            { key: 'receivables', label: 'Unpaid Customer Balance', icon: 'receivables' },
+            { key: 'over_short', label: 'Z Reading Over / Short', icon: 'activity' },
+            { key: 'orders', label: 'Orders in Period', icon: 'jobOrders' },
+            { key: 'open_orders', label: 'Open Orders', icon: 'activity' },
+            { key: 'ready_for_pickup', label: 'Ready for Pickup', icon: 'laundry' },
         ],
         init() {
             this.$nextTick(() => {

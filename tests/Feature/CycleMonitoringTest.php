@@ -14,6 +14,8 @@ use App\Models\SystemSetting;
 use App\Models\SystemTrialSetting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class CycleMonitoringTest extends TestCase
@@ -50,6 +52,62 @@ class CycleMonitoringTest extends TestCase
             'id' => $order->id,
             'status' => 'ready_for_pickup',
         ]);
+    }
+
+    public function test_cycle_monitoring_highlights_customer_name_above_job_order_number(): void
+    {
+        $this->completeSystemSettings();
+        $this->activeTrial();
+
+        $branch = $this->createBranch();
+        $customer = $this->createCustomer($branch);
+        $customer->update(['name' => 'Highlighted Customer']);
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'access' => ['cycles'],
+        ]);
+        $this->createJobOrder($branch, $customer, 'JO-CUSTOMER-HEADING');
+
+        $this->actingAs($admin)
+            ->get(route('admin.cycles.index'))
+            ->assertOk()
+            ->assertSeeInOrder([
+                '<p class="truncate font-semibold">Highlighted Customer</p>',
+                '<p class="truncate text-sm text-muted">JO-CUSTOMER-HEADING</p>',
+            ], false);
+    }
+
+    public function test_cycle_monitoring_can_filter_completed_orders(): void
+    {
+        $this->completeSystemSettings();
+        $this->activeTrial();
+
+        $branch = $this->createBranch();
+        $customer = $this->createCustomer($branch);
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'access' => ['cycles'],
+        ]);
+        $this->createJobOrder($branch, $customer, 'JO-ACTIVE');
+        $completedOrder = $this->createJobOrder($branch, $customer, 'JO-COMPLETED');
+        $completedOrder->update([
+            'status' => 'completed',
+            'completed_at' => now(),
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.cycles.index'))
+            ->assertOk()
+            ->assertSee('value="completed"', false)
+            ->assertSee('JO-ACTIVE')
+            ->assertDontSee('JO-COMPLETED');
+
+        $this->actingAs($admin)
+            ->get(route('admin.cycles.index', ['status' => 'completed']))
+            ->assertOk()
+            ->assertSee('value="completed" selected', false)
+            ->assertSee('JO-COMPLETED')
+            ->assertDontSee('JO-ACTIVE');
     }
 
     public function test_cycle_monitoring_filters_by_branch_customer_and_date_for_admin(): void
@@ -90,6 +148,53 @@ class CycleMonitoringTest extends TestCase
             ->assertDontSee('JO-CYCLE-OLD');
     }
 
+    public function test_previous_date_order_can_still_be_processed_from_filtered_cycle_page(): void
+    {
+        $this->completeSystemSettings();
+        $this->activeTrial();
+
+        $branch = $this->createBranch(['machine_count' => 2]);
+        $customer = $this->createCustomer($branch);
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'branch_id' => $branch->id,
+            'access' => ['cycles'],
+        ]);
+        $order = $this->createJobOrder($branch, $customer, 'JO-PREVIOUS-DATE');
+        $order->forceFill(['created_at' => '2026-05-20 09:00:00'])->save();
+
+        $filteredUrl = route('admin.cycles.index', [
+            'branch_id' => $branch->id,
+            'date_range' => '2026-05-20 to 2026-05-20',
+        ]);
+
+        $this->actingAs($admin)
+            ->get($filteredUrl)
+            ->assertOk()
+            ->assertSee('JO-PREVIOUS-DATE')
+            ->assertSee('Order date: May 20, 2026');
+
+        $this->actingAs($admin)
+            ->from($filteredUrl)
+            ->post(route('admin.cycles.store', $order), [
+                'cycle_type' => 'wash',
+                'machine_number' => 1,
+            ])
+            ->assertRedirect($filteredUrl);
+
+        $this->assertDatabaseHas('cycle_records', [
+            'job_order_id' => $order->id,
+            'cycle_type' => 'wash',
+            'machine_number' => 1,
+        ]);
+
+        $this->actingAs($admin)
+            ->get($filteredUrl)
+            ->assertOk()
+            ->assertSee('JO-PREVIOUS-DATE')
+            ->assertSee('Washing #1');
+    }
+
     public function test_cycle_monitoring_admin_customer_dropdown_depends_on_selected_branch(): void
     {
         $this->completeSystemSettings();
@@ -110,16 +215,18 @@ class CycleMonitoringTest extends TestCase
             ->get(route('admin.cycles.index'))
             ->assertOk()
             ->assertSee('All customers')
-            ->assertSee('Select a branch to list customers')
-            ->assertDontSee('Branch A Customer')
+            ->assertDontSee('All processing branches')
+            ->assertSee('value="'.$branchA->id.'" selected', false)
+            ->assertSee('Branch A Customer')
             ->assertDontSee('Branch B Customer');
 
         $this->actingAs($admin)
-            ->get(route('admin.cycles.index', ['branch_id' => $branchA->id]))
+            ->get(route('admin.cycles.index', ['branch_id' => $branchB->id]))
             ->assertOk()
             ->assertSee('All customers')
-            ->assertSee('Branch A Customer')
-            ->assertDontSee('Branch B Customer');
+            ->assertSee('value="'.$branchB->id.'" selected', false)
+            ->assertSee('Branch B Customer')
+            ->assertDontSee('Branch A Customer');
     }
 
     public function test_cycle_monitoring_branch_user_gets_customer_filter_without_branch_selector(): void
@@ -240,6 +347,35 @@ class CycleMonitoringTest extends TestCase
         ]);
     }
 
+    public function test_dry_cycle_tracks_selected_machine(): void
+    {
+        $this->completeSystemSettings();
+        $this->activeTrial();
+
+        $branch = $this->createBranch(['machine_count' => 5]);
+        $customer = $this->createCustomer($branch);
+        $user = User::factory()->create([
+            'role' => 'admin',
+            'branch_id' => $branch->id,
+            'access' => ['cycles'],
+        ]);
+        $order = $this->createJobOrder($branch, $customer);
+
+        $this->actingAs($user)
+            ->post(route('admin.cycles.store', $order), [
+                'cycle_type' => 'dry',
+                'machine_number' => 4,
+            ])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('cycle_records', [
+            'job_order_id' => $order->id,
+            'cycle_type' => 'dry',
+            'machine_number' => 4,
+            'cycle_number' => 1,
+        ]);
+    }
+
     public function test_active_machine_cannot_be_assigned_twice(): void
     {
         $this->completeSystemSettings();
@@ -270,6 +406,132 @@ class CycleMonitoringTest extends TestCase
                 'machine_number' => 2,
             ])
             ->assertSessionHasErrors('machine_number');
+    }
+
+    public function test_machine_overview_shows_live_image_and_filtered_daily_activity(): void
+    {
+        $this->completeSystemSettings();
+        $this->activeTrial();
+
+        $branch = $this->createBranch(['machine_count' => 5]);
+        $customer = $this->createCustomer($branch);
+        $user = User::factory()->create([
+            'role' => 'admin',
+            'branch_id' => $branch->id,
+            'access' => ['cycles'],
+        ]);
+        $matchingOrder = $this->createJobOrder($branch, $customer, 'JO-MACHINE-MATCH');
+        $hiddenOrder = $this->createJobOrder($branch, $customer, 'JO-MACHINE-HIDDEN');
+        $matchingOrder->update([
+            'processing_branch_id' => $branch->id,
+            'production_accepted_at' => null,
+            'is_rush' => true,
+        ]);
+        foreach (range(1, 8) as $orderNumber) {
+            $this->createJobOrder($branch, $customer, "JO-LOYAL-{$orderNumber}");
+        }
+
+        CycleRecord::query()->create([
+            'job_order_id' => $matchingOrder->id,
+            'user_id' => $user->id,
+            'cycle_type' => 'wash',
+            'machine_number' => 1,
+            'cycle_number' => 1,
+            'started_at' => now(),
+        ]);
+        CycleRecord::query()->create([
+            'job_order_id' => $matchingOrder->id,
+            'user_id' => $user->id,
+            'cycle_type' => 'dry',
+            'machine_number' => 1,
+            'cycle_number' => 1,
+            'started_at' => now(),
+            'ended_at' => now(),
+        ]);
+        CycleRecord::query()->create([
+            'job_order_id' => $hiddenOrder->id,
+            'user_id' => $user->id,
+            'cycle_type' => 'dry',
+            'machine_number' => 2,
+            'cycle_number' => 1,
+            'started_at' => now(),
+            'ended_at' => now(),
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('admin.cycles.index', ['search' => 'JO-MACHINE-MATCH']))
+            ->assertOk()
+            ->assertSee('Machine overview')
+            ->assertSee('Machine #5')
+            ->assertSee('unavailable.png')
+            ->assertSee('Wash - '.$customer->name)
+            ->assertDontSee('Wash - JO-MACHINE-MATCH')
+            ->assertSee('Rush')
+            ->assertSee('Loyal Customer')
+            ->assertSeeInOrder([
+                'Machine #1',
+                'unavailable.png',
+                '>1</p>',
+                'Washing',
+                '>1</p>',
+                'Drying',
+            ], false)
+            ->assertDontSee('JO-MACHINE-HIDDEN');
+
+        $this->assertSame(5, substr_count($response->getContent(), 'text-sm font-semibold">Machine #'));
+    }
+
+    public function test_cycle_monitoring_keeps_large_lists_and_history_bounded(): void
+    {
+        $this->completeSystemSettings();
+        $this->activeTrial();
+
+        $branch = $this->createBranch(['machine_count' => 5]);
+        $customer = $this->createCustomer($branch);
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'branch_id' => $branch->id,
+            'access' => ['cycles'],
+        ]);
+
+        $latestOrder = null;
+        for ($orderNumber = 1; $orderNumber <= 50; $orderNumber++) {
+            $latestOrder = $this->createJobOrder(
+                $branch,
+                $customer,
+                'JO-SCALE-'.str_pad((string) $orderNumber, 3, '0', STR_PAD_LEFT)
+            );
+            $latestOrder->forceFill(['created_at' => now()->addSeconds($orderNumber)])->save();
+        }
+
+        for ($cycleNumber = 1; $cycleNumber <= 8; $cycleNumber++) {
+            CycleRecord::query()->create([
+                'job_order_id' => $latestOrder->id,
+                'user_id' => $admin->id,
+                'cycle_type' => 'fold',
+                'cycle_number' => $cycleNumber,
+                'started_at' => now()->addMinutes($cycleNumber),
+                'ended_at' => now()->addMinutes($cycleNumber + 1),
+            ]);
+        }
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $response = $this->actingAs($admin)
+            ->get(route('admin.cycles.index'))
+            ->assertOk()
+            ->assertSee('Showing latest 5 of 8 cycle records.')
+            ->assertSee('flex flex-nowrap gap-2 overflow-x-auto pb-2', false)
+            ->assertSee($admin->name);
+
+        $orders = $response->viewData('orders');
+
+        $this->assertCount(12, $orders);
+        $this->assertSame(50, $orders->total());
+        $this->assertSame(8, $orders->first()->cycles_count);
+        $this->assertCount(5, $orders->first()->cycles);
+        $this->assertLessThanOrEqual(21, count(DB::getQueryLog()));
     }
 
     public function test_machine_can_be_reused_after_cycle_ends(): void
@@ -602,6 +864,127 @@ class CycleMonitoringTest extends TestCase
 
         $this->assertSame($dropoffBranch->id, $order->branch_id);
         $this->assertSame($productionBranch->id, $order->processing_branch_id);
+    }
+
+    public function test_rush_unpaid_pickup_order_can_send_received_sms(): void
+    {
+        $this->completeSystemSettings();
+        $this->activeTrial();
+        SystemSetting::current()->update([
+            'business_name' => 'SPIN KLEAN LAUNDRY',
+            'sms_enabled' => true,
+        ]);
+
+        $branch = $this->createBranch([
+            'branch_type' => 'full_service',
+            'machine_count' => 2,
+        ]);
+        $customer = $this->createCustomer($branch);
+        $service = \App\Models\LaundryService::query()->create([
+            'branch_id' => $branch->id,
+            'name' => 'Wash Dry Fold',
+            'pricing_type' => 'kilo',
+            'price' => 100,
+            'is_active' => true,
+        ]);
+        $manager = User::factory()->create([
+            'role' => 'branch_manager',
+            'branch_id' => $branch->id,
+            'access' => ['job_orders'],
+        ]);
+
+        $this->actingAs($manager)
+            ->post(route('admin.job-orders.store'), [
+                'branch_id' => $branch->id,
+                'processing_branch_id' => $branch->id,
+                'customer_id' => $customer->id,
+                'items' => [[
+                    'laundry_service_id' => $service->id,
+                    'description' => $service->name,
+                    'quantity' => 1,
+                    'unit_price' => 100,
+                ]],
+                'paid_amount' => 100,
+                'payment_type' => 'unpaid',
+                'transaction_type' => 'delivery',
+                'is_rush' => 1,
+                'send_sms' => 1,
+            ])
+            ->assertRedirect(route('admin.job-orders.index'));
+
+        $order = JobOrder::query()->where('customer_id', $customer->id)->firstOrFail();
+
+        $this->assertTrue($order->is_rush);
+        $this->assertSame('0.00', $order->paid_amount);
+        $this->assertSame('100.00', $order->balance);
+        $this->assertDatabaseCount('payments', 0);
+        $this->assertDatabaseHas('sms_logs', [
+            'customer_id' => $customer->id,
+            'recipient' => $customer->phone,
+            'status' => 'queued',
+        ]);
+        $this->assertStringContainsString(
+            'SPIN KLEAN LAUNDRY has picked up and received your laundry order',
+            (string) \App\Models\SmsLog::query()->value('message')
+        );
+    }
+
+    public function test_job_order_is_saved_when_semaphore_rejects_sms(): void
+    {
+        Http::fake([
+            'api.semaphore.co/*' => Http::response([
+                'message' => 'SMS service unavailable.',
+            ], 503),
+        ]);
+
+        $this->completeSystemSettings();
+        $this->activeTrial();
+        SystemSetting::current()->update([
+            'sms_enabled' => true,
+            'sms_provider' => 'semaphore',
+            'sms_api_key' => 'test-api-key',
+        ]);
+
+        $branch = $this->createBranch(['branch_type' => 'full_service']);
+        $customer = $this->createCustomer($branch);
+        $service = \App\Models\LaundryService::query()->create([
+            'branch_id' => $branch->id,
+            'name' => 'Wash Dry Fold',
+            'pricing_type' => 'kilo',
+            'price' => 100,
+            'is_active' => true,
+        ]);
+        $manager = User::factory()->create([
+            'role' => 'branch_manager',
+            'branch_id' => $branch->id,
+            'access' => ['job_orders'],
+        ]);
+
+        $this->actingAs($manager)
+            ->post(route('admin.job-orders.store'), [
+                'branch_id' => $branch->id,
+                'processing_branch_id' => $branch->id,
+                'customer_id' => $customer->id,
+                'items' => [[
+                    'laundry_service_id' => $service->id,
+                    'description' => $service->name,
+                    'quantity' => 1,
+                    'unit_price' => 100,
+                ]],
+                'paid_amount' => 0,
+                'payment_type' => 'unpaid',
+                'transaction_type' => 'walk_in',
+                'send_sms' => 1,
+            ])
+            ->assertRedirect(route('admin.job-orders.index'));
+
+        $order = JobOrder::query()->where('customer_id', $customer->id)->firstOrFail();
+        $this->assertSame('pending', $order->status);
+        $this->assertDatabaseHas('sms_logs', [
+            'customer_id' => $customer->id,
+            'status' => 'failed',
+            'response' => 'Semaphore error: SMS service unavailable.',
+        ]);
     }
 
     public function test_pos_only_prompts_for_receiving_branch_when_user_must_choose_one(): void

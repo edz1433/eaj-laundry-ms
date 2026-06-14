@@ -176,14 +176,19 @@
 
                     <textarea name="notes" rows="2" placeholder="Notes / instructions" class="w-full rounded-md border border-border bg-white px-3 py-2 text-sm shadow-sm dark:border-gray-800 dark:bg-gray-950"></textarea>
 
+                    <label class="flex h-9 cursor-pointer items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 text-sm font-medium text-amber-800 dark:border-amber-900/60 dark:bg-amber-500/10 dark:text-amber-300">
+                        <input type="checkbox" name="is_rush" value="1" class="rounded border-amber-300 text-amber-600">
+                        Rush order
+                    </label>
+
                     <div class="grid grid-cols-2 gap-1 rounded-md bg-smoke p-1 dark:bg-gray-950">
                         <label class="flex h-8 cursor-pointer items-center justify-center rounded-sm text-xs font-medium has-[:checked]:bg-white has-[:checked]:text-primary has-[:checked]:shadow-sm dark:has-[:checked]:bg-gray-900">
                             <input type="radio" name="transaction_type" value="walk_in" checked class="sr-only">
-                            Walk-in
+                            Walk-in / Drop Off
                         </label>
                         <label class="flex h-8 cursor-pointer items-center justify-center rounded-sm text-xs font-medium has-[:checked]:bg-orange-100 has-[:checked]:text-orange-700 has-[:checked]:shadow-sm dark:has-[:checked]:bg-orange-500/10 dark:has-[:checked]:text-orange-300">
                             <input type="radio" name="transaction_type" value="delivery" class="sr-only">
-                            Delivery
+                            Delivery / Pick-up
                         </label>
                     </div>
                 </div>
@@ -263,19 +268,24 @@
                     </div>
                     <div class="flex justify-between text-sm font-medium"><span>Balance</span><span>{{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(balance)"></span></span></div>
                     <div class="grid grid-cols-[1fr_auto] gap-2 pt-2">
-                        <select name="payment_type" class="h-9 min-w-0 rounded-md border border-border bg-white px-2 text-sm dark:border-gray-800 dark:bg-gray-950">
+                        <select name="payment_type" x-model="paymentType" @change="if (paymentType === 'unpaid') paid = 0" class="h-9 min-w-0 rounded-md border border-border bg-white px-2 text-sm dark:border-gray-800 dark:bg-gray-950">
                             <option value="cash">Cash</option>
                             <option value="gcash">GCash</option>
-                            <option value="bank">Bank</option>
-                            <option value="credit">Credit</option>
+                            <option value="unpaid">Unpaid</option>
                             <option value="po">PO</option>
-                            <option value="monthly_billing">Monthly Billing</option>
                         </select>
                         <button type="button" @click="paid = total" title="Pay exact total" aria-label="Pay exact total" class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
                             <span data-lucide="payments" class="h-4 w-4"></span>
                         </button>
                     </div>
                     <input name="payment_reference_no" placeholder="Reference no. for GCash/card" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
+                    <label class="flex items-start gap-2 rounded-md border border-border p-3 text-sm dark:border-gray-800" :class="canSendSms ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'">
+                        <input type="checkbox" name="send_sms" value="1" :disabled="!canSendSms" class="mt-0.5 rounded border-border text-primary">
+                        <span>
+                            <span class="block font-medium">Send order received SMS</span>
+                            <span class="block text-xs text-muted" x-text="smsAvailabilityMessage"></span>
+                        </span>
+                    </label>
                 </div>
 
                 <div class="mt-5 grid grid-cols-2 gap-2">
@@ -296,7 +306,7 @@
             @include('admin.customers.partials.form', [
                 'action' => route('admin.job-orders.customers.store'),
                 'method' => 'POST',
-                'customer' => new \App\Models\Customer(['branch_id' => $branchId, 'billing_type' => 'regular', 'is_active' => true, 'credit_limit' => 0]),
+                'customer' => new \App\Models\Customer(['branch_id' => $branchId, 'billing_type' => 'regular', 'is_active' => true, 'unpaid_limit' => 0]),
                 'redirectTo' => 'pos',
                 'branchModel' => 'branchId',
             ])
@@ -314,6 +324,7 @@ function posPage(branches, processingBranches, services, customers, vatRate, vat
         services,
         customers,
         items: [],
+        paymentType: 'cash',
         discount: 0,
         paid: 0,
         showPaymentPanel: false,
@@ -371,6 +382,23 @@ function posPage(branches, processingBranches, services, customers, vatRate, vat
         get availableCustomers() {
             return this.customers.filter(customer => String(customer.branch_id) === String(this.branchId));
         },
+        get selectedCustomer() {
+            return this.customers.find(customer => String(customer.id) === String(this.selectedCustomerId));
+        },
+        get canSendSms() {
+            return Boolean(this.selectedCustomer?.phone) && this.selectedCustomer?.billing_type !== 'po';
+        },
+        get smsAvailabilityMessage() {
+            if (this.selectedCustomer?.billing_type === 'po') {
+                return 'PO customers do not receive SMS notifications.';
+            }
+
+            if (!this.selectedCustomer?.phone) {
+                return 'Add a customer phone number to enable SMS.';
+            }
+
+            return 'Notify the customer that their laundry was received and added to the job order queue.';
+        },
         get filteredCustomers() {
             const term = this.customerSearch.toLowerCase().trim();
 
@@ -406,6 +434,8 @@ function posPage(branches, processingBranches, services, customers, vatRate, vat
             }
         },
         formatBilling(value) {
+            if (value === 'monthly_billing') return 'Legacy Billing';
+
             return String(value || 'regular').replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
         },
         serviceIcon(service) {

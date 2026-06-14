@@ -16,7 +16,9 @@ use Illuminate\Validation\Rule;
 
 class CycleController extends Controller
 {
-    private const ACTIVE_STATUSES = ['pending', 'washing', 'drying', 'folding', 'ready_for_pickup'];
+    private const CYCLE_HISTORY_LIMIT = 5;
+
+    private const FILTER_STATUSES = ['pending', 'washing', 'drying', 'folding', 'ready_for_pickup', 'completed'];
 
     private const CYCLE_TYPES = [
         'wash' => 'Washing',
@@ -39,9 +41,17 @@ class CycleController extends Controller
     {
         $user = $request->user();
         $canChooseBranch = $user->canManageAllBranches();
-        $selectedBranchId = $canChooseBranch ? ($request->integer('branch_id') ?: null) : $user->branch_id;
+        $branches = Branch::query()
+            ->where('is_active', true)
+            ->when(! $canChooseBranch, fn ($query) => $query->whereKey($user->branch_id))
+            ->orderBy('id')
+            ->get(['id', 'name', 'machine_count']);
+        $requestedBranchId = $request->integer('branch_id');
+        $selectedBranchId = $canChooseBranch
+            ? ($branches->contains('id', $requestedBranchId) ? $requestedBranchId : $branches->first()?->id)
+            : $user->branch_id;
         $selectedCustomerId = $request->integer('customer_id') ?: null;
-        $customerBranchId = $selectedBranchId ?: (! $canChooseBranch ? $user->branch_id : null);
+        $customerBranchId = $selectedBranchId;
         [$dateFrom, $dateTo] = $this->dateRange($request);
         $statusLabels = [
             'pending' => 'Pending',
@@ -52,14 +62,7 @@ class CycleController extends Controller
             'completed' => 'Completed',
         ];
 
-        $branches = Branch::query()
-            ->where('is_active', true)
-            ->when(! $canChooseBranch, fn ($query) => $query->whereKey($user->branch_id))
-            ->orderBy('name')
-            ->get();
-
         $customers = Customer::query()
-            ->with('branch:id,name')
             ->where('is_active', true)
             ->when($customerBranchId, fn ($query) => $query->where(fn ($query) => $query
                 ->where('branch_id', $customerBranchId)
@@ -80,8 +83,13 @@ class CycleController extends Controller
             $selectedCustomerId = null;
         }
 
-        $orders = JobOrder::with(['branch', 'processingBranch', 'currentBranch', 'releaseBranch', 'customer', 'cycles.user'])
-            ->whereNotIn('status', ['completed', 'cancelled'])
+        $ordersQuery = JobOrder::query()
+            ->where('status', '!=', 'cancelled')
+            ->when(
+                in_array($request->status, self::FILTER_STATUSES, true),
+                fn ($q) => $q->where('status', $request->status),
+                fn ($q) => $q->where('status', '!=', 'completed')
+            )
             ->when($selectedBranchId, fn ($q) => $q->where(fn ($query) => $query
                 ->where('branch_id', $selectedBranchId)
                 ->orWhere(fn ($query) => $query
@@ -103,12 +111,8 @@ class CycleController extends Controller
                     ->whereNull('processing_branch_id')
                     ->where('branch_id', $user->branch_id))))
             ->when($selectedCustomerId, fn ($q) => $q->where('customer_id', $selectedCustomerId))
-            ->when($dateFrom, fn ($q) => $q->whereDate('created_at', '>=', $dateFrom))
-            ->when($dateTo, fn ($q) => $q->whereDate('created_at', '<=', $dateTo))
-            ->when(
-                in_array($request->status, self::ACTIVE_STATUSES, true),
-                fn ($q) => $q->where('status', $request->status)
-            )
+            ->when($dateFrom, fn ($q) => $q->where('created_at', '>=', Carbon::parse($dateFrom)->startOfDay()))
+            ->when($dateTo, fn ($q) => $q->where('created_at', '<=', Carbon::parse($dateTo)->endOfDay()))
             ->when($request->filled('search'), function ($q) use ($request) {
                 $search = $request->search;
 
@@ -116,44 +120,111 @@ class CycleController extends Controller
                     ->where('job_order_number', 'like', "%{$search}%")
                     ->orWhereHas('customer', fn ($query) => $query->where('name', 'like', "%{$search}%")
                         ->orWhere('phone', 'like', "%{$search}%")));
-            })
+            });
+
+        $orders = (clone $ordersQuery)
+            ->select([
+                'id',
+                'branch_id',
+                'processing_branch_id',
+                'current_branch_id',
+                'release_branch_id',
+                'customer_id',
+                'job_order_number',
+                'status',
+                'is_rush',
+                'production_accepted_at',
+                'created_at',
+            ])
+            ->withCount('cycles')
+            ->with([
+                'branch:id,name,machine_count',
+                'processingBranch:id,name,machine_count',
+                'currentBranch:id,name',
+                'releaseBranch:id,name',
+                'customer' => fn ($query) => $query
+                    ->select(['id', 'name'])
+                    ->withCount('jobOrders'),
+                'cycles' => fn ($query) => $query
+                    ->select([
+                        'id',
+                        'job_order_id',
+                        'user_id',
+                        'cycle_type',
+                        'machine_number',
+                        'cycle_number',
+                        'started_at',
+                        'ended_at',
+                    ])
+                    ->latest('started_at')
+                    ->latest('id')
+                    ->limit(self::CYCLE_HISTORY_LIMIT)
+                    ->with('user:id,name'),
+            ])
             ->latest()
             ->paginate(12)
             ->withQueryString();
 
-        $activeMachinesByBranch = CycleRecord::query()
-            ->with('jobOrder:id,branch_id,processing_branch_id,job_order_number')
-            ->where('cycle_type', 'wash')
-            ->whereNotNull('machine_number')
-            ->whereNull('ended_at')
-            ->whereHas('jobOrder', function ($query) use ($request) {
-                $user = $request->user();
-                $canChooseBranch = $user->canManageAllBranches();
-                $selectedBranchId = $canChooseBranch ? ($request->integer('branch_id') ?: null) : $user->branch_id;
+        $machineOverviewBranches = $branches
+            ->when($selectedBranchId, fn ($branches) => $branches->where('id', $selectedBranchId))
+            ->values();
+        $machineOverviewBranchIds = $machineOverviewBranches->pluck('id');
 
-                $query->whereNotIn('status', ['completed', 'cancelled'])
-                    ->when($selectedBranchId, fn ($query) => $query->where(fn ($query) => $query
-                        ->where(fn ($query) => $query
-                            ->where('processing_branch_id', $selectedBranchId)
-                            ->whereNotNull('production_accepted_at'))
-                        ->orWhere(fn ($query) => $query
-                            ->whereNull('processing_branch_id')
-                            ->where('branch_id', $selectedBranchId))))
-                    ->when(! $canChooseBranch, fn ($query) => $query->where(fn ($query) => $query
-                        ->where(fn ($query) => $query
-                            ->where('processing_branch_id', $user->branch_id)
-                            ->whereNotNull('production_accepted_at'))
-                        ->orWhere(fn ($query) => $query
-                            ->whereNull('processing_branch_id')
-                            ->where('branch_id', $user->branch_id))));
-            })
-            ->get()
-            ->groupBy(fn (CycleRecord $cycle) => $cycle->jobOrder?->processing_branch_id ?: $cycle->jobOrder?->branch_id)
+        $activeMachinesByBranch = DB::table('cycle_records')
+            ->join('job_orders', 'job_orders.id', '=', 'cycle_records.job_order_id')
+            ->join('customers', 'customers.id', '=', 'job_orders.customer_id')
+            ->whereNull('cycle_records.ended_at')
+            ->whereNull('job_orders.deleted_at')
+            ->whereNotNull('cycle_records.machine_number')
+            ->whereIn('cycle_records.cycle_type', ['wash', 'dry'])
+            ->whereIn(DB::raw('COALESCE(job_orders.processing_branch_id, job_orders.branch_id)'), $machineOverviewBranchIds)
+            ->get([
+                DB::raw('COALESCE(job_orders.processing_branch_id, job_orders.branch_id) as operating_branch_id'),
+                'cycle_records.machine_number',
+                'cycle_records.cycle_type',
+                'job_orders.job_order_number',
+                'job_orders.is_rush',
+                'customers.name as customer_name',
+                DB::raw('(SELECT COUNT(*) FROM job_orders AS customer_orders WHERE customer_orders.customer_id = customers.id AND customer_orders.deleted_at IS NULL) as customer_orders_count'),
+            ])
+            ->groupBy('operating_branch_id')
             ->map(fn ($cycles) => $cycles
-                ->filter(fn (CycleRecord $cycle) => $cycle->jobOrder && $cycle->machine_number)
-                ->mapWithKeys(fn (CycleRecord $cycle) => [(int) $cycle->machine_number => $cycle->jobOrder->job_order_number])
+                ->mapWithKeys(fn ($cycle) => [(int) $cycle->machine_number => [
+                    'job_order_number' => $cycle->job_order_number,
+                    'customer_name' => $cycle->customer_name,
+                    'is_rush' => (bool) $cycle->is_rush,
+                    'is_loyal' => (int) $cycle->customer_orders_count >= 10,
+                    'cycle_type' => $cycle->cycle_type,
+                ]])
                 ->all()
             )
+            ->all();
+
+        $activityDateFrom = $dateFrom ?: now()->toDateString();
+        $activityDateTo = $dateTo ?: now()->toDateString();
+        $machineActivityByBranch = DB::table('cycle_records')
+            ->join('job_orders', 'job_orders.id', '=', 'cycle_records.job_order_id')
+            ->whereNull('job_orders.deleted_at')
+            ->whereIn('cycle_records.cycle_type', ['wash', 'dry'])
+            ->whereNotNull('cycle_records.machine_number')
+            ->where('cycle_records.started_at', '>=', Carbon::parse($activityDateFrom)->startOfDay())
+            ->where('cycle_records.started_at', '<=', Carbon::parse($activityDateTo)->endOfDay())
+            ->whereIn('job_order_id', (clone $ordersQuery)->select('job_orders.id'))
+            ->groupByRaw('COALESCE(job_orders.processing_branch_id, job_orders.branch_id), cycle_records.machine_number, cycle_records.cycle_type')
+            ->get([
+                DB::raw('COALESCE(job_orders.processing_branch_id, job_orders.branch_id) as operating_branch_id'),
+                'cycle_records.machine_number',
+                'cycle_records.cycle_type',
+                DB::raw('COUNT(*) as aggregate'),
+            ])
+            ->groupBy('operating_branch_id')
+            ->map(fn ($records) => $records
+                ->groupBy('machine_number')
+                ->map(fn ($machineRecords) => [
+                    'wash' => (int) ($machineRecords->firstWhere('cycle_type', 'wash')?->aggregate ?? 0),
+                    'dry' => (int) ($machineRecords->firstWhere('cycle_type', 'dry')?->aggregate ?? 0),
+                ])
+                ->all())
             ->all();
 
         return view('admin.cycles.index', [
@@ -164,9 +235,13 @@ class CycleController extends Controller
             'orders' => $orders,
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
+            'activityDateFrom' => $activityDateFrom,
+            'activityDateTo' => $activityDateTo,
+            'machineActivityByBranch' => $machineActivityByBranch,
+            'machineOverviewBranches' => $machineOverviewBranches,
             'selectedBranchId' => $selectedBranchId,
             'selectedCustomerId' => $selectedCustomerId,
-            'statusFilters' => self::ACTIVE_STATUSES,
+            'statusFilters' => self::FILTER_STATUSES,
             'cycleTypes' => self::CYCLE_TYPES,
             'completionStatuses' => self::COMPLETION_STATUSES,
             'releaseActions' => self::RELEASE_ACTIONS,
@@ -267,7 +342,7 @@ class CycleController extends Controller
 
         $processingBranch = $jobOrder->processingBranch ?: $jobOrder->branch;
         $machineCount = (int) ($processingBranch?->machine_count ?? 0);
-        if ($validated['cycle_type'] === 'wash' && $machineCount > 0 && empty($validated['machine_number'])) {
+        if (in_array($validated['cycle_type'], ['wash', 'dry'], true) && $machineCount > 0 && empty($validated['machine_number'])) {
             return back()->withErrors(['machine_number' => 'Please choose a machine.'])->withInput();
         }
 
@@ -275,7 +350,7 @@ class CycleController extends Controller
             return back()->withErrors(['machine_number' => 'Please choose a valid machine.'])->withInput();
         }
 
-        if ($validated['cycle_type'] === 'wash' && ! empty($validated['machine_number']) && $this->machineInUse($jobOrder, (int) $validated['machine_number'])) {
+        if (in_array($validated['cycle_type'], ['wash', 'dry'], true) && ! empty($validated['machine_number']) && $this->machineInUse($jobOrder, (int) $validated['machine_number'])) {
             return back()->withErrors(['machine_number' => 'This machine is still in use. End the active cycle before assigning it again.'])->withInput();
         }
 
@@ -284,7 +359,7 @@ class CycleController extends Controller
         $cycle = $jobOrder->cycles()->create([
             'user_id' => $request->user()->id,
             'cycle_type' => $validated['cycle_type'],
-            'machine_number' => $validated['cycle_type'] === 'wash' ? ($validated['machine_number'] ?? null) : null,
+            'machine_number' => in_array($validated['cycle_type'], ['wash', 'dry'], true) ? ($validated['machine_number'] ?? null) : null,
             'cycle_number' => $cycleNumber,
             'started_at' => now(),
             'notes' => $validated['notes'] ?? null,
@@ -307,7 +382,7 @@ class CycleController extends Controller
         Activity::log($request, 'cycle_started', $cycle, [
             'job_order_number' => $jobOrder->job_order_number,
             'cycle_type' => $validated['cycle_type'],
-            'machine_number' => $validated['cycle_type'] === 'wash' ? ($validated['machine_number'] ?? null) : null,
+            'machine_number' => in_array($validated['cycle_type'], ['wash', 'dry'], true) ? ($validated['machine_number'] ?? null) : null,
             'cycle_number' => $cycleNumber,
         ], $jobOrder->branch_id);
 
@@ -372,7 +447,7 @@ class CycleController extends Controller
     private function machineInUse(JobOrder $jobOrder, int $machineNumber): bool
     {
         return CycleRecord::query()
-            ->where('cycle_type', 'wash')
+            ->whereIn('cycle_type', ['wash', 'dry'])
             ->where('machine_number', $machineNumber)
             ->whereNull('ended_at')
             ->whereHas('jobOrder', fn ($query) => $query

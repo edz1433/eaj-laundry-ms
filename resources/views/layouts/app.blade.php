@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="{{ $appPrimaryColor }}">
-    <title>@yield('page_title', 'Dashboard') - {{ $appBusinessName }}</title>
+    <title>@yield('page_title', 'Dashboard') - {{ $appSystemName }}</title>
     <link rel="icon" href="{{ $appBusinessLogo }}">
     <link rel="apple-touch-icon" href="{{ $appBusinessLogo }}">
     @vite(['resources/css/app.css', 'resources/js/app.js'])

@@ -178,6 +178,75 @@ textarea {
     }
 }
 
+.machine-status-card {
+    transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+}
+
+.machine-status-card:hover {
+    transform: translateY(-4px) rotateX(1deg);
+    box-shadow: 0 16px 30px rgba(15, 23, 42, 0.12);
+}
+
+.machine-status-image {
+    will-change: transform, filter;
+}
+
+.machine-status-image-ready {
+    animation: machine-ready-float 3.4s ease-in-out infinite;
+}
+
+.machine-status-image-running {
+    animation: machine-running 850ms ease-in-out infinite;
+}
+
+.machine-status-dot-running {
+    animation: machine-status-pulse 1.25s ease-out infinite;
+}
+
+@keyframes machine-ready-float {
+    0%, 100% {
+        transform: translateY(0) scale(1);
+        filter: drop-shadow(0 5px 8px rgba(34, 197, 94, 0.12));
+    }
+    50% {
+        transform: translateY(-4px) scale(1.015);
+        filter: drop-shadow(0 9px 12px rgba(34, 197, 94, 0.22));
+    }
+}
+
+@keyframes machine-running {
+    0%, 100% {
+        transform: translateX(0) rotate(0deg);
+        filter: drop-shadow(0 5px 8px rgba(239, 68, 68, 0.12));
+    }
+    25% {
+        transform: translateX(-1px) rotate(-0.35deg);
+    }
+    75% {
+        transform: translateX(1px) rotate(0.35deg);
+        filter: drop-shadow(0 8px 12px rgba(239, 68, 68, 0.22));
+    }
+}
+
+@keyframes machine-status-pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.45);
+    }
+    70%, 100% {
+        box-shadow: 0 0 0 7px rgba(239, 68, 68, 0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .machine-status-card,
+    .machine-status-image,
+    .machine-status-dot-running {
+        animation: none !important;
+        transition: none !important;
+        transform: none !important;
+    }
+}
+
 .flatpickr-calendar {
     border: 1px solid #e2e8f0;
     border-radius: 0.5rem;

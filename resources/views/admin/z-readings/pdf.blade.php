@@ -85,11 +85,11 @@
         $paymentCounts = $reading->payment_breakdown['counts'] ?? [];
         $expenseBreakdown = $reading->expense_breakdown ?? [];
         $moneyMovements = $expenseBreakdown['money_movements'] ?? [];
+        $payableActivity = $expenseBreakdown['accounts_payable'] ?? [];
         $formatMoney = fn (float $amount) => $currency.' '.number_format(abs($amount), 2);
         $formatSignedMoney = fn (float $amount) => ($amount < 0 ? '- ' : '+ ').$formatMoney($amount);
         $cashVariance = round((float) $reading->actual_cash_amount - (float) $reading->expected_cash_drawer_amount, 2);
         $gcashVariance = round((float) $reading->actual_gcash_amount - (float) $reading->expected_gcash_amount, 2);
-        $bankVariance = round((float) $reading->actual_bank_amount - (float) $reading->expected_bank_amount, 2);
     @endphp
 
     <div class="header">
@@ -119,7 +119,7 @@
             </tr>
         </thead>
         <tbody>
-            @foreach(['cash', 'gcash', 'bank', 'credit', 'po', 'monthly_billing'] as $type)
+            @foreach(['cash', 'gcash', 'unpaid', 'po'] as $type)
                 <tr>
                     <td>{{ \App\Support\StatusBadge::label($type) }}</td>
                     <td class="right">{{ number_format((int) ($paymentCounts[$type] ?? 0)) }}</td>
@@ -200,25 +200,19 @@
             </tr>
             <tr>
                 <td>GCash balance</td>
-                <td>Expected vs actual cashless balance</td>
+                <td>Collections + owner funding - payable repayments</td>
                 <td class="right">{{ $formatMoney((float) $reading->expected_gcash_amount) }} expected / {{ $formatMoney((float) $reading->actual_gcash_amount) }} actual</td>
                 <td class="right {{ $gcashVariance < 0 ? 'negative' : ($gcashVariance > 0 ? 'positive' : '') }}">{{ $formatSignedMoney($gcashVariance) }}</td>
             </tr>
-            <tr>
-                <td>Bank balance</td>
-                <td>Expected vs actual cashless balance</td>
-                <td class="right">{{ $formatMoney((float) $reading->expected_bank_amount) }} expected / {{ $formatMoney((float) $reading->actual_bank_amount) }} actual</td>
-                <td class="right {{ $bankVariance < 0 ? 'negative' : ($bankVariance > 0 ? 'positive' : '') }}">{{ $formatSignedMoney($bankVariance) }}</td>
-            </tr>
             <tr class="total-row">
                 <td>Expected total</td>
-                <td>Expected cash drawer + expected GCash + expected bank</td>
+                <td>Expected enabled balances, including retained legacy records</td>
                 <td class="right strong">{{ $formatMoney((float) $reading->expected_total_amount) }}</td>
                 <td></td>
             </tr>
             <tr class="total-row">
                 <td>Actual total</td>
-                <td>Actual cash count + actual GCash + actual bank</td>
+                <td>Actual enabled balances, including retained legacy records</td>
                 <td class="right strong">{{ $formatMoney((float) $reading->actual_total_amount) }}</td>
                 <td></td>
             </tr>
@@ -237,6 +231,25 @@
         </tbody>
     </table>
 
+    <h2>Accounts Payable Cashless Activity</h2>
+    <table>
+        <thead>
+            <tr><th>Channel</th><th class="right">Owner Funding</th><th class="right">Repayments</th><th class="right">Net Balance Effect</th></tr>
+        </thead>
+        <tbody>
+            @foreach(['gcash' => 'GCash'] as $method => $label)
+                @php($funding = (float) ($payableActivity[$method.'_funding'] ?? 0))
+                @php($repayments = (float) ($payableActivity[$method.'_repayments'] ?? 0))
+                <tr>
+                    <td>{{ $label }}</td>
+                    <td class="right positive">{{ $formatSignedMoney($funding) }}</td>
+                    <td class="right negative">{{ $formatSignedMoney(-1 * $repayments) }}</td>
+                    <td class="right {{ $funding - $repayments < 0 ? 'negative' : 'positive' }}">{{ $formatSignedMoney($funding - $repayments) }}</td>
+                </tr>
+            @endforeach
+        </tbody>
+    </table>
+
     <h2>Non-Cash Expense Disclosure</h2>
     <table>
         <thead>
@@ -251,6 +264,11 @@
                 <td>Owner-paid expenses recorded</td>
                 <td>Recorded expense only; no cash drawer deduction</td>
                 <td class="right negative">{{ $formatSignedMoney(-1 * (float) ($expenseBreakdown['owner'] ?? 0)) }}</td>
+            </tr>
+            <tr>
+                <td>Store-funded GCash expenses</td>
+                <td>Deducted from expected GCash, not cash drawer</td>
+                <td class="right negative">{{ $formatSignedMoney(-1 * (float) ($expenseBreakdown['store_gcash'] ?? 0)) }}</td>
             </tr>
         </tbody>
     </table>

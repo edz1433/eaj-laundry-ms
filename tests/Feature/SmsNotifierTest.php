@@ -16,6 +16,107 @@ class SmsNotifierTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_semaphore_sends_sms_with_normalized_philippine_number(): void
+    {
+        Http::fake([
+            'api.semaphore.co/*' => Http::response([[
+                'message_id' => 12345,
+                'status' => 'Pending',
+            ]], 200),
+        ]);
+
+        [$order] = $this->readyOrder();
+        SystemSetting::query()->create([
+            'business_name' => 'SPIN KLEAN LAUNDRY',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'sms_enabled' => true,
+            'sms_provider' => 'semaphore',
+            'sms_api_key' => 'semaphore-secret',
+            'semaphore_sender_name' => 'SPINKLEAN',
+            'is_completed' => true,
+        ]);
+
+        SmsNotifier::jobOrderStatus($order);
+
+        Http::assertSent(fn ($request) => $request->url() === 'https://api.semaphore.co/api/v4/messages'
+            && $request['apikey'] === 'semaphore-secret'
+            && $request['number'] === '639171234567'
+            && $request['sendername'] === 'SPINKLEAN'
+            && str_contains($request['message'], 'ready for pickup'));
+
+        $this->assertDatabaseHas('sms_logs', [
+            'recipient' => '09171234567',
+            'status' => 'sent',
+            'response' => 'Semaphore message accepted (12345)',
+        ]);
+    }
+
+    public function test_po_customer_never_receives_or_queues_sms(): void
+    {
+        Http::fake();
+        [$order, , $customer] = $this->readyOrder();
+        $customer->update(['billing_type' => 'po']);
+        $order->setRelation('customer', $customer->fresh());
+
+        SystemSetting::query()->create([
+            'business_name' => 'SPIN KLEAN LAUNDRY',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'sms_enabled' => true,
+            'sms_provider' => 'semaphore',
+            'sms_api_key' => 'semaphore-secret',
+            'is_completed' => true,
+        ]);
+
+        SmsNotifier::jobOrderReceived($order);
+        SmsNotifier::jobOrderStatus($order);
+
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('sms_logs', 0);
+    }
+
+    public function test_semaphore_failure_is_recorded_without_throwing(): void
+    {
+        Http::fake([
+            'api.semaphore.co/*' => Http::response([
+                'message' => 'Insufficient account balance.',
+            ], 400),
+        ]);
+
+        [$order] = $this->readyOrder();
+        SystemSetting::query()->create([
+            'business_name' => 'SPIN KLEAN LAUNDRY',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'sms_enabled' => true,
+            'sms_provider' => 'semaphore',
+            'sms_api_key' => 'semaphore-secret',
+            'is_completed' => true,
+        ]);
+
+        SmsNotifier::jobOrderStatus($order);
+
+        $this->assertDatabaseHas('sms_logs', [
+            'customer_id' => $order->customer_id,
+            'status' => 'failed',
+            'response' => 'Semaphore error: Insufficient account balance.',
+        ]);
+        $this->assertDatabaseHas('job_orders', [
+            'id' => $order->id,
+            'status' => 'ready_for_pickup',
+        ]);
+    }
+
     public function test_twilio_missing_config_keeps_sms_queued_without_throwing(): void
     {
         [$order] = $this->readyOrder();
@@ -76,6 +177,33 @@ class SmsNotifierTest extends TestCase
             'status' => 'sent',
             'response' => 'Twilio message sent (SM123)',
         ]);
+    }
+
+    public function test_walk_in_received_sms_uses_drop_off_message(): void
+    {
+        [$order] = $this->readyOrder();
+        $order->update([
+            'status' => 'pending',
+            'transaction_type' => 'walk_in',
+        ]);
+
+        SystemSetting::query()->create([
+            'business_name' => 'SPIN KLEAN LAUNDRY',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'sms_enabled' => true,
+            'is_completed' => true,
+        ]);
+
+        SmsNotifier::jobOrderReceived($order);
+
+        $message = (string) SmsLog::query()->value('message');
+        $this->assertStringContainsString('SPIN KLEAN LAUNDRY has received your laundry order', $message);
+        $this->assertStringNotContainsString('picked up', $message);
+        $this->assertStringContainsString('queued for processing', $message);
     }
 
     private function readyOrder(): array

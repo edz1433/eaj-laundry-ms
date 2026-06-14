@@ -10,7 +10,8 @@ use Illuminate\Support\Carbon;
 
 class PaymentController extends Controller
 {
-    private const PAYMENT_TYPES = ['cash', 'gcash', 'bank', 'credit', 'po', 'monthly_billing'];
+    private const PAYMENT_TYPES = ['cash', 'gcash', 'bank', 'unpaid', 'po', 'monthly_billing'];
+    private const UI_PAYMENT_TYPES = ['cash', 'gcash', 'unpaid', 'po'];
 
     public function index(Request $request)
     {
@@ -27,6 +28,7 @@ class PaymentController extends Controller
 
         $baseQuery = Payment::query()
             ->with(['branch', 'collectedBranch', 'customer', 'jobOrder', 'receiver'])
+            ->whereIn('payment_type', self::UI_PAYMENT_TYPES)
             ->when(! $canChooseBranch, fn ($query) => $query->where(fn ($query) => $query
                 ->where('branch_id', $user->branch_id)
                 ->orWhere('collected_branch_id', $user->branch_id)))
@@ -58,8 +60,11 @@ class PaymentController extends Controller
             ->sum('amount');
 
         $salesOwnerTotal = $this->filteredPaymentQuery($request, $selectedBranchId, 'branch_id')->sum('amount');
-        $physicalCollectionTotal = $this->filteredPaymentQuery($request, $selectedBranchId, 'collected_branch_id')->sum('amount');
+        $physicalCollectionTotal = $this->filteredPaymentQuery($request, $selectedBranchId, 'collected_branch_id')
+            ->whereIn('payment_type', ['cash', 'gcash', 'bank'])
+            ->sum('amount');
         $todayCollectionTotal = $this->filteredPaymentQuery($request, $selectedBranchId, 'collected_branch_id')
+            ->whereIn('payment_type', ['cash', 'gcash', 'bank'])
             ->whereDate('paid_at', today())
             ->sum('amount');
 
@@ -71,6 +76,7 @@ class PaymentController extends Controller
 
         $crossBranchTotal = (clone $baseQuery)
             ->whereColumn('collected_branch_id', '!=', 'branch_id')
+            ->whereIn('payment_type', ['cash', 'gcash', 'bank'])
             ->sum('amount');
 
         $payments = $baseQuery
@@ -91,7 +97,7 @@ class PaymentController extends Controller
             'todayTotal',
             'dateFrom',
             'dateTo'
-        ) + ['paymentTypes' => self::PAYMENT_TYPES]);
+        ) + ['paymentTypes' => self::UI_PAYMENT_TYPES]);
     }
 
     private function canChooseBranch($user): bool

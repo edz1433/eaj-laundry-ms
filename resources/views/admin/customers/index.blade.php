@@ -12,7 +12,7 @@
                 Customer records
             </div>
             <h1 class="text-xl font-semibold tracking-normal">Customers</h1>
-            <p class="text-sm text-muted">Manage regular, PO, and monthly billing customers.</p>
+            <p class="text-sm text-muted">Manage regular and PO customers.</p>
         </div>
 
         <button type="button" @click="createOpen = true" class="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-white shadow-sm transition hover:opacity-90">
@@ -41,7 +41,7 @@
 
             <select name="billing_type" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
                 <option value="">All billing</option>
-                @foreach(['regular', 'po', 'monthly_billing'] as $billingType)
+                @foreach(['regular', 'po'] as $billingType)
                     <option value="{{ $billingType }}" @selected(request('billing_type') === $billingType)>{{ \App\Support\StatusBadge::label($billingType) }}</option>
                 @endforeach
             </select>
@@ -66,8 +66,8 @@
                         <th class="px-4 py-3">Customer</th>
                         <th class="px-4 py-3">Branch</th>
                         <th class="px-4 py-3">Billing</th>
-                        <th class="px-4 py-3">Credit Limit</th>
-                        <th class="px-4 py-3">Orders</th>
+                        <th class="px-4 py-3">Unpaid Limit</th>
+                        <th class="px-4 py-3">Laundry Visits</th>
                         <th class="px-4 py-3">Status</th>
                         <th class="px-4 py-3 text-right">Actions</th>
                     </tr>
@@ -81,8 +81,13 @@
                             </td>
                             <td class="px-4 py-3">{{ $customer->branch?->name ?? 'N/A' }}</td>
                             <td class="px-4 py-3"><span class="{{ \App\Support\StatusBadge::classes($customer->billing_type) }}">{{ \App\Support\StatusBadge::label($customer->billing_type) }}</span></td>
-                            <td class="px-4 py-3">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $customer->credit_limit, 2) }}</td>
-                            <td class="px-4 py-3">{{ $customer->job_orders_count }}</td>
+                            <td class="px-4 py-3">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $customer->unpaid_limit, 2) }}</td>
+                            <td class="px-4 py-3">
+                                <span class="font-semibold">{{ number_format($customer->job_orders_count) }}</span>
+                                @if($customer->job_orders_count >= 10)
+                                    <span class="ml-1 inline-flex rounded-md border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-violet-700 dark:border-violet-900/60 dark:bg-violet-500/10 dark:text-violet-300">Loyal</span>
+                                @endif
+                            </td>
                             <td class="px-4 py-3">
                                 <span class="{{ \App\Support\StatusBadge::classes($customer->is_active ? 'active' : 'inactive') }}">
                                     {{ $customer->is_active ? 'Active' : 'Inactive' }}
@@ -132,7 +137,7 @@
             @include('admin.customers.partials.form', [
                 'action' => route('admin.customers.store'),
                 'method' => 'POST',
-                'customer' => new \App\Models\Customer(['billing_type' => 'regular', 'is_active' => true, 'credit_limit' => 0]),
+                'customer' => new \App\Models\Customer(['billing_type' => 'regular', 'is_active' => true, 'unpaid_limit' => 0]),
             ])
         </div>
     </div>

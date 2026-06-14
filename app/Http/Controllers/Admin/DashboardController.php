@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\BranchExpense;
+use App\Models\Customer;
 use App\Models\DailyTask;
 use App\Models\DailyTaskCompletion;
 use App\Models\EmployeeAttendanceRecord;
@@ -14,7 +15,9 @@ use App\Models\MoneyMovement;
 use App\Models\Payment;
 use App\Models\SystemSetting;
 use App\Models\ZReading;
+use App\Models\AccountsPayable;
 use App\Support\StatusBadge;
+use App\Support\FinancialReconciliation;
 use Carbon\CarbonPeriod;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -88,6 +91,7 @@ class DashboardController extends Controller
         [$dateFrom, $dateTo] = $this->dateRange($request);
         $branchId = $this->branchId($request);
         $currency = SystemSetting::current()->currency ?: 'PHP';
+        $financial = FinancialReconciliation::forPeriod($branchId, $dateFrom, $dateTo);
 
         $orders = JobOrder::query()
             ->when($branchId, fn ($query) => $query->where('branch_id', $branchId));
@@ -103,19 +107,21 @@ class DashboardController extends Controller
 
         $collections = Payment::query()
             ->when($branchId, fn ($query) => $query->where('collected_branch_id', $branchId))
+            ->whereIn('payment_type', ['cash', 'gcash', 'bank'])
             ->whereDate('paid_at', '>=', $dateFrom)
             ->whereDate('paid_at', '<=', $dateTo);
 
         $salesTotal = (float) (clone $payments)->sum('amount');
-        $collectionsTotal = (float) (clone $collections)->sum('amount');
+        $collectionsTotal = $financial['physical_collections'];
         $ordersCount = (clone $ordersInRange)->count();
         $openOrders = (clone $orders)->whereNotIn('status', ['completed', 'cancelled'])->count();
         $readyForPickup = (clone $orders)->where('status', 'ready_for_pickup')->count();
-        $receivables = (float) (clone $orders)->where('balance', '>', 0)->sum('balance');
+        $receivables = $financial['unpaid_balance'];
         $lowStock = Inventory::query()
             ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
             ->whereColumn('quantity', '<=', 'reorder_level')
             ->count();
+        $accountsPayable = $financial['accounts_payable'];
 
         $salesByDate = (clone $payments)
             ->selectRaw('DATE(paid_at) as paid_date, COALESCE(SUM(amount), 0) as total_amount')
@@ -156,17 +162,58 @@ class DashboardController extends Controller
             ])
             ->values();
 
+        $trustedCustomers = Customer::query()
+            ->with('branch')
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->whereHas(
+                'jobOrders',
+                fn ($query) => $query->when($branchId, fn ($query) => $query->where('branch_id', $branchId)),
+                '>=',
+                10
+            )
+            ->withCount(['jobOrders as orders_count' => fn ($query) => $query
+                ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))])
+            ->withMax(['jobOrders as latest_order_at' => fn ($query) => $query
+                ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))], 'created_at')
+            ->orderByDesc('orders_count')
+            ->orderByDesc('latest_order_at')
+            ->limit(6)
+            ->get()
+            ->map(function (Customer $customer) use ($branchId) {
+                $latestOrder = $customer->jobOrders()
+                    ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+                    ->latest()
+                    ->first();
+
+                return [
+                    'id' => $customer->id,
+                    'name' => $customer->name,
+                    'phone' => $customer->phone ?: 'No phone provided',
+                    'branch' => $customer->branch?->name ?? 'N/A',
+                    'orders_count' => number_format($customer->orders_count),
+                    'latest_order' => $latestOrder?->created_at?->format('M d, Y') ?? 'N/A',
+                    'status' => $latestOrder ? StatusBadge::label($latestOrder->status) : 'No orders',
+                    'status_badge' => $latestOrder ? StatusBadge::classes($latestOrder->status) : StatusBadge::classes('pending'),
+                ];
+            })
+            ->values();
+
         return [
             'currency' => $currency,
             'generated_at' => now()->format('M d, Y h:i:s A'),
             'stats' => [
-                'sales' => $this->money($currency, $salesTotal),
+                'sales' => $this->money($currency, $financial['sales_owned']),
                 'collections' => $this->money($currency, $collectionsTotal),
+                'cash_drawer' => $this->money($currency, $financial['expected_cash_drawer']),
+                'gcash' => $this->money($currency, $financial['expected_gcash']),
+                'expenses' => $this->money($currency, $financial['expenses_total']),
                 'orders' => number_format($ordersCount),
                 'open_orders' => number_format($openOrders),
                 'ready_for_pickup' => number_format($readyForPickup),
                 'receivables' => $this->money($currency, $receivables),
                 'low_stock' => number_format($lowStock),
+                'accounts_payable' => $this->money($currency, $accountsPayable),
+                'over_short' => $this->money($currency, $financial['over_short']),
             ],
             'charts' => [
                 'sales' => [
@@ -179,6 +226,7 @@ class DashboardController extends Controller
                 ],
             ],
             'recent_orders' => $recentOrders,
+            'trusted_customers' => $trustedCustomers,
         ];
     }
 
@@ -188,6 +236,7 @@ class DashboardController extends Controller
             'daily_sales' => 'Daily sales summary',
             'payment_mix' => 'Payment method mix',
             'expenses' => 'Expenses summary',
+            'accounts_payable' => 'Accounts payable summary',
             'cash_drawer' => 'Expected cash drawer',
             'petty_cash' => 'Petty cash movement',
             'receivables' => 'Receivables risk',
@@ -240,7 +289,8 @@ class DashboardController extends Controller
             'daily_sales' => $this->salesAssistant($payments, $collections, $orders, $currency),
             'payment_mix' => $this->paymentMixAssistant($collections, $currency),
             'expenses' => $this->expenseAssistant($expenses, $currency),
-            'cash_drawer' => $this->cashDrawerAssistant($collections, $expenses, $movements, $currency),
+            'accounts_payable' => $this->accountsPayableAssistant($branchId, $currency),
+            'cash_drawer' => $this->cashDrawerAssistant($branchId, $dateFrom, $dateTo, $currency),
             'petty_cash' => $this->pettyCashAssistant($movements, $currency),
             'receivables' => $this->receivablesAssistant($branchId, $currency),
             'unpaid_orders' => $this->unpaidOrdersAssistant($branchId, $currency),
@@ -270,10 +320,11 @@ class DashboardController extends Controller
         return match (true) {
             str_contains($question, 'payment') || str_contains($question, 'gcash') || str_contains($question, 'bank') => 'payment_mix',
             str_contains($question, 'expense') || str_contains($question, 'cash advance') => 'expenses',
+            str_contains($question, 'payable') || str_contains($question, 'owe owner') || str_contains($question, 'owner funding') => 'accounts_payable',
             str_contains($question, 'drawer') || str_contains($question, 'cash count') || str_contains($question, 'cash drawer') => 'cash_drawer',
             str_contains($question, 'petty') || str_contains($question, 'deposit') || str_contains($question, 'withdraw') => 'petty_cash',
             str_contains($question, 'receivable') || str_contains($question, 'balance') || str_contains($question, 'utang') => 'receivables',
-            str_contains($question, 'unpaid') || str_contains($question, 'credit') => 'unpaid_orders',
+            str_contains($question, 'unpaid') => 'unpaid_orders',
             str_contains($question, 'cycle') || str_contains($question, 'washing') || str_contains($question, 'drying') => 'active_cycles',
             str_contains($question, 'pickup') || str_contains($question, 'ready') => 'ready_pickup',
             str_contains($question, 'stock') || str_contains($question, 'inventory') => 'low_stock',
@@ -329,37 +380,51 @@ class DashboardController extends Controller
         $total = (float) (clone $expenses)->sum('amount');
         $storeCash = (float) (clone $expenses)->where('paid_from', 'store_cash')->sum('amount');
         $owner = (float) (clone $expenses)->where('paid_from', 'owner')->sum('amount');
-        $cashAdvance = (float) (clone $expenses)->where('expense_type', 'cash_advance')->sum('amount');
 
         return [
             'title' => 'Expenses Summary',
-            'summary' => "Recorded {$this->money($currency, $total)} in expenses. Store-cash expenses affect the drawer; owner-paid expenses are record-only for drawer cash.",
+            'summary' => "Recorded {$this->money($currency, $total)} in expenses. Store-funded expenses affect the drawer; owner-paid expenses create reimbursement payables.",
             'metrics' => [
                 ['label' => 'Total Expenses', 'value' => $this->money($currency, $total)],
                 ['label' => 'Store Cash', 'value' => $this->money($currency, $storeCash)],
-                ['label' => 'Owner Paid', 'value' => $this->money($currency, $owner)],
-                ['label' => 'Cash Advance', 'value' => $this->money($currency, $cashAdvance)],
+                ['label' => 'Owner-Paid / Reimbursement Due', 'value' => $this->money($currency, $owner)],
             ],
         ];
     }
 
-    private function cashDrawerAssistant($payments, $expenses, $movements, string $currency): array
+    private function accountsPayableAssistant(?int $branchId, string $currency): array
     {
-        $cash = (float) (clone $payments)->where('payment_type', 'cash')->sum('amount');
-        $storeCashExpenses = (float) (clone $expenses)->where('paid_from', 'store_cash')->sum('amount');
-        $cashIn = (float) (clone $movements)->where('direction', 'in')->sum('amount');
-        $cashOut = (float) (clone $movements)->where('direction', 'out')->sum('amount');
-        $drawer = $cash - $storeCashExpenses + $cashIn - $cashOut;
+        $query = AccountsPayable::query()
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId));
+        $original = (float) (clone $query)->sum('original_amount');
+        $paid = (float) (clone $query)->sum('paid_amount');
+        $balance = (float) (clone $query)->sum('balance');
+        $open = (clone $query)->where('balance', '>', 0)->count();
+
+        return [
+            'title' => 'Accounts Payable Summary',
+            'summary' => "{$open} payable(s) remain open. Cash repayments reduce the branch drawer; cashless repayments do not.",
+            'metrics' => [
+                ['label' => 'Total Obligations', 'value' => $this->money($currency, $original)],
+                ['label' => 'Repaid', 'value' => $this->money($currency, $paid)],
+                ['label' => 'Outstanding', 'value' => $this->money($currency, $balance)],
+            ],
+        ];
+    }
+
+    private function cashDrawerAssistant(?int $branchId, string $dateFrom, string $dateTo, string $currency): array
+    {
+        $financial = FinancialReconciliation::forPeriod($branchId, $dateFrom, $dateTo);
 
         return [
             'title' => 'Expected Cash Drawer',
             'summary' => 'Expected drawer uses cash physically collected in this branch, minus store-cash expenses, plus deposits, minus withdrawals/remittances.',
             'metrics' => [
-                ['label' => 'Cash Collected Here', 'value' => '+ '.$this->money($currency, $cash)],
-                ['label' => 'Store Expenses', 'value' => '- '.$this->money($currency, $storeCashExpenses)],
-                ['label' => 'Petty Cash In', 'value' => '+ '.$this->money($currency, $cashIn)],
-                ['label' => 'Petty Cash Out', 'value' => '- '.$this->money($currency, $cashOut)],
-                ['label' => 'Expected Drawer', 'value' => $this->money($currency, $drawer)],
+                ['label' => 'Cash Collected Here', 'value' => '+ '.$this->money($currency, $financial['cash_collections'])],
+                ['label' => 'Cash Deposits / Owner Funding', 'value' => '+ '.$this->money($currency, $financial['cash_in'])],
+                ['label' => 'Store-Cash Expenses', 'value' => '- '.$this->money($currency, $financial['store_cash_expenses'])],
+                ['label' => 'Withdrawals / Repayments', 'value' => '- '.$this->money($currency, $financial['cash_out'])],
+                ['label' => 'Expected Drawer', 'value' => $this->money($currency, $financial['expected_cash_drawer'])],
             ],
         ];
     }
@@ -382,7 +447,7 @@ class DashboardController extends Controller
 
     private function receivablesAssistant(?int $branchId, string $currency): array
     {
-        $query = JobOrder::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->where('balance', '>', 0);
+        $query = JobOrder::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->where('balance', '>', 0)->where('status', '!=', 'cancelled');
         $balance = (float) (clone $query)->sum('balance');
         $count = (clone $query)->count();
 
@@ -398,7 +463,7 @@ class DashboardController extends Controller
 
     private function unpaidOrdersAssistant(?int $branchId, string $currency): array
     {
-        $query = JobOrder::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->where('balance', '>', 0)->latest();
+        $query = JobOrder::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->where('balance', '>', 0)->where('status', '!=', 'cancelled')->latest();
 
         return [
             'title' => 'Unpaid Job Orders',
@@ -497,7 +562,7 @@ class DashboardController extends Controller
         if (! $request->user()->canManageAllBranches()) {
             return $this->salesAssistant(
                 Payment::query()->where('branch_id', $request->user()->branch_id)->whereDate('paid_at', '>=', $dateFrom)->whereDate('paid_at', '<=', $dateTo),
-                Payment::query()->where('collected_branch_id', $request->user()->branch_id)->whereDate('paid_at', '>=', $dateFrom)->whereDate('paid_at', '<=', $dateTo),
+                Payment::query()->where('collected_branch_id', $request->user()->branch_id)->whereIn('payment_type', ['cash', 'gcash', 'bank'])->whereDate('paid_at', '>=', $dateFrom)->whereDate('paid_at', '<=', $dateTo),
                 JobOrder::query()->where('branch_id', $request->user()->branch_id)->whereDate('created_at', '>=', $dateFrom)->whereDate('created_at', '<=', $dateTo),
                 $currency
             );

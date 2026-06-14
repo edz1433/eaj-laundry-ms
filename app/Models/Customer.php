@@ -9,11 +9,16 @@ class Customer extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = ['branch_id', 'name', 'phone', 'email', 'address', 'billing_type', 'credit_limit', 'is_active'];
+    protected $fillable = ['branch_id', 'name', 'phone', 'email', 'address', 'billing_type', 'unpaid_limit', 'is_active'];
 
-    protected $casts = ['credit_limit' => 'decimal:2', 'is_active' => 'boolean'];
+    protected $casts = ['unpaid_limit' => 'decimal:2', 'is_active' => 'boolean'];
 
     public function branch() { return $this->belongsTo(Branch::class); }
     public function jobOrders() { return $this->hasMany(JobOrder::class); }
     public function payments() { return $this->hasMany(Payment::class); }
+
+    public function canReceiveSms(): bool
+    {
+        return $this->billing_type !== 'po' && filled($this->phone);
+    }
 }

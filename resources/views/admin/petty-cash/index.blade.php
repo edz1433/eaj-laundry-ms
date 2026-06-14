@@ -96,7 +96,7 @@
 
                 <label class="block">
                     <span class="text-xs font-medium text-muted">Reference No.</span>
-                    <input name="reference_no" maxlength="255" placeholder="OR, remittance, bank ref..." class="mt-1 h-10 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
+                    <input name="reference_no" maxlength="255" placeholder="OR or remittance reference..." class="mt-1 h-10 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
                 </label>
 
                 <label class="block">

@@ -11,7 +11,7 @@
                 Unpaid balances
             </div>
             <h1 class="text-xl font-semibold tracking-normal">Receivables</h1>
-            <p class="text-sm text-muted">Track partial payments, PO accounts, and monthly billing customers.</p>
+            <p class="text-sm text-muted">Track partial payments and PO customer accounts.</p>
         </div>
 
         <div class="grid grid-cols-2 gap-2 sm:min-w-80">
@@ -148,10 +148,7 @@
                         <select name="payment_type" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
                             <option value="cash">Cash</option>
                             <option value="gcash">GCash</option>
-                            <option value="bank">Bank</option>
-                            <option value="credit">Credit</option>
                             <option value="po">PO</option>
-                            <option value="monthly_billing">Monthly Billing</option>
                         </select>
                     </div>
 

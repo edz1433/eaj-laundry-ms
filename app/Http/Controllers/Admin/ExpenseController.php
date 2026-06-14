@@ -5,11 +5,29 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\BranchExpense;
+use App\Models\AccountsPayable;
+use App\Support\Activity;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class ExpenseController extends Controller
 {
+    private const CATEGORIES = [
+        'supplies',
+        'inventory_purchase',
+        'utilities',
+        'rent',
+        'payroll',
+        'repairs_maintenance',
+        'transport_delivery',
+        'marketing',
+        'government_fees',
+        'professional_fees',
+        'software_subscription',
+        'other',
+    ];
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -23,13 +41,13 @@ class ExpenseController extends Controller
             ->get();
 
         $baseQuery = BranchExpense::query()
-            ->with(['branch', 'creator'])
+            ->with(['branch', 'creator', 'accountsPayable'])
             ->when(! $canChooseBranch, fn ($query) => $query->where('branch_id', $user->branch_id))
             ->when($canChooseBranch && $request->filled('branch_id'), fn ($query) => $query->where('branch_id', $request->branch_id))
             ->when($dateFrom, fn ($query) => $query->whereDate('expense_date', '>=', $dateFrom))
             ->when($dateTo, fn ($query) => $query->whereDate('expense_date', '<=', $dateTo))
             ->when($request->filled('paid_from'), fn ($query) => $query->where('paid_from', $request->paid_from))
-            ->when($request->filled('expense_type'), fn ($query) => $query->where('expense_type', $request->expense_type))
+            ->when(in_array($request->expense_type, self::CATEGORIES, true), fn ($query) => $query->where('expense_type', $request->expense_type))
             ->when($request->filled('search'), function ($query) use ($request) {
                 $search = $request->search;
 
@@ -41,7 +59,7 @@ class ExpenseController extends Controller
             });
 
         $summary = (clone $baseQuery)
-            ->selectRaw("COALESCE(SUM(amount), 0) as total_expenses, COALESCE(SUM(CASE WHEN paid_from = 'store_cash' THEN amount ELSE 0 END), 0) as store_cash_expenses, COALESCE(SUM(CASE WHEN paid_from = 'owner' THEN amount ELSE 0 END), 0) as owner_expenses, COALESCE(SUM(CASE WHEN expense_type = 'cash_advance' THEN amount ELSE 0 END), 0) as cash_advance_total")
+            ->selectRaw("COALESCE(SUM(amount), 0) as total_expenses, COALESCE(SUM(CASE WHEN paid_from = 'store_cash' THEN amount ELSE 0 END), 0) as store_cash_expenses, COALESCE(SUM(CASE WHEN paid_from = 'owner' THEN amount ELSE 0 END), 0) as owner_expenses")
             ->first();
 
         $expenses = $baseQuery
@@ -57,22 +75,35 @@ class ExpenseController extends Controller
             'dateTo' => $dateTo,
             'expenses' => $expenses,
             'summary' => $summary,
+            'categories' => self::CATEGORIES,
         ]);
     }
 
     public function store(Request $request)
     {
         $user = $request->user();
+        $normalizedCategory = str((string) $request->input('category'))->snake()->toString();
+        $normalizedCategory = match ($normalizedCategory) {
+            'stocks', 'stock', 'inventory' => 'inventory_purchase',
+            'repairs', 'maintenance' => 'repairs_maintenance',
+            'transport', 'delivery' => 'transport_delivery',
+            'fees' => 'government_fees',
+            default => $normalizedCategory,
+        };
+        $request->merge([
+            'category' => $normalizedCategory,
+            'expense_type' => $normalizedCategory,
+        ]);
 
         $validated = $request->validate([
             'branch_id' => [$user->canManageAllBranches() ? 'required' : 'nullable', 'exists:branches,id'],
-            'category' => ['required', 'string', 'max:255'],
+            'category' => ['required', Rule::in(self::CATEGORIES)],
             'title' => ['required', 'string', 'max:255'],
             'amount' => ['required', 'numeric', 'min:0.01'],
             'expense_date' => ['required', 'date'],
             'payment_method' => ['nullable', 'string', 'max:100'],
             'paid_from' => ['required', Rule::in(['store_cash', 'owner'])],
-            'expense_type' => ['required', Rule::in(['regular', 'cash_advance'])],
+            'expense_type' => ['nullable', Rule::in(self::CATEGORIES)],
             'reference_no' => ['nullable', 'string', 'max:255'],
             'remarks' => ['nullable', 'string'],
         ]);
@@ -81,9 +112,45 @@ class ExpenseController extends Controller
             $validated['branch_id'] = $user->branch_id;
         }
 
-        BranchExpense::create($validated + ['created_by' => $user->id]);
+        $validated['expense_type'] = $validated['category'];
+
+        DB::transaction(function () use ($request, $validated, $user): void {
+            $expense = BranchExpense::create($validated + ['created_by' => $user->id]);
+
+            if ($expense->paid_from === 'owner') {
+                $payable = AccountsPayable::query()->create([
+                    'branch_id' => $expense->branch_id,
+                    'created_by' => $user->id,
+                    'payable_number' => $this->nextPayableNumber(),
+                    'creditor_name' => 'Owner',
+                    'source_type' => 'owner_paid_expense',
+                    'source_id' => $expense->id,
+                    'funding_method' => $expense->payment_method ?: 'cash',
+                    'reference_no' => $expense->reference_no,
+                    'description' => "Reimbursement for {$expense->title}",
+                    'original_amount' => $expense->amount,
+                    'paid_amount' => 0,
+                    'balance' => $expense->amount,
+                    'status' => 'unpaid',
+                    'funded_at' => $expense->expense_date,
+                ]);
+
+                $expense->update(['accounts_payable_id' => $payable->id]);
+            }
+
+            Activity::log($request, 'expense_recorded', $expense, [
+                'title' => $expense->title,
+                'amount' => $expense->amount,
+                'funding_source' => $expense->paid_from,
+            ], $expense->branch_id);
+        });
 
         return back()->with('success', 'Expense recorded successfully.');
+    }
+
+    private function nextPayableNumber(): string
+    {
+        return 'AP-'.now()->format('Ymd').'-'.str_pad((string) (AccountsPayable::whereDate('created_at', today())->count() + 1), 4, '0', STR_PAD_LEFT);
     }
 
     public function destroy(Request $request, BranchExpense $expense)
@@ -92,7 +159,17 @@ class ExpenseController extends Controller
             abort_unless((int) $request->user()->branch_id === (int) $expense->branch_id, 403);
         }
 
-        $expense->delete();
+        $expense->loadMissing('accountsPayable.payments');
+
+        if ($expense->accountsPayable?->payments->isNotEmpty()) {
+            return back()->with('error', 'This expense already has payable repayments and cannot be deleted.');
+        }
+
+        DB::transaction(function () use ($expense): void {
+            $payable = $expense->accountsPayable;
+            $expense->delete();
+            $payable?->delete();
+        });
 
         return back()->with('success', 'Expense removed successfully.');
     }

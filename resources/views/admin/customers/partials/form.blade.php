@@ -43,13 +43,12 @@
             <select name="billing_type" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
                 <option value="regular" @selected(old('billing_type', $customer->billing_type) === 'regular')>Regular</option>
                 <option value="po" @selected(old('billing_type', $customer->billing_type) === 'po')>PO</option>
-                <option value="monthly_billing" @selected(old('billing_type', $customer->billing_type) === 'monthly_billing')>Monthly Billing</option>
             </select>
         </div>
 
         <div>
-            <label class="mb-1.5 block text-sm font-medium">Credit Limit</label>
-            <input type="number" step="0.01" min="0" name="credit_limit" value="{{ old('credit_limit', $customer->credit_limit ?? 0) }}" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
+            <label class="mb-1.5 block text-sm font-medium">Unpaid Limit</label>
+            <input type="number" step="0.01" min="0" name="unpaid_limit" value="{{ old('unpaid_limit', $customer->unpaid_limit ?? 0) }}" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
         </div>
 
         <div class="md:col-span-2">

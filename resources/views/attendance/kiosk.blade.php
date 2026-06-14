@@ -341,7 +341,7 @@
                 },
                 startClock() {
                     const update = () => {
-                        this.currentTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        this.currentTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
                     };
                     update();
                     setInterval(update, 1000);
@@ -608,7 +608,7 @@
                         this.branchName,
                         this.branchAddress,
                         `GPS: ${this.latitude}, ${this.longitude}${this.locationAccuracy ? ' +/- ' + this.locationAccuracy + 'm' : ''}`,
-                        new Date().toLocaleString(),
+                        new Date().toLocaleString([], { hour12: true }),
                     ];
                     const wrappedLines = this.overlayLines(context, lines, width - 48);
                     const overlayHeight = Math.min(height - 24, 30 + (wrappedLines.length * 19));

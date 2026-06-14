@@ -9,6 +9,7 @@
         logoPreview: null,
         vatEnabled: @js($settings->vat_enabled),
         smsEnabled: @js($settings->sms_enabled),
+        smsProvider: @js(old('sms_provider', $settings->sms_provider ?: 'semaphore')),
         darkDefault: @js($settings->dark_mode_default)
     }"
     class="space-y-4"
@@ -45,11 +46,6 @@
                         <span data-lucide="store" class="h-4 w-4"></span> Global
                     </button>
                 @endif
-                
-                {{-- Pricing tab - visible to both Admin and Super Admin --}}
-                <button type="button" @click="tab = 'pricing'" class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition" :class="tab === 'pricing' ? 'bg-white text-primary shadow-sm dark:bg-gray-900' : 'text-muted hover:bg-white/70 dark:hover:bg-gray-900'">
-                    <span data-lucide="dollar" class="h-4 w-4"></span> Pricing
-                </button>
                 
                 {{-- Branch tab - visible to both Admin and Super Admin --}}
                 <button type="button" @click="tab = 'branch'" class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition" :class="tab === 'branch' ? 'bg-white text-primary shadow-sm dark:bg-gray-900' : 'text-muted hover:bg-white/70 dark:hover:bg-gray-900'">
@@ -147,40 +143,19 @@
                             >
                         </div>
                     </div>
-                </div>
-                @endif
 
-                {{-- Pricing Tab - Visible to both Admin and Super Admin --}}
-                <div x-show="tab === 'pricing'" class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                    <div>
-                        <label class="block text-sm font-medium mb-2">Default Price Per Kilo</label>
-                        <input type="number" step="0.01" name="default_price_per_kilo" value="{{ old('default_price_per_kilo', $branchSetting->default_price_per_kilo) }}" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium mb-2">Default Price Per Load</label>
-                        <input type="number" step="0.01" name="default_price_per_load" value="{{ old('default_price_per_load', $branchSetting->default_price_per_load) }}" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium mb-2">Default Price Per Piece</label>
-                        <input type="number" step="0.01" name="default_price_per_piece" value="{{ old('default_price_per_piece', $branchSetting->default_price_per_piece) }}" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
-                    </div>
-
-                    @if($canManageGlobal)
-                        <div class="lg:col-span-3">
-                            <label class="flex items-center gap-3">
-                                <input type="checkbox" name="vat_enabled" value="1" x-model="vatEnabled" class="rounded border-border text-primary">
-                                <span class="text-sm font-medium">Enable VAT / Tax</span>
-                            </label>
-                        </div>
-
-                        <div x-show="vatEnabled">
+                    <div class="lg:col-span-2 rounded-md border border-border p-3 dark:border-gray-700">
+                        <label class="flex items-center gap-3">
+                            <input type="checkbox" name="vat_enabled" value="1" x-model="vatEnabled" class="rounded border-border text-primary">
+                            <span class="text-sm font-medium">Enable VAT / Tax</span>
+                        </label>
+                        <div x-show="vatEnabled" class="mt-3 max-w-xs">
                             <label class="block text-sm font-medium mb-2">VAT Rate (%)</label>
                             <input type="number" step="0.01" name="vat_rate" value="{{ old('vat_rate', $settings->vat_rate) }}" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
                         </div>
-                    @endif
+                    </div>
                 </div>
+                @endif
 
                 {{-- Branch Tab - Visible to both Admin and Super Admin --}}
                 <div x-show="tab === 'branch'" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -238,11 +213,23 @@
                         <p class="mb-3 text-sm font-medium">Operating Hours</p>
                         <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
                             @foreach(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as $day)
+                                @php($openValue = old("operating_hours.$day.open", data_get($branchSetting->operating_hours, "$day.open", '08:00')))
+                                @php($closeValue = old("operating_hours.$day.close", data_get($branchSetting->operating_hours, "$day.close", '18:00')))
                                 <div class="rounded-md border border-border p-3 dark:border-gray-700">
                                     <p class="mb-2 text-sm font-semibold">{{ ucfirst($day) }}</p>
                                     <div class="grid grid-cols-2 gap-2">
-                                        <input type="time" name="operating_hours[{{ $day }}][open]" value="{{ old("operating_hours.$day.open", data_get($branchSetting->operating_hours, "$day.open", '08:00')) }}" class="h-10 rounded-lg border border-border bg-white px-3 dark:border-gray-700 dark:bg-gray-950">
-                                        <input type="time" name="operating_hours[{{ $day }}][close]" value="{{ old("operating_hours.$day.close", data_get($branchSetting->operating_hours, "$day.close", '18:00')) }}" class="h-10 rounded-lg border border-border bg-white px-3 dark:border-gray-700 dark:bg-gray-950">
+                                        <select name="operating_hours[{{ $day }}][open]" aria-label="{{ ucfirst($day) }} opening time" class="h-10 rounded-lg border border-border bg-white px-2 text-sm dark:border-gray-700 dark:bg-gray-950">
+                                            @for($minutes = 0; $minutes < 1440; $minutes += 30)
+                                                @php($value = sprintf('%02d:%02d', intdiv($minutes, 60), $minutes % 60))
+                                                <option value="{{ $value }}" @selected($openValue === $value)>{{ \Illuminate\Support\Carbon::createFromFormat('H:i', $value)->format('h:i A') }}</option>
+                                            @endfor
+                                        </select>
+                                        <select name="operating_hours[{{ $day }}][close]" aria-label="{{ ucfirst($day) }} closing time" class="h-10 rounded-lg border border-border bg-white px-2 text-sm dark:border-gray-700 dark:bg-gray-950">
+                                            @for($minutes = 0; $minutes < 1440; $minutes += 30)
+                                                @php($value = sprintf('%02d:%02d', intdiv($minutes, 60), $minutes % 60))
+                                                <option value="{{ $value }}" @selected($closeValue === $value)>{{ \Illuminate\Support\Carbon::createFromFormat('H:i', $value)->format('h:i A') }}</option>
+                                            @endfor
+                                        </select>
                                     </div>
                                 </div>
                             @endforeach
@@ -285,31 +272,38 @@
 
                     <div>
                         <label class="block text-sm font-medium mb-2">SMS Provider</label>
-                        <select name="sms_provider" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
-                            <option value="">None</option>
+                        <select name="sms_provider" x-model="smsProvider" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
+                            <option value="semaphore">Semaphore</option>
                             <option value="twilio" @selected(old('sms_provider', $settings->sms_provider) === 'twilio')>Twilio</option>
                         </select>
                     </div>
 
-                    <div>
+                    <div x-show="smsProvider === 'semaphore'">
+                        <label class="block text-sm font-medium mb-2">Semaphore API Key</label>
+                        <input type="password" name="sms_api_key" value="{{ old('sms_api_key', $settings->sms_api_key) }}" autocomplete="new-password" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
+                    </div>
+
+                    <div x-show="smsProvider === 'semaphore'">
+                        <label class="block text-sm font-medium mb-2">Semaphore Sender Name</label>
+                        <input name="semaphore_sender_name" value="{{ old('semaphore_sender_name', $settings->semaphore_sender_name) }}" placeholder="Approved sender name" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
+                        <p class="mt-1 text-xs text-muted">Optional. Leave blank to use the default sender name in Semaphore.</p>
+                    </div>
+
+                    <div x-show="smsProvider === 'twilio'">
                         <label class="block text-sm font-medium mb-2">Twilio Account SID</label>
                         <input name="twilio_account_sid" value="{{ old('twilio_account_sid', $settings->twilio_account_sid) }}" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
                     </div>
 
-                    <div>
+                    <div x-show="smsProvider === 'twilio'">
                         <label class="block text-sm font-medium mb-2">Twilio Auth Token</label>
                         <input type="password" name="twilio_auth_token" value="{{ old('twilio_auth_token', $settings->twilio_auth_token) }}" autocomplete="new-password" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
                     </div>
 
-                    <div>
+                    <div x-show="smsProvider === 'twilio'">
                         <label class="block text-sm font-medium mb-2">Twilio From Number</label>
                         <input name="twilio_from_number" value="{{ old('twilio_from_number', $settings->twilio_from_number) }}" placeholder="+15551234567" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
                     </div>
 
-                    <div class="lg:col-span-2">
-                        <label class="block text-sm font-medium mb-2">Legacy SMS API Key</label>
-                        <input name="sms_api_key" value="{{ old('sms_api_key', $settings->sms_api_key) }}" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
-                    </div>
                 </div>
                 @endif
 

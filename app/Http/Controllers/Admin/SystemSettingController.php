@@ -44,9 +44,6 @@ class SystemSettingController extends Controller
                 'receipt_header' => $settings->receipt_header,
                 'receipt_footer' => $settings->receipt_footer,
                 'operating_hours' => $settings->operating_hours,
-                'default_price_per_kilo' => $settings->default_price_per_kilo,
-                'default_price_per_load' => $settings->default_price_per_load,
-                'default_price_per_piece' => $settings->default_price_per_piece,
                 'job_order_prefix' => $settings->job_order_prefix,
                 'invoice_prefix' => $settings->invoice_prefix,
             ]
@@ -89,9 +86,6 @@ class SystemSettingController extends Controller
             'operating_hours' => ['nullable', 'array'],
             'operating_hours.*.open' => ['nullable', 'date_format:H:i'],
             'operating_hours.*.close' => ['nullable', 'date_format:H:i'],
-            'default_price_per_kilo' => ['nullable', 'numeric', 'min:0'],
-            'default_price_per_load' => ['nullable', 'numeric', 'min:0'],
-            'default_price_per_piece' => ['nullable', 'numeric', 'min:0'],
             'job_order_prefix' => ['nullable', 'string', 'max:20'],
             'invoice_prefix' => ['nullable', 'string', 'max:20'],
         ];
@@ -112,8 +106,9 @@ class SystemSettingController extends Controller
 
             if ($canManageSms) {
                 $rules = array_merge($rules, [
-                    'sms_provider' => ['nullable', 'string', 'max:100'],
+                    'sms_provider' => ['nullable', Rule::in(['semaphore', 'twilio'])],
                     'sms_api_key' => ['nullable', 'string'],
+                    'semaphore_sender_name' => ['nullable', 'string', 'max:50'],
                     'twilio_account_sid' => ['nullable', 'string', 'max:255'],
                     'twilio_auth_token' => ['nullable', 'string'],
                     'twilio_from_number' => ['nullable', 'string', 'max:50'],
@@ -152,9 +147,6 @@ class SystemSettingController extends Controller
                 'receipt_header' => $validated['receipt_header'] ?? null,
                 'receipt_footer' => $validated['receipt_footer'] ?? null,
                 'operating_hours' => $request->input('operating_hours', []),
-                'default_price_per_kilo' => $validated['default_price_per_kilo'] ?? null,
-                'default_price_per_load' => $validated['default_price_per_load'] ?? null,
-                'default_price_per_piece' => $validated['default_price_per_piece'] ?? null,
                 'job_order_prefix' => $validated['job_order_prefix'] ?? null,
                 'invoice_prefix' => $validated['invoice_prefix'] ?? null,
             ]
@@ -174,9 +166,6 @@ class SystemSettingController extends Controller
             $validated['receipt_header'],
             $validated['receipt_footer'],
             $validated['operating_hours'],
-            $validated['default_price_per_kilo'],
-            $validated['default_price_per_load'],
-            $validated['default_price_per_piece'],
             $validated['job_order_prefix'],
             $validated['invoice_prefix'],
         );

@@ -7,7 +7,7 @@
     $currency = $appSettings?->currency ?? 'PHP';
     $cashCount = old('cash_count', $reading?->cash_count ?? []);
     $actualGcash = old('actual_gcash_amount', $reading?->actual_gcash_amount ?? $summary['expected_gcash_amount']);
-    $actualBank = old('actual_bank_amount', $reading?->actual_bank_amount ?? $summary['expected_bank_amount']);
+    $legacyCashlessAmount = old('actual_bank_amount', $reading?->actual_bank_amount ?? $summary['expected_bank_amount']);
 @endphp
 
 <div
@@ -16,17 +16,17 @@
         counts: @js(collect($denominations)->mapWithKeys(fn ($label, $value) => [$value => (int) ($cashCount[$value] ?? 0)])->all()),
         expectedCashDrawer: Number(@js($summary['expected_cash_drawer_amount'])),
         expectedGcash: Number(@js($summary['expected_gcash_amount'])),
-        expectedBank: Number(@js($summary['expected_bank_amount'])),
+        legacyExpected: Number(@js($summary['expected_bank_amount'])),
         actualGcash: Number(@js($actualGcash ?: 0)),
-        actualBank: Number(@js($actualBank ?: 0)),
+        legacyActual: Number(@js($legacyCashlessAmount ?: 0)),
         get actualCash() {
             return this.denominations.reduce((total, value) => total + (Number(value) * Number(this.counts[value] || 0)), 0);
         },
         get expectedTotal() {
-            return this.expectedCashDrawer + this.expectedGcash + this.expectedBank;
+            return this.expectedCashDrawer + this.expectedGcash + this.legacyExpected;
         },
         get actualTotal() {
-            return this.actualCash + Number(this.actualGcash || 0) + Number(this.actualBank || 0);
+            return this.actualCash + Number(this.actualGcash || 0) + Number(this.legacyActual || 0);
         },
         get overShort() {
             return this.actualTotal - this.expectedTotal;
@@ -88,12 +88,12 @@
         <div class="rounded-lg border border-border bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <p class="text-xs font-medium text-muted">Expected Cash Drawer</p>
             <p class="mt-1 text-lg font-semibold">{{ $currency }} {{ number_format((float) $summary['expected_cash_drawer_amount'], 2) }}</p>
-            <p class="mt-0.5 hidden text-xs text-muted xl:block">Cash payments less store-cash expenses.</p>
+            <p class="mt-0.5 hidden text-xs text-muted xl:block">Cash collections and deposits less cash expenses and withdrawals.</p>
         </div>
         <div class="rounded-lg border border-border bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <p class="text-xs font-medium text-muted">Expected GCash</p>
             <p class="mt-1 text-lg font-semibold">{{ $currency }} {{ number_format((float) $summary['expected_gcash_amount'], 2) }}</p>
-            <p class="mt-0.5 hidden text-xs text-muted xl:block">Based on posted GCash payments.</p>
+            <p class="mt-0.5 hidden text-xs text-muted xl:block">Collections plus owner funding, less payable repayments.</p>
         </div>
         <div class="rounded-lg border border-border bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <p class="text-xs font-medium text-muted">Declared Total</p>
@@ -155,18 +155,17 @@
                         <span class="text-xs font-medium text-muted">Actual GCash Balance</span>
                         <input name="actual_gcash_amount" x-model.number="actualGcash" type="number" min="0" step="0.01" inputmode="decimal" class="mt-1 h-9 w-full rounded-md border border-border bg-white px-3 text-sm font-semibold dark:border-gray-800 dark:bg-gray-950">
                     </label>
-                    <label class="block">
-                        <span class="text-xs font-medium text-muted">Actual Bank Balance</span>
-                        <input name="actual_bank_amount" x-model.number="actualBank" type="number" min="0" step="0.01" inputmode="decimal" class="mt-1 h-9 w-full rounded-md border border-border bg-white px-3 text-sm font-semibold dark:border-gray-800 dark:bg-gray-950">
-                    </label>
+                    <input type="hidden" name="actual_bank_amount" :value="legacyActual">
                 </div>
                 <div class="mt-3 space-y-1.5 border-t border-border pt-3 text-sm dark:border-gray-800">
                     <div class="flex justify-between"><span class="text-muted">Cash payments</span><span class="font-medium">{{ $currency }} {{ number_format((float) $summary['expected_cash_amount'], 2) }}</span></div>
                     <div class="flex justify-between"><span class="text-muted">Store-cash expenses</span><span class="font-medium">- {{ $currency }} {{ number_format((float) $summary['cash_expense_amount'], 2) }}</span></div>
                     <div class="flex justify-between"><span class="text-muted">Cash added</span><span class="font-medium">{{ $currency }} {{ number_format((float) data_get($summary, 'expense_breakdown.money_movements.cash_in', 0), 2) }}</span></div>
                     <div class="flex justify-between"><span class="text-muted">Cash withdrawn</span><span class="font-medium">- {{ $currency }} {{ number_format((float) data_get($summary, 'expense_breakdown.money_movements.cash_out', 0), 2) }}</span></div>
-                    <div class="flex justify-between"><span class="text-muted">GCash payments</span><span class="font-medium">{{ $currency }} {{ number_format((float) $summary['expected_gcash_amount'], 2) }}</span></div>
-                    <div class="flex justify-between"><span class="text-muted">Bank payments</span><span class="font-medium">{{ $currency }} {{ number_format((float) $summary['expected_bank_amount'], 2) }}</span></div>
+                    <div class="flex justify-between"><span class="text-muted">Expected GCash net balance</span><span class="font-medium">{{ $currency }} {{ number_format((float) $summary['expected_gcash_amount'], 2) }}</span></div>
+                    <div class="rounded-md bg-smoke px-2 py-1.5 text-xs text-muted dark:bg-gray-950">
+                        Cashless expected balances include owner funding and subtract accounts payable repayments made through the same channel.
+                    </div>
                     <div class="flex justify-between border-t border-border pt-2 font-semibold dark:border-gray-800"><span>Expected Total</span><span>{{ $currency }} {{ number_format((float) $summary['expected_total_amount'], 2) }}</span></div>
                 </div>
             </div>

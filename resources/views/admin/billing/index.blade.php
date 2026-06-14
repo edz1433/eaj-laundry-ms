@@ -253,7 +253,7 @@
                             <label class="mb-1.5 block text-sm font-medium">Paid From</label>
                             <select name="paid_from" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-900">
                                 <option value="store_cash" @selected(old('paid_from', $record->expense?->paid_from ?? 'store_cash') === 'store_cash')>Store Cash - deduct from Cash Count</option>
-                                <option value="owner" @selected(old('paid_from', $record->expense?->paid_from) === 'owner')>Owner Paid - record expense only</option>
+                                <option value="owner" @selected(old('paid_from', $record->expense?->paid_from) === 'owner')>Owner-paid, reimbursement due</option>
                             </select>
                         </div>
                     </div>

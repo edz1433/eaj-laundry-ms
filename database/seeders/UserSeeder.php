@@ -53,7 +53,7 @@ class UserSeeder extends Seeder
                 'email' => 'manager@laundry.test',
                 'role' => 'branch_manager',
                 'branch_id' => $branchId,
-                'access' => ['dashboard', 'customers', 'services', 'job_orders', 'cycles', 'employees', 'payments', 'receivables', 'inventory', 'attendance', 'reports', 'sms_logs', 'settings'],
+                'access' => ['dashboard', 'customers', 'services', 'job_orders', 'cycles', 'employees', 'payments', 'receivables', 'expenses', 'accounts_payable', 'petty_cash', 'inventory', 'attendance', 'reports', 'sms_logs', 'settings'],
             ],
             [
                 'name' => 'Cashier User',

@@ -38,8 +38,9 @@
         @endif
         <div class="flex justify-between"><span>Release At</span><span>{{ $order->releaseBranch?->name ?? $order->currentBranch?->name ?? $order->branch?->name }}</span></div>
         <div class="flex justify-between"><span>Customer</span><span>{{ $order->customer?->name }}</span></div>
-        <div class="flex justify-between"><span>Billing</span><span>{{ str_replace('_', ' ', ucfirst($order->customer?->billing_type ?? 'regular')) }}</span></div>
-        <div class="flex justify-between"><span>Transaction</span><span>{{ $order->transaction_type === 'delivery' ? 'Delivery' : 'Walk-in' }}</span></div>
+        <div class="flex justify-between"><span>Billing</span><span>{{ \App\Support\StatusBadge::label($order->customer?->billing_type ?? 'regular') }}</span></div>
+        <div class="flex justify-between"><span>Transaction</span><span>{{ $order->transaction_type === 'delivery' ? 'Delivery / Pick-up' : 'Walk-in / Drop Off' }}</span></div>
+        <div class="flex justify-between"><span>Priority</span><span>{{ $order->is_rush ? 'Rush' : 'Standard' }}</span></div>
         <div class="flex justify-between"><span>Status</span><span>{{ \App\Support\StatusBadge::label($order->status) }}</span></div>
     </div>
 
@@ -78,7 +79,7 @@
         <p class="mb-2 text-xs font-semibold">Payments</p>
         @forelse($order->payments as $payment)
             <div class="flex justify-between gap-3 text-xs">
-                <span>{{ str_replace('_', ' ', ucfirst($payment->payment_type)) }} - {{ $payment->paid_at?->format('M d, h:i A') }} - Collected at {{ $payment->collectedBranch?->name ?? $order->branch?->name }}{{ $payment->reference_no ? ' - Ref: '.$payment->reference_no : '' }}</span>
+                <span>{{ \App\Support\StatusBadge::label($payment->payment_type) }} - {{ $payment->paid_at?->format('M d, h:i A') }} - Collected at {{ $payment->collectedBranch?->name ?? $order->branch?->name }}{{ $payment->reference_no ? ' - Ref: '.$payment->reference_no : '' }}</span>
                 <span>{{ $settings?->currency ?? 'PHP' }} {{ number_format((float) $payment->amount, 2) }}</span>
             </div>
         @empty

@@ -4,10 +4,9 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
-use App\Models\BranchExpense;
+use App\Support\FinancialReconciliation;
 use App\Models\JobOrder;
 use App\Models\MoneyMovement;
-use App\Models\Payment;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Models\ZReading;
@@ -202,45 +201,13 @@ class ZReadingController extends Controller
 
     private function summary(int $branchId, string $businessDate): array
     {
-        $payments = Payment::query()
-            ->where('collected_branch_id', $branchId)
-            ->whereDate('paid_at', $businessDate);
-
-        $paymentBreakdown = (clone $payments)
-            ->selectRaw('payment_type, COALESCE(SUM(amount), 0) as total_amount, COUNT(*) as payments_count')
-            ->groupBy('payment_type')
-            ->pluck('total_amount', 'payment_type')
-            ->map(fn ($amount) => round((float) $amount, 2))
-            ->all();
-
-        $paymentCounts = (clone $payments)
-            ->selectRaw('payment_type, COUNT(*) as payments_count')
-            ->groupBy('payment_type')
-            ->pluck('payments_count', 'payment_type')
-            ->map(fn ($count) => (int) $count)
-            ->all();
-
-        $storeCashExpenses = (float) BranchExpense::query()
-            ->where('branch_id', $branchId)
-            ->where('paid_from', 'store_cash')
-            ->whereDate('expense_date', $businessDate)
-            ->sum('amount');
-
-        $ownerExpenses = (float) BranchExpense::query()
-            ->where('branch_id', $branchId)
-            ->where('paid_from', 'owner')
-            ->whereDate('expense_date', $businessDate)
-            ->sum('amount');
-
+        $financial = FinancialReconciliation::forPeriod($branchId, $businessDate, $businessDate);
         $moneyMovements = MoneyMovement::query()
             ->with('recorder')
             ->where('branch_id', $branchId)
             ->whereDate('movement_date', $businessDate)
             ->latest()
             ->get();
-
-        $cashInMovements = round((float) $moneyMovements->where('direction', 'in')->sum(fn ($movement) => (float) $movement->amount), 2);
-        $cashOutMovements = round((float) $moneyMovements->where('direction', 'out')->sum(fn ($movement) => (float) $movement->amount), 2);
 
         $jobOrders = JobOrder::query()
             ->where('branch_id', $branchId)
@@ -249,32 +216,34 @@ class ZReadingController extends Controller
             ->orderBy('id')
             ->get(['job_order_number', 'status']);
 
-        $expectedCash = round((float) ($paymentBreakdown['cash'] ?? 0), 2);
-        $expectedGcash = round((float) ($paymentBreakdown['gcash'] ?? 0), 2);
-        $expectedBank = round((float) ($paymentBreakdown['bank'] ?? 0), 2);
-        $expectedDrawer = round($expectedCash - $storeCashExpenses + $cashInMovements - $cashOutMovements, 2);
-        $expectedTotal = round($expectedDrawer + $expectedGcash + $expectedBank, 2);
-
         return [
-            'expected_cash_amount' => $expectedCash,
-            'cash_expense_amount' => round($storeCashExpenses, 2),
-            'expected_cash_drawer_amount' => $expectedDrawer,
-            'expected_gcash_amount' => $expectedGcash,
-            'expected_bank_amount' => $expectedBank,
-            'expected_total_amount' => $expectedTotal,
+            'expected_cash_amount' => $financial['cash_collections'],
+            'cash_expense_amount' => $financial['store_cash_expenses'],
+            'expected_cash_drawer_amount' => $financial['expected_cash_drawer'],
+            'expected_gcash_amount' => $financial['expected_gcash'],
+            'expected_bank_amount' => $financial['expected_bank'],
+            'expected_total_amount' => $financial['expected_total'],
             'payment_breakdown' => [
-                'amounts' => $paymentBreakdown,
-                'counts' => $paymentCounts,
-                'credit_amount' => round((float) ($paymentBreakdown['credit'] ?? 0), 2),
-                'po_amount' => round((float) ($paymentBreakdown['po'] ?? 0), 2),
-                'monthly_billing_amount' => round((float) ($paymentBreakdown['monthly_billing'] ?? 0), 2),
+                'amounts' => $financial['payment_amounts'],
+                'counts' => $financial['payment_counts'],
+                'unpaid_amount' => 0,
+                'po_amount' => $financial['po_collections'],
+                'monthly_billing_amount' => $financial['monthly_billing_collections'],
             ],
             'expense_breakdown' => [
-                'store_cash' => round($storeCashExpenses, 2),
-                'owner' => round($ownerExpenses, 2),
+                'store_cash' => $financial['store_cash_expenses'],
+                'store_gcash' => $financial['store_gcash_expenses'],
+                'store_bank' => $financial['store_bank_expenses'],
+                'owner' => $financial['owner_paid_expenses'],
+                'accounts_payable' => [
+                    'gcash_funding' => $financial['gcash_owner_funding'],
+                    'bank_funding' => $financial['bank_owner_funding'],
+                    'gcash_repayments' => $financial['gcash_payable_repayments'],
+                    'bank_repayments' => $financial['bank_payable_repayments'],
+                ],
                 'money_movements' => [
-                    'cash_in' => $cashInMovements,
-                    'cash_out' => $cashOutMovements,
+                    'cash_in' => $financial['cash_in'],
+                    'cash_out' => $financial['cash_out'],
                     'items' => $moneyMovements->map(fn (MoneyMovement $movement) => [
                         'id' => $movement->id,
                         'type' => $movement->type,

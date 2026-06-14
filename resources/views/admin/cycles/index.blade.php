@@ -38,7 +38,6 @@
             </div>
             @if($canChooseBranch)
                 <select name="branch_id" onchange="this.form.customer_id.value = ''; this.form.submit()" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
-                    <option value="">All processing branches</option>
                     @foreach($branches as $branch)
                         <option value="{{ $branch->id }}" @selected((int) $selectedBranchId === (int) $branch->id)>{{ $branch->name }}</option>
                     @endforeach
@@ -46,9 +45,7 @@
             @endif
             <select name="customer_id" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
                 <option value="">All customers</option>
-                @if($canChooseBranch && ! $selectedBranchId)
-                    <option value="" disabled>Select a branch to list customers</option>
-                @elseif($customers->isEmpty())
+                @if($customers->isEmpty())
                     <option value="" disabled>No customers in selected branch</option>
                 @else
                     <optgroup label="{{ $canChooseBranch ? 'Customers in selected branch' : 'Customers in your branch' }}">
@@ -76,6 +73,90 @@
         </form>
     </div>
 
+    @if($machineOverviewBranches->isNotEmpty())
+        <section class="rounded-xl border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div class="mb-4 flex flex-wrap items-end justify-between gap-2">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Machine overview</p>
+                    <h2 class="mt-1 text-lg font-semibold">Live availability</h2>
+                </div>
+                <p class="text-xs text-muted">
+                    Activity:
+                    {{ \Illuminate\Support\Carbon::parse($activityDateFrom)->format('M d, Y') }}
+                    @if($activityDateFrom !== $activityDateTo)
+                        - {{ \Illuminate\Support\Carbon::parse($activityDateTo)->format('M d, Y') }}
+                    @endif
+                </p>
+            </div>
+
+            <div class="space-y-4">
+                @foreach($machineOverviewBranches as $machineBranch)
+                    @php($machineTotal = (int) $machineBranch->machine_count)
+                    @php($branchActiveMachines = $activeMachinesByBranch[$machineBranch->id] ?? [])
+                    @php($branchMachineActivity = $machineActivityByBranch[$machineBranch->id] ?? [])
+                    <article>
+                        <div class="mb-2 flex items-center justify-between gap-3">
+                            <div>
+                                <h3 class="text-sm font-semibold">{{ $machineBranch->name }}</h3>
+                                <p class="text-xs text-muted">{{ $machineTotal }} {{ \Illuminate\Support\Str::plural('machine', $machineTotal) }} configured</p>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-nowrap gap-3 overflow-x-auto pb-2">
+                            @if($machineTotal > 0)
+                                @for($machine = 1; $machine <= $machineTotal; $machine++)
+                                    @php($activeMachine = $branchActiveMachines[$machine] ?? null)
+                                    @php($isAvailable = ! $activeMachine)
+                                    @php($activity = $branchMachineActivity[$machine] ?? ['wash' => 0, 'dry' => 0])
+                                    <div class="machine-status-card w-40 shrink-0 overflow-hidden rounded-xl border border-border bg-gradient-to-b from-white to-slate-50 shadow-sm dark:border-gray-800 dark:from-gray-900 dark:to-gray-950">
+                                        <div class="flex items-center justify-between px-3 py-2">
+                                            <span class="text-sm font-semibold">Machine #{{ $machine }}</span>
+                                            <span class="h-2.5 w-2.5 rounded-full {{ $isAvailable ? 'bg-emerald-500' : 'machine-status-dot-running bg-red-500' }}" title="{{ $isAvailable ? 'Available' : 'In use' }}"></span>
+                                        </div>
+                                        <img
+                                            src="{{ asset($isAvailable ? 'available.png' : 'unavailable.png') }}"
+                                            alt="Machine #{{ $machine }} {{ $isAvailable ? 'available' : 'unavailable' }}"
+                                            width="112"
+                                            height="112"
+                                            loading="lazy"
+                                            decoding="async"
+                                            class="machine-status-image {{ $isAvailable ? 'machine-status-image-ready' : 'machine-status-image-running' }} mx-auto h-28 w-28 rounded-xl object-cover"
+                                        >
+                                        <div class="grid grid-cols-2 border-t border-border dark:border-gray-800">
+                                            <div class="px-2 py-2 text-center">
+                                                <p class="text-lg font-bold text-sky-600">{{ $activity['wash'] }}</p>
+                                                <p class="text-[10px] font-semibold uppercase tracking-wide text-muted">Washing</p>
+                                            </div>
+                                            <div class="border-l border-border px-2 py-2 text-center dark:border-gray-800">
+                                                <p class="text-lg font-bold text-violet-600">{{ $activity['dry'] }}</p>
+                                                <p class="text-[10px] font-semibold uppercase tracking-wide text-muted">Drying</p>
+                                            </div>
+                                        </div>
+                                        <div class="border-t border-border px-2 py-1.5 text-center text-[10px] font-medium dark:border-gray-800 {{ $isAvailable ? 'text-emerald-600' : 'text-red-600' }}" title="{{ $activeMachine['job_order_number'] ?? 'Ready for use' }}">
+                                            <p class="truncate">{{ $isAvailable ? 'Available' : ucfirst($activeMachine['cycle_type']).' - '.$activeMachine['customer_name'] }}</p>
+                                            @if(! $isAvailable && ($activeMachine['is_rush'] || $activeMachine['is_loyal']))
+                                                <div class="mt-1 flex justify-center gap-1">
+                                                    @if($activeMachine['is_rush'])
+                                                        <span class="rounded bg-amber-100 px-1.5 py-0.5 font-semibold uppercase text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">Rush</span>
+                                                    @endif
+                                                    @if($activeMachine['is_loyal'])
+                                                        <span class="rounded bg-violet-100 px-1.5 py-0.5 font-semibold uppercase text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">Loyal</span>
+                                                    @endif
+                                                </div>
+                                            @endif
+                                        </div>
+                                    </div>
+                                @endfor
+                            @else
+                                <p class="w-full rounded-lg border border-dashed border-border py-6 text-center text-sm text-muted dark:border-gray-800">No machines configured.</p>
+                            @endif
+                        </div>
+                    </article>
+                @endforeach
+            </div>
+        </section>
+    @endif
+
     <div class="grid gap-3 xl:grid-cols-2">
         @forelse($orders as $order)
             @php($processingBranch = $order->processingBranch ?: $order->branch)
@@ -91,9 +172,19 @@
             <div class="rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
                 <div class="mb-3 flex items-start justify-between gap-3">
                     <div class="min-w-0">
-                        <p class="font-semibold">{{ $order->job_order_number }}</p>
-                        <p class="truncate text-sm text-muted">
-                            {{ $order->customer?->name }} - Drop-off: {{ $order->branch?->name }} - Receiving/Processing: {{ $processingBranch?->name }} - Release: {{ $releaseBranch?->name }}
+                        <div class="flex flex-wrap items-center gap-1.5">
+                            <p class="truncate font-semibold">{{ $order->customer?->name ?? 'Unknown customer' }}</p>
+                            @if($order->is_rush)
+                                <span class="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-800 dark:border-amber-900/60 dark:bg-amber-500/10 dark:text-amber-300">Rush</span>
+                            @endif
+                            @if((int) ($order->customer?->job_orders_count ?? 0) >= 10)
+                                <span class="rounded-md border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-violet-700 dark:border-violet-900/60 dark:bg-violet-500/10 dark:text-violet-300">Loyal Customer</span>
+                            @endif
+                        </div>
+                        <p class="truncate text-sm text-muted">{{ $order->job_order_number }}</p>
+                        <p class="text-xs font-medium text-primary">Order date: {{ $order->created_at?->format('M d, Y') }}</p>
+                        <p class="truncate text-xs text-muted">
+                            Drop-off: {{ $order->branch?->name }} - Receiving/Processing: {{ $processingBranch?->name }} - Release: {{ $releaseBranch?->name }}
                         </p>
                         @if($isCrossBranchProduction)
                             @if($order->production_accepted_at)
@@ -108,6 +199,8 @@
                     </span>
                 </div>
 
+                {{--
+                Branch routing summary is temporarily hidden until multi-branch operations are in use.
                 <div class="mb-3 grid gap-2 text-xs text-muted sm:grid-cols-4">
                     <div class="rounded-md bg-smoke px-2.5 py-2 dark:bg-gray-950">
                         <span class="block font-medium text-ink dark:text-gray-100">Drop-off</span>
@@ -131,6 +224,7 @@
                         {{ $releaseBranch?->name ?? 'Unassigned' }}
                     </div>
                 </div>
+                --}}
 
                 <div class="mb-3 flex flex-wrap gap-2">
                     @foreach($cycleTypes as $type => $label)
@@ -138,12 +232,12 @@
                             @csrf
                             <input type="hidden" name="cycle_type" value="{{ $type }}">
                             <div class="flex overflow-hidden rounded-md border border-border dark:border-gray-800">
-                                @if($type === 'wash' && (int) ($processingBranch?->machine_count ?? 0) > 0)
+                                @if(in_array($type, ['wash', 'dry'], true) && (int) ($processingBranch?->machine_count ?? 0) > 0)
                                     <select name="machine_number" aria-label="Machine" class="h-8 w-20 border-r border-border bg-white px-2 text-xs dark:border-gray-800 dark:bg-gray-950">
                                         <option value="">Machine</option>
                                         @for($machine = 1; $machine <= (int) $processingBranch->machine_count; $machine++)
-                                            @php($usingOrder = $activeMachines[$machine] ?? null)
-                                            <option value="{{ $machine }}" @disabled($usingOrder)>#{{ $machine }}{{ $usingOrder ? ' - In use' : '' }}</option>
+                                            @php($usingMachine = $activeMachines[$machine] ?? null)
+                                            <option value="{{ $machine }}" @disabled($usingMachine)>#{{ $machine }}{{ $usingMachine ? ' - In use' : '' }}</option>
                                         @endfor
                                     </select>
                                 @endif
@@ -202,21 +296,17 @@
                     </div>
                 @endif
 
-                <div class="space-y-2 border-t border-border pt-3 dark:border-gray-800">
-                    @if((int) ($processingBranch?->machine_count ?? 0) > 0)
-                        <div class="flex flex-wrap gap-1.5">
-                            @for($machine = 1; $machine <= (int) $processingBranch->machine_count; $machine++)
-                                @php($usingOrder = ($activeMachinesByBranch[$processingBranchId] ?? [])[$machine] ?? null)
-                                <span class="{{ \App\Support\StatusBadge::classes($usingOrder ? 'washing' : 'ok') }}" title="{{ $usingOrder ? 'Used by '.$usingOrder : 'Available' }}">
-                                    Machine #{{ $machine }} {{ $usingOrder ? 'Busy' : 'Open' }}
-                                </span>
-                            @endfor
-                        </div>
+                <div class="border-t border-border pt-3 dark:border-gray-800">
+                    @if($order->cycles_count > $order->cycles->count())
+                        <p class="text-xs text-muted">
+                            Showing latest {{ $order->cycles->count() }} of {{ $order->cycles_count }} cycle records.
+                        </p>
                     @endif
 
-                    @forelse($order->cycles->sortByDesc('created_at') as $cycle)
-                        <div class="flex items-center justify-between gap-2 rounded-md bg-smoke px-3 py-2 text-sm dark:bg-gray-950">
-                            <div>
+                    <div class="flex flex-nowrap gap-2 overflow-x-auto pb-2">
+                    @forelse($order->cycles as $cycle)
+                        <div class="flex w-52 shrink-0 items-center justify-between gap-2 rounded-md border border-border bg-smoke px-2.5 py-2 text-sm dark:border-gray-800 dark:bg-gray-950">
+                            <div class="min-w-0">
                                 <p class="font-medium">
                                     {{ $cycleTypes[$cycle->cycle_type] ?? ucfirst($cycle->cycle_type) }} #{{ $cycle->cycle_number }}
                                     @if($cycle->machine_number)
@@ -227,6 +317,7 @@
                                     {{ $cycle->started_at?->format('M d, h:i A') ?? 'Not started' }}
                                     @if($cycle->ended_at) - {{ $cycle->ended_at->format('h:i A') }} @endif
                                 </p>
+                                <p class="truncate text-[11px] text-muted">{{ $cycle->user?->name ?? 'System user' }}</p>
                             </div>
 
                             <div class="flex items-center gap-1">
@@ -258,8 +349,9 @@
                             </div>
                         </div>
                     @empty
-                        <p class="rounded-md border border-dashed border-border py-6 text-center text-sm text-muted dark:border-gray-800">No cycles yet.</p>
+                        <p class="w-full rounded-md border border-dashed border-border py-4 text-center text-sm text-muted dark:border-gray-800">No cycles yet.</p>
                     @endforelse
+                    </div>
                 </div>
             </div>
         @empty

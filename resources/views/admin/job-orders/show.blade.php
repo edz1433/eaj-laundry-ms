@@ -36,7 +36,10 @@
                     <p class="text-sm text-amber-600">Waiting for {{ $order->processingBranch->name }} to scan QR before cycle starts.</p>
                 @endif
             @endif
-            <span class="{{ \App\Support\StatusBadge::classes($order->transaction_type === 'delivery' ? 'delivery' : 'regular') }}">{{ $order->transaction_type === 'delivery' ? 'Delivery' : 'Walk-in' }}</span>
+            <span class="{{ \App\Support\StatusBadge::classes($order->transaction_type === 'delivery' ? 'delivery' : 'regular') }}">{{ $order->transaction_type === 'delivery' ? 'Delivery / Pick-up' : 'Walk-in / Drop Off' }}</span>
+            @if($order->is_rush)
+                <span class="inline-flex rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold uppercase text-amber-800 dark:border-amber-900/60 dark:bg-amber-500/10 dark:text-amber-300">Rush Order</span>
+            @endif
         </div>
 
         <div class="flex gap-2">

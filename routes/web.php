@@ -22,6 +22,7 @@ use App\Http\Controllers\Admin\SystemSettingController;
 use App\Http\Controllers\Admin\DailyTaskController;
 use App\Http\Controllers\Admin\PettyCashController;
 use App\Http\Controllers\Admin\ZReadingController;
+use App\Http\Controllers\Admin\AccountsPayableController;
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'showLogin'])->name('login');
@@ -132,6 +133,12 @@ Route::middleware(['auth', 'settings.completed', 'billing.access'])->group(funct
             Route::get('/expenses', [ExpenseController::class, 'index'])->name('expenses.index');
             Route::post('/expenses', [ExpenseController::class, 'store'])->name('expenses.store');
             Route::delete('/expenses/{expense}', [ExpenseController::class, 'destroy'])->name('expenses.destroy');
+        });
+
+        Route::middleware('menu.access:accounts_payable')->group(function () {
+            Route::get('/accounts-payable', [AccountsPayableController::class, 'index'])->name('accounts-payable.index');
+            Route::post('/accounts-payable', [AccountsPayableController::class, 'store'])->name('accounts-payable.store');
+            Route::post('/accounts-payable/{accountsPayable}/payments', [AccountsPayableController::class, 'storePayment'])->name('accounts-payable.payments.store');
         });
 
         Route::middleware('menu.access:z_readings')->group(function () {

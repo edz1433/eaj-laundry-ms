@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\Branch;
 use App\Models\BranchExpense;
+use App\Models\AccountsPayable;
+use App\Models\AccountsPayablePayment;
 use App\Models\AttendanceEmployee;
 use App\Models\Customer;
 use App\Models\DailyTask;
@@ -575,7 +577,7 @@ class ExampleTest extends TestCase
             'branch_id' => $branch->id,
             'name' => 'Anna Santos',
             'billing_type' => 'regular',
-            'credit_limit' => 0,
+            'unpaid_limit' => 0,
             'is_active' => true,
         ]);
         $service = LaundryService::query()->create([
@@ -770,7 +772,7 @@ class ExampleTest extends TestCase
             'branch_id' => $branch->id,
             'name' => 'Anna Santos',
             'billing_type' => 'regular',
-            'credit_limit' => 0,
+            'unpaid_limit' => 0,
             'is_active' => true,
         ]);
         $order = JobOrder::query()->create([
@@ -832,6 +834,52 @@ class ExampleTest extends TestCase
             'payment_method' => 'cash',
             'paid_from' => 'store_cash',
             'created_by' => $admin->id,
+        ]);
+        $gcashPayable = AccountsPayable::query()->create([
+            'branch_id' => $branch->id,
+            'created_by' => $admin->id,
+            'payable_number' => 'AP-GCASH-ZR',
+            'creditor_name' => 'Owner',
+            'source_type' => 'owner_funding',
+            'funding_method' => 'gcash',
+            'description' => 'GCash working fund',
+            'original_amount' => 200,
+            'paid_amount' => 50,
+            'balance' => 150,
+            'status' => 'partial',
+            'funded_at' => today()->toDateString(),
+        ]);
+        $bankPayable = AccountsPayable::query()->create([
+            'branch_id' => $branch->id,
+            'created_by' => $admin->id,
+            'payable_number' => 'AP-BANK-ZR',
+            'creditor_name' => 'Owner',
+            'source_type' => 'owner_funding',
+            'funding_method' => 'bank',
+            'description' => 'Bank working fund',
+            'original_amount' => 400,
+            'paid_amount' => 75,
+            'balance' => 325,
+            'status' => 'partial',
+            'funded_at' => today()->toDateString(),
+        ]);
+        AccountsPayablePayment::query()->create([
+            'accounts_payable_id' => $gcashPayable->id,
+            'branch_id' => $branch->id,
+            'recorded_by' => $admin->id,
+            'payment_number' => 'APP-GCASH-ZR',
+            'payment_date' => today()->toDateString(),
+            'payment_method' => 'gcash',
+            'amount' => 50,
+        ]);
+        AccountsPayablePayment::query()->create([
+            'accounts_payable_id' => $bankPayable->id,
+            'branch_id' => $branch->id,
+            'recorded_by' => $admin->id,
+            'payment_number' => 'APP-BANK-ZR',
+            'payment_date' => today()->toDateString(),
+            'payment_method' => 'bank',
+            'amount' => 75,
         ]);
         BranchExpense::query()->create([
             'branch_id' => $branch->id,
@@ -927,16 +975,20 @@ class ExampleTest extends TestCase
 
         $this->assertSame('425.00', $reading->expected_cash_drawer_amount);
         $this->assertSame('400.00', $reading->actual_cash_amount);
-        $this->assertSame('300.00', $reading->expected_gcash_amount);
+        $this->assertSame('450.00', $reading->expected_gcash_amount);
         $this->assertSame('310.00', $reading->actual_gcash_amount);
-        $this->assertSame('50.00', $reading->expected_bank_amount);
+        $this->assertSame('375.00', $reading->expected_bank_amount);
         $this->assertSame('55.00', $reading->actual_bank_amount);
-        $this->assertSame('775.00', $reading->expected_total_amount);
+        $this->assertSame('1250.00', $reading->expected_total_amount);
         $this->assertSame('765.00', $reading->actual_total_amount);
-        $this->assertSame('-10.00', $reading->over_short_amount);
+        $this->assertSame('-485.00', $reading->over_short_amount);
         $this->assertEquals(250.0, $reading->expense_breakdown['owner']);
         $this->assertEquals(50.0, $reading->expense_breakdown['money_movements']['cash_in']);
         $this->assertEquals(25.0, $reading->expense_breakdown['money_movements']['cash_out']);
+        $this->assertEquals(200.0, $reading->expense_breakdown['accounts_payable']['gcash_funding']);
+        $this->assertEquals(50.0, $reading->expense_breakdown['accounts_payable']['gcash_repayments']);
+        $this->assertEquals(400.0, $reading->expense_breakdown['accounts_payable']['bank_funding']);
+        $this->assertEquals(75.0, $reading->expense_breakdown['accounts_payable']['bank_repayments']);
 
         $this
             ->actingAs($admin)

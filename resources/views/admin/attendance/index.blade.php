@@ -90,7 +90,7 @@
                                 <p class="text-xs text-muted">{{ $record->employee?->username ?? 'N/A' }}</p>
                             </td>
                             <td class="px-4 py-3">{{ $record->branch?->name ?? 'N/A' }}</td>
-                            <td class="px-4 py-3">{{ implode(', ', $record->clock_in ?? []) ?: '-' }}</td>
+                            <td class="px-4 py-3">{{ \App\Support\TimeDisplay::attendanceList($record->clock_in) }}</td>
                             <td class="px-4 py-3">
                                 <div class="flex flex-wrap gap-2">
                                     @forelse($record->clock_in_photos ?? [] as $index => $photo)
@@ -98,7 +98,7 @@
                                         <div class="w-24 overflow-hidden rounded-md border border-border bg-white dark:border-gray-800 dark:bg-gray-950">
                                             <button
                                                 type="button"
-                                                @click="proofOpen = true; proofUrl = @js($proofUrl); proofTitle = @js(($record->employee?->name ?? 'Employee').' Time In '.(($record->clock_in[$index] ?? '') ?: '#'.($index + 1)))"
+                                                @click="proofOpen = true; proofUrl = @js($proofUrl); proofTitle = @js(($record->employee?->name ?? 'Employee').' Time In '.\App\Support\TimeDisplay::attendance($record->clock_in[$index] ?? null))"
                                                 class="block w-full"
                                             >
                                                 <img src="{{ $proofUrl }}" alt="Time in proof {{ $index + 1 }}" class="h-16 w-full object-cover">
@@ -106,7 +106,7 @@
                                             <div class="flex border-t border-border dark:border-gray-800">
                                                 <button
                                                     type="button"
-                                                    @click="proofOpen = true; proofUrl = @js($proofUrl); proofTitle = @js(($record->employee?->name ?? 'Employee').' Time In '.(($record->clock_in[$index] ?? '') ?: '#'.($index + 1)))"
+                                                    @click="proofOpen = true; proofUrl = @js($proofUrl); proofTitle = @js(($record->employee?->name ?? 'Employee').' Time In '.\App\Support\TimeDisplay::attendance($record->clock_in[$index] ?? null))"
                                                     class="inline-flex h-7 flex-1 items-center justify-center gap-1 text-xs font-medium hover:bg-smoke dark:hover:bg-gray-900"
                                                 >
                                                     <span data-lucide="eye" class="h-3.5 w-3.5"></span>
@@ -129,7 +129,7 @@
                                     @endforelse
                                 </div>
                             </td>
-                            <td class="px-4 py-3">{{ implode(', ', $record->clock_out ?? []) ?: '-' }}</td>
+                            <td class="px-4 py-3">{{ \App\Support\TimeDisplay::attendanceList($record->clock_out) }}</td>
                             <td class="px-4 py-3">
                                 <div class="flex flex-wrap gap-2">
                                     @forelse($record->clock_out_photos ?? [] as $index => $photo)
@@ -137,7 +137,7 @@
                                         <div class="w-24 overflow-hidden rounded-md border border-border bg-white dark:border-gray-800 dark:bg-gray-950">
                                             <button
                                                 type="button"
-                                                @click="proofOpen = true; proofUrl = @js($proofUrl); proofTitle = @js(($record->employee?->name ?? 'Employee').' Time Out '.(($record->clock_out[$index] ?? '') ?: '#'.($index + 1)))"
+                                                @click="proofOpen = true; proofUrl = @js($proofUrl); proofTitle = @js(($record->employee?->name ?? 'Employee').' Time Out '.\App\Support\TimeDisplay::attendance($record->clock_out[$index] ?? null))"
                                                 class="block w-full"
                                             >
                                                 <img src="{{ $proofUrl }}" alt="Time out proof {{ $index + 1 }}" class="h-16 w-full object-cover">
@@ -145,7 +145,7 @@
                                             <div class="flex border-t border-border dark:border-gray-800">
                                                 <button
                                                     type="button"
-                                                    @click="proofOpen = true; proofUrl = @js($proofUrl); proofTitle = @js(($record->employee?->name ?? 'Employee').' Time Out '.(($record->clock_out[$index] ?? '') ?: '#'.($index + 1)))"
+                                                    @click="proofOpen = true; proofUrl = @js($proofUrl); proofTitle = @js(($record->employee?->name ?? 'Employee').' Time Out '.\App\Support\TimeDisplay::attendance($record->clock_out[$index] ?? null))"
                                                     class="inline-flex h-7 flex-1 items-center justify-center gap-1 text-xs font-medium hover:bg-smoke dark:hover:bg-gray-900"
                                                 >
                                                     <span data-lucide="eye" class="h-3.5 w-3.5"></span>

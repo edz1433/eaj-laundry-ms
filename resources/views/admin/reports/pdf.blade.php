@@ -66,7 +66,7 @@
 
     <div class="header">
         <h1>{{ $settings->business_name ?? 'Laundry System' }} Reports</h1>
-        <p class="muted">Sales, receivables, inventory usage, payment types, customer ledger, and activity logs.</p>
+        <p class="muted">Sales, operations, unpaid balances, expenses, accounts payable, cash movements, SMS outcomes, inventory, and audit logs.</p>
         <table class="meta">
             <tr>
                 <td><strong>Branch:</strong> {{ $branchName }}</td>
@@ -76,10 +76,45 @@
         </table>
     </div>
 
+    <h2>Financial Reconciliation</h2>
+    <p class="muted">Authoritative formula: cash collected + cash deposits/owner cash funding - store-cash expenses - cash withdrawals/remittances/payable repayments.</p>
+    <table class="report">
+        <thead><tr><th>Metric</th><th class="right">Amount</th><th>Drawer Treatment</th></tr></thead>
+        <tbody>
+            @foreach([
+                'sales_owned' => ['Sales Owned', 'Sales ownership only'],
+                'physical_collections' => ['Physical Collections', 'Cash and GCash received'],
+                'expected_cash_drawer' => ['Expected Cash Drawer', 'Physical cash only'],
+                'expected_gcash' => ['Expected GCash', 'Separate cashless balance'],
+                'expenses_total' => ['Recorded Expenses', 'Only store-cash expenses reduce drawer'],
+                'accounts_payable' => ['Accounts Payable', 'Only cash repayments reduce drawer'],
+                'unpaid_balance' => ['Unpaid Customer Balance', 'No drawer effect until paid'],
+                'over_short' => ['Z Reading Over / Short', 'Actual less expected'],
+            ] as $key => [$label, $treatment])
+                <tr><td>{{ $label }}</td><td class="right">{{ $currency }} {{ number_format((float) $financialSummary[$key], 2) }}</td><td>{{ $treatment }}</td></tr>
+            @endforeach
+        </tbody>
+    </table>
+
+    <h2>Operational Summary</h2>
+    <table class="report">
+        <thead><tr><th class="right">Job Orders</th><th class="right">Rush Orders</th><th class="right">Loyal Customers</th><th class="right">Order Value</th><th class="right">Unpaid Balance</th><th class="right">SMS Sent</th><th class="right">SMS Failed</th><th class="right">SMS Queued</th></tr></thead>
+        <tbody><tr>
+            <td class="right">{{ number_format((int) ($jobOrderSummary->total_orders ?? 0)) }}</td>
+            <td class="right">{{ number_format((int) ($jobOrderSummary->rush_orders ?? 0)) }}</td>
+            <td class="right">{{ number_format($loyalCustomerCount) }}</td>
+            <td class="right">{{ $currency }} {{ number_format((float) ($jobOrderSummary->order_value ?? 0), 2) }}</td>
+            <td class="right">{{ $currency }} {{ number_format((float) ($jobOrderSummary->unpaid_balance ?? 0), 2) }}</td>
+            <td class="right">{{ number_format((int) ($smsSummary->sent ?? 0)) }}</td>
+            <td class="right">{{ number_format((int) ($smsSummary->failed ?? 0)) }}</td>
+            <td class="right">{{ number_format((int) ($smsSummary->queued ?? 0)) }}</td>
+        </tr></tbody>
+    </table>
+
     <h2>Sales by Date</h2>
     <table class="report">
         <thead>
-            <tr><th>Date</th><th class="right">Payments</th><th class="right">Cash</th><th class="right">GCash</th><th class="right">Bank</th><th class="right">Sales</th></tr>
+            <tr><th>Date</th><th class="right">Payments</th><th class="right">Cash</th><th class="right">GCash</th><th class="right">Sales</th></tr>
         </thead>
         <tbody>
             @forelse($salesByDate as $row)
@@ -88,11 +123,35 @@
                     <td class="right">{{ $row->payments_count }}</td>
                     <td class="right">{{ $currency }} {{ number_format((float) $row->cash_amount, 2) }}</td>
                     <td class="right">{{ $currency }} {{ number_format((float) $row->gcash_amount, 2) }}</td>
-                    <td class="right">{{ $currency }} {{ number_format((float) $row->bank_amount, 2) }}</td>
                     <td class="right">{{ $currency }} {{ number_format((float) $row->total_amount, 2) }}</td>
                 </tr>
             @empty
-                <tr><td colspan="6" class="empty">No sales found.</td></tr>
+                <tr><td colspan="5" class="empty">No sales found.</td></tr>
+            @endforelse
+        </tbody>
+    </table>
+
+    <h2>Accounts Payable Repayments</h2>
+    <table class="report">
+        <thead><tr><th>Date</th><th>Payment</th><th>Payable</th><th>Method</th><th>Reference</th><th class="right">Amount</th></tr></thead>
+        <tbody>
+            @forelse($accountsPayablePayments as $payment)
+                <tr><td>{{ $payment->payment_date?->format('M d, Y') }}</td><td>{{ $payment->payment_number }}</td><td>{{ $payment->payable?->payable_number }}</td><td>{{ \App\Support\StatusBadge::label($payment->payment_method) }}</td><td>{{ $payment->reference_no ?: 'N/A' }}</td><td class="right">{{ $currency }} {{ number_format((float) $payment->amount, 2) }}</td></tr>
+            @empty
+                <tr><td colspan="6" class="empty">No payable repayments found.</td></tr>
+            @endforelse
+        </tbody>
+    </table>
+
+    <h2>Cash Drawer Movements</h2>
+    <table class="report">
+        <thead><tr><th>Date</th><th>Branch</th><th>Movement</th><th>Reference</th><th>Recorded By</th><th class="right">Amount</th></tr></thead>
+        <tbody>
+            @forelse($moneyMovements as $movement)
+                @php($signedAmount = $movement->direction === 'in' ? (float) $movement->amount : -1 * (float) $movement->amount)
+                <tr><td>{{ $movement->movement_date?->format('M d, Y') }}</td><td>{{ $movement->branch?->name }}</td><td>{{ $movement->type_label }}<br><span class="muted">{{ $movement->description }}</span></td><td>{{ $movement->reference_no ?: 'N/A' }}</td><td>{{ $movement->recorder?->name ?? 'System' }}</td><td class="right">{{ $signedAmount < 0 ? '-' : '+' }} {{ $currency }} {{ number_format(abs($signedAmount), 2) }}</td></tr>
+            @empty
+                <tr><td colspan="6" class="empty">No cash drawer movements found.</td></tr>
             @endforelse
         </tbody>
     </table>
@@ -100,7 +159,7 @@
     <h2>Sales by Branch</h2>
     <table class="report">
         <thead>
-            <tr><th>Branch</th><th class="right">Payments</th><th class="right">Cash</th><th class="right">GCash</th><th class="right">Bank</th><th class="right">Sales</th></tr>
+            <tr><th>Branch</th><th class="right">Payments</th><th class="right">Cash</th><th class="right">GCash</th><th class="right">Sales</th></tr>
         </thead>
         <tbody>
             @forelse($salesByBranch as $row)
@@ -109,11 +168,10 @@
                     <td class="right">{{ $row->payments_count }}</td>
                     <td class="right">{{ $currency }} {{ number_format((float) $row->cash_amount, 2) }}</td>
                     <td class="right">{{ $currency }} {{ number_format((float) $row->gcash_amount, 2) }}</td>
-                    <td class="right">{{ $currency }} {{ number_format((float) $row->bank_amount, 2) }}</td>
                     <td class="right">{{ $currency }} {{ number_format((float) $row->total_amount, 2) }}</td>
                 </tr>
             @empty
-                <tr><td colspan="6" class="empty">No branch sales found.</td></tr>
+                <tr><td colspan="5" class="empty">No branch sales found.</td></tr>
             @endforelse
         </tbody>
     </table>
@@ -121,7 +179,7 @@
     <h2>Physical Collections by Branch</h2>
     <table class="report">
         <thead>
-            <tr><th>Collected At</th><th class="right">Payments</th><th class="right">Cash</th><th class="right">GCash</th><th class="right">Bank</th><th class="right">Collected</th></tr>
+            <tr><th>Collected At</th><th class="right">Payments</th><th class="right">Cash</th><th class="right">GCash</th><th class="right">Collected</th></tr>
         </thead>
         <tbody>
             @forelse($collectionsByBranch as $row)
@@ -130,11 +188,10 @@
                     <td class="right">{{ $row->payments_count }}</td>
                     <td class="right">{{ $currency }} {{ number_format((float) $row->cash_amount, 2) }}</td>
                     <td class="right">{{ $currency }} {{ number_format((float) $row->gcash_amount, 2) }}</td>
-                    <td class="right">{{ $currency }} {{ number_format((float) $row->bank_amount, 2) }}</td>
                     <td class="right">{{ $currency }} {{ number_format((float) $row->total_amount, 2) }}</td>
                 </tr>
             @empty
-                <tr><td colspan="6" class="empty">No branch collections found.</td></tr>
+                <tr><td colspan="5" class="empty">No branch collections found.</td></tr>
             @endforelse
         </tbody>
     </table>
@@ -208,7 +265,7 @@
         <tbody>
             @forelse($paymentTypes as $row)
                 <tr>
-                    <td>{{ str_replace('_', ' ', ucfirst($row->payment_type)) }}</td>
+                    <td>{{ \App\Support\StatusBadge::label($row->payment_type) }}</td>
                     <td class="right">{{ $row->payments_count }}</td>
                     <td class="right">{{ $currency }} {{ number_format((float) $row->total_amount, 2) }}</td>
                 </tr>
@@ -240,7 +297,7 @@
     </table>
 
     <h2>Expenses</h2>
-    <p class="muted">Store cash: {{ $currency }} {{ number_format((float) ($expenseSummary->store_cash_expenses ?? 0), 2) }} | Owner paid / record only: {{ $currency }} {{ number_format((float) ($expenseSummary->owner_expenses ?? 0), 2) }} | Cash advance: {{ $currency }} {{ number_format((float) $cashAdvanceTotal, 2) }}</p>
+    <p class="muted">Store-funded: {{ $currency }} {{ number_format((float) ($expenseSummary->store_cash_expenses ?? 0), 2) }} | Owner-paid, reimbursement due: {{ $currency }} {{ number_format((float) ($expenseSummary->owner_expenses ?? 0), 2) }}</p>
     <table class="report">
         <thead>
             <tr><th>Date</th><th>Branch</th><th>Expense</th><th>Paid From</th><th class="right">Amount</th></tr>
@@ -250,12 +307,25 @@
                 <tr>
                     <td>{{ $expense->expense_date?->format('M d, Y') }}</td>
                     <td>{{ $expense->branch?->name }}</td>
-                    <td>{{ $expense->title }}<br><span class="muted">{{ $expense->category }} - {{ \App\Support\StatusBadge::label($expense->expense_type ?? 'regular') }}</span></td>
-                    <td>{{ $expense->paid_from === 'owner' ? 'Owner Paid / Record Only' : 'Store Cash' }}</td>
+                    <td>{{ $expense->title }}<br><span class="muted">{{ \App\Support\StatusBadge::label($expense->category) }}</span></td>
+                    <td>{{ $expense->paid_from === 'owner' ? 'Owner-paid, reimbursement due' : 'Store-funded' }}</td>
                     <td class="right">{{ $currency }} {{ number_format((float) $expense->amount, 2) }}</td>
                 </tr>
             @empty
                 <tr><td colspan="5" class="empty">No expenses found.</td></tr>
+            @endforelse
+        </tbody>
+    </table>
+
+    <h2>Accounts Payable</h2>
+    <p class="muted">Original: {{ $currency }} {{ number_format((float) ($accountsPayableSummary->original_total ?? 0), 2) }} | Repaid: {{ $currency }} {{ number_format((float) ($accountsPayableSummary->paid_total ?? 0), 2) }} | Outstanding: {{ $currency }} {{ number_format((float) ($accountsPayableSummary->balance_total ?? 0), 2) }}</p>
+    <table class="report">
+        <thead><tr><th>Payable</th><th>Branch</th><th>Source</th><th class="right">Original</th><th class="right">Balance</th><th>Status</th></tr></thead>
+        <tbody>
+            @forelse($accountsPayables as $payable)
+                <tr><td>{{ $payable->payable_number }} - {{ $payable->creditor_name }}<br><span class="muted">{{ $payable->description }}</span></td><td>{{ $payable->branch?->name }}</td><td>{{ $payable->source_type === 'owner_paid_expense' ? 'Owner-paid expense' : 'Owner funding' }}</td><td class="right">{{ $currency }} {{ number_format((float) $payable->original_amount, 2) }}</td><td class="right">{{ $currency }} {{ number_format((float) $payable->balance, 2) }}</td><td>{{ \App\Support\StatusBadge::label($payable->status) }}</td></tr>
+            @empty
+                <tr><td colspan="6" class="empty">No accounts payable found.</td></tr>
             @endforelse
         </tbody>
     </table>

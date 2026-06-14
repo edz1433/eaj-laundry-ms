@@ -387,7 +387,7 @@ class BillingSystemTest extends TestCase
         $this->assertSame(1, BranchExpense::where('source', 'branch_billing')->where('source_id', $record->id)->count());
         $this->assertDatabaseHas('branch_expenses', [
             'branch_id' => $branch->id,
-            'category' => 'System Monthly Subscription',
+            'category' => 'software_subscription',
             'title' => 'System Billing - May 2026',
             'amount' => 1200,
             'source' => 'branch_billing',

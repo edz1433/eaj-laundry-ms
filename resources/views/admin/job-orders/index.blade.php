@@ -85,10 +85,15 @@
             <tbody class="divide-y divide-border dark:divide-gray-800">
                 @forelse($orders as $order)
                     <tr>
-                        <td class="px-4 py-3 font-medium">{{ $order->job_order_number }}</td>
+                        <td class="px-4 py-3 font-medium">
+                            <p>{{ $order->job_order_number }}</p>
+                            @if($order->is_rush)
+                                <span class="mt-1 inline-flex rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-800 dark:border-amber-900/60 dark:bg-amber-500/10 dark:text-amber-300">Rush</span>
+                            @endif
+                        </td>
                         <td class="px-4 py-3">
                             <p>{{ $order->customer?->name }}</p>
-                            <span class="{{ \App\Support\StatusBadge::classes($order->transaction_type === 'delivery' ? 'delivery' : 'regular') }}">{{ $order->transaction_type === 'delivery' ? 'Delivery' : 'Walk-in' }}</span>
+                            <span class="{{ \App\Support\StatusBadge::classes($order->transaction_type === 'delivery' ? 'delivery' : 'regular') }}">{{ $order->transaction_type === 'delivery' ? 'Delivery / Pick-up' : 'Walk-in / Drop Off' }}</span>
                         </td>
                         <td class="px-4 py-3">
                             <p>{{ $order->branch?->name }}</p>

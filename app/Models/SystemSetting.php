@@ -25,6 +25,7 @@ class SystemSetting extends Model
         'invoice_prefix',
         'sms_provider',
         'sms_api_key',
+        'semaphore_sender_name',
         'twilio_account_sid',
         'twilio_auth_token',
         'twilio_from_number',
@@ -51,9 +52,11 @@ class SystemSetting extends Model
         return self::firstOrCreate(
             ['id' => 1],
             [
+                'business_name' => 'SPIN KLEAN LAUNDRY',
                 'currency' => 'PHP',
                 'job_order_prefix' => 'JO',
                 'invoice_prefix' => 'INV',
+                'sms_provider' => 'semaphore',
                 'primary_color' => '#2E7D32',
             ]
         );

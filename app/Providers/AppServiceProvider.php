@@ -44,6 +44,7 @@ class AppServiceProvider extends ServiceProvider
 
                 $shared = [
                     'appSettings' => $settings,
+                    'appSystemName' => config('app.name', 'SKL Management System'),
                     'appBusinessName' => $businessName,
                     'appBusinessLogo' => $businessLogo,
                     'appPrimaryColor' => $settings?->primary_color ?: '#2E7D32',

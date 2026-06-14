@@ -16,6 +16,7 @@ use Illuminate\Validation\ValidationException;
 class ReceivableController extends Controller
 {
     private const BILLING_TYPES = ['regular', 'po', 'monthly_billing'];
+    private const UI_BILLING_TYPES = ['regular', 'po'];
     private const STATUSES = ['pending', 'washing', 'drying', 'folding', 'ready_for_pickup', 'completed'];
 
     public function index(Request $request)
@@ -40,7 +41,7 @@ class ReceivableController extends Controller
                 ->where('branch_id', $request->branch_id)
                 ->orWhere('current_branch_id', $request->branch_id)
                 ->orWhere('release_branch_id', $request->branch_id)))
-            ->when(in_array($request->billing_type, self::BILLING_TYPES, true), fn ($query) => $query->whereHas('customer', fn ($query) => $query->where('billing_type', $request->billing_type)))
+            ->when(in_array($request->billing_type, self::UI_BILLING_TYPES, true), fn ($query) => $query->whereHas('customer', fn ($query) => $query->where('billing_type', $request->billing_type)))
             ->when(in_array($request->status, self::STATUSES, true), fn ($query) => $query->where('status', $request->status))
             ->when($request->filled('search'), function ($query) use ($request) {
                 $search = $request->search;
@@ -66,7 +67,7 @@ class ReceivableController extends Controller
             'receivables' => $receivables,
             'summary' => $summary,
             'canChooseBranch' => $canChooseBranch,
-            'billingTypes' => self::BILLING_TYPES,
+            'billingTypes' => self::UI_BILLING_TYPES,
             'statuses' => self::STATUSES,
         ]);
     }
@@ -82,7 +83,7 @@ class ReceivableController extends Controller
         }
 
         $validated = $request->validate([
-            'payment_type' => ['required', Rule::in(['cash', 'gcash', 'bank', 'credit', 'po', 'monthly_billing'])],
+            'payment_type' => ['required', Rule::in(['cash', 'gcash', 'bank', 'po', 'monthly_billing'])],
             'reference_no' => ['nullable', 'string', 'max:255'],
             'amount' => ['required', 'numeric', 'min:0.01', 'max:'.$jobOrder->balance],
             'remarks' => ['nullable', 'string', 'max:500'],

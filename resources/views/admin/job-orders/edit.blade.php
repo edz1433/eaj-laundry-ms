@@ -66,13 +66,18 @@
                 <div class="mt-3 grid grid-cols-2 gap-1 rounded-md bg-smoke p-1 dark:bg-gray-950">
                     <label class="flex h-8 cursor-pointer items-center justify-center rounded-sm text-xs font-medium has-[:checked]:bg-white has-[:checked]:text-primary has-[:checked]:shadow-sm dark:has-[:checked]:bg-gray-900">
                         <input type="radio" name="transaction_type" value="walk_in" @checked(old('transaction_type', $jobOrder->transaction_type) !== 'delivery') class="sr-only">
-                        Walk-in
+                        Walk-in / Drop Off
                     </label>
                     <label class="flex h-8 cursor-pointer items-center justify-center rounded-sm text-xs font-medium has-[:checked]:bg-orange-100 has-[:checked]:text-orange-700 has-[:checked]:shadow-sm dark:has-[:checked]:bg-orange-500/10 dark:has-[:checked]:text-orange-300">
                         <input type="radio" name="transaction_type" value="delivery" @checked(old('transaction_type', $jobOrder->transaction_type) === 'delivery') class="sr-only">
-                        Delivery
+                        Delivery / Pick-up
                     </label>
                 </div>
+
+                <label class="mt-3 flex h-10 cursor-pointer items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 text-sm font-medium text-amber-800 dark:border-amber-900/60 dark:bg-amber-500/10 dark:text-amber-300">
+                    <input type="checkbox" name="is_rush" value="1" @checked(old('is_rush', $jobOrder->is_rush)) class="rounded border-amber-300 text-amber-600">
+                    Rush order
+                </label>
 
                 <label class="mt-3 block text-sm font-medium">Receiving Production Branch
                     <select name="processing_branch_id" class="mt-1.5 h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950" required>
@@ -225,6 +230,8 @@ function editJobOrder(services, customers, initialItems, vatRate, vatEnabled) {
             }
         },
         formatBilling(value) {
+            if (value === 'monthly_billing') return 'Legacy Billing';
+
             return String(value || 'regular').replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
         },
         add(service) {

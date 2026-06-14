@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\BranchBillingRecord;
 use App\Models\BranchExpense;
+use App\Models\AccountsPayable;
 use App\Models\SystemSetting;
 use App\Models\SystemTrialSetting;
 use Illuminate\Http\Request;
@@ -196,8 +197,8 @@ class BillingController extends Controller
                     ],
                     [
                         'branch_id' => $billingRecord->branch_id,
-                        'category' => 'System Monthly Subscription',
-                        'expense_type' => 'regular',
+                        'category' => 'software_subscription',
+                        'expense_type' => 'software_subscription',
                         'title' => 'System Billing - '.$billingRecord->periodLabel(),
                         'amount' => $billingRecord->amount,
                         'expense_date' => $validated['payment_date'],
@@ -208,7 +209,35 @@ class BillingController extends Controller
                         'created_by' => $request->user()->id,
                     ]
                 );
+
+                if (($validated['paid_from'] ?? 'store_cash') === 'owner' && ! $expense->accounts_payable_id) {
+                    $payable = AccountsPayable::query()->create([
+                        'branch_id' => $expense->branch_id,
+                        'created_by' => $request->user()->id,
+                        'payable_number' => 'AP-'.now()->format('Ymd').'-'.str_pad((string) (AccountsPayable::whereDate('created_at', today())->count() + 1), 4, '0', STR_PAD_LEFT),
+                        'creditor_name' => 'Owner',
+                        'source_type' => 'owner_paid_expense',
+                        'source_id' => $expense->id,
+                        'funding_method' => $expense->payment_method ?: 'cash',
+                        'reference_no' => $expense->reference_no,
+                        'description' => "Reimbursement for {$expense->title}",
+                        'original_amount' => $expense->amount,
+                        'paid_amount' => 0,
+                        'balance' => $expense->amount,
+                        'status' => 'unpaid',
+                        'funded_at' => $expense->expense_date,
+                    ]);
+                    $expense->update(['accounts_payable_id' => $payable->id]);
+                } elseif (($validated['paid_from'] ?? 'store_cash') === 'store_cash' && $expense->accounts_payable_id) {
+                    $expense->loadMissing('accountsPayable.payments');
+                    abort_if($expense->accountsPayable?->payments->isNotEmpty(), 422, 'This payable already has repayments and cannot be changed to store-funded.');
+                    $expense->accountsPayable?->delete();
+                    $expense->update(['accounts_payable_id' => null]);
+                }
             } elseif ($expense && $expense->source === 'branch_billing') {
+                $expense->loadMissing('accountsPayable.payments');
+                abort_if($expense->accountsPayable?->payments->isNotEmpty(), 422, 'This billing expense has payable repayments and cannot be removed.');
+                $expense->accountsPayable?->delete();
                 $expense->delete();
                 $expense = null;
             }

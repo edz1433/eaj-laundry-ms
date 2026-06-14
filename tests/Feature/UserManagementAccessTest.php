@@ -259,7 +259,7 @@ class UserManagementAccessTest extends TestCase
             'branch_id' => $branchB->id,
             'name' => 'Other Customer',
             'billing_type' => 'regular',
-            'credit_limit' => 0,
+            'unpaid_limit' => 0,
             'is_active' => true,
         ]);
         $service = LaundryService::query()->create([

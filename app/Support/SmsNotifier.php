@@ -10,25 +10,63 @@ use Illuminate\Support\Str;
 
 class SmsNotifier
 {
+    public static function jobOrderReceived(JobOrder $order): void
+    {
+        self::withoutInterruptingOperations(function () use ($order): void {
+            $settings = SystemSetting::current();
+            $order->loadMissing('customer');
+            $customer = $order->customer;
+
+            if (! $settings->sms_enabled || ! $customer?->canReceiveSms()) {
+                return;
+            }
+
+            $store = $settings->business_name ?: config('app.name');
+            $message = $order->transaction_type === 'delivery'
+                ? "Hi {$customer->name}, {$store} has picked up and received your laundry order {$order->job_order_number}. It is now recorded and queued for processing. We will notify you when it is ready."
+                : "Hi {$customer->name}, {$store} has received your laundry order {$order->job_order_number}. It is now recorded and queued for processing. We will notify you when it is ready.";
+
+            self::queue($order, $message, $settings);
+        });
+    }
+
     public static function jobOrderStatus(JobOrder $order): void
     {
-        $settings = SystemSetting::current();
+        self::withoutInterruptingOperations(function () use ($order): void {
+            $settings = SystemSetting::current();
+            $order->loadMissing('customer');
+            $customer = $order->customer;
+
+            if (! $settings->sms_enabled || ! $customer?->canReceiveSms()) {
+                return;
+            }
+
+            $message = match ($order->status) {
+                'ready_for_pickup' => "Hi {$customer->name}, your laundry {$order->job_order_number} is ready for pickup.",
+                'completed' => "Hi {$customer->name}, your laundry {$order->job_order_number} has been completed. Thank you.",
+                default => null,
+            };
+
+            if (! $message) {
+                return;
+            }
+
+            self::queue($order, $message, $settings);
+        });
+    }
+
+    private static function withoutInterruptingOperations(callable $notification): void
+    {
+        try {
+            $notification();
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
+    }
+
+    private static function queue(JobOrder $order, string $message, SystemSetting $settings): void
+    {
         $customer = $order->customer;
-
-        if (! $settings->sms_enabled || ! $customer?->phone) {
-            return;
-        }
-
-        $message = match ($order->status) {
-            'ready_for_pickup' => "Hi {$customer->name}, your laundry {$order->job_order_number} is ready for pickup.",
-            'completed' => "Hi {$customer->name}, your laundry {$order->job_order_number} has been completed. Thank you.",
-            default => null,
-        };
-
-        if (! $message) {
-            return;
-        }
-
         $log = SmsLog::create([
             'branch_id' => $order->branch_id,
             'customer_id' => $order->customer_id,
@@ -43,15 +81,67 @@ class SmsNotifier
 
     private static function send(SmsLog $log, SystemSetting $settings): void
     {
-        if (Str::lower((string) $settings->sms_provider) !== 'twilio') {
-            $log->update([
+        match (Str::lower((string) $settings->sms_provider)) {
+            'semaphore' => self::sendWithSemaphore($log, $settings),
+            'twilio' => self::sendWithTwilio($log, $settings),
+            default => $log->update([
                 'status' => 'queued',
                 'response' => 'SMS provider is not configured for live sending.',
+            ]),
+        };
+    }
+
+    private static function sendWithSemaphore(SmsLog $log, SystemSetting $settings): void
+    {
+        $apiKey = trim((string) $settings->sms_api_key);
+
+        if ($apiKey === '') {
+            $log->update([
+                'status' => 'queued',
+                'response' => 'Semaphore is selected but the API key is missing.',
             ]);
 
             return;
         }
 
+        $payload = [
+            'apikey' => $apiKey,
+            'number' => self::normalizeSemaphorePhone($log->recipient),
+            'message' => $log->message,
+        ];
+        $senderName = trim((string) $settings->semaphore_sender_name);
+        if ($senderName !== '') {
+            $payload['sendername'] = $senderName;
+        }
+
+        try {
+            $response = Http::asForm()
+                ->timeout(10)
+                ->post('https://api.semaphore.co/api/v4/messages', $payload);
+
+            $responsePayload = $response->json();
+            $messageResult = is_array($responsePayload) ? ($responsePayload[0] ?? $responsePayload) : [];
+            $messageId = $messageResult['message_id'] ?? null;
+            $providerStatus = Str::lower((string) ($messageResult['status'] ?? ''));
+            $accepted = $response->successful() && ! in_array($providerStatus, ['failed', 'refunded'], true);
+            $error = $messageResult['message'] ?? $response->body();
+
+            $log->update([
+                'status' => $accepted ? 'sent' : 'failed',
+                'response' => $accepted
+                    ? 'Semaphore message accepted'.($messageId ? " ({$messageId})" : '.')
+                    : Str::limit('Semaphore error: '.$error, 1000),
+            ]);
+        } catch (\Throwable $exception) {
+            $log->update([
+                'status' => 'failed',
+                'response' => Str::limit('Semaphore request failed: '.$exception->getMessage(), 1000),
+            ]);
+        }
+    }
+
+    private static function sendWithTwilio(SmsLog $log, SystemSetting $settings): void
+    {
         $accountSid = trim((string) $settings->twilio_account_sid);
         $authToken = trim((string) ($settings->twilio_auth_token ?: $settings->sms_api_key));
         $from = trim((string) $settings->twilio_from_number);
@@ -110,5 +200,10 @@ class SmsNotifier
         }
 
         return $phone;
+    }
+
+    private static function normalizeSemaphorePhone(string $phone): string
+    {
+        return ltrim(self::normalizePhone($phone), '+');
     }
 }

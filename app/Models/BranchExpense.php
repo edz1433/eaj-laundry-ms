@@ -19,6 +19,7 @@ class BranchExpense extends Model
         'remarks',
         'source',
         'source_id',
+        'accounts_payable_id',
         'created_by',
     ];
 
@@ -35,5 +36,10 @@ class BranchExpense extends Model
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function accountsPayable()
+    {
+        return $this->belongsTo(AccountsPayable::class);
     }
 }

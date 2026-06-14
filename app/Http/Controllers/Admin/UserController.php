@@ -213,6 +213,7 @@ class UserController extends Controller
                 'payments',
                 'receivables',
                 'expenses',
+                'accounts_payable',
                 'petty_cash',
                 'z_readings',
                 'employees',

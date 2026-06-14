@@ -194,9 +194,11 @@ class JobOrderController extends Controller
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
             'discount' => ['nullable', 'numeric', 'min:0'],
             'paid_amount' => ['nullable', 'numeric', 'min:0'],
-            'payment_type' => ['nullable', Rule::in(['cash', 'gcash', 'bank', 'credit', 'po', 'monthly_billing'])],
+            'payment_type' => ['nullable', Rule::in(['cash', 'gcash', 'bank', 'unpaid', 'po', 'monthly_billing'])],
             'payment_reference_no' => ['nullable', 'string', 'max:255'],
             'transaction_type' => ['nullable', Rule::in(['walk_in', 'delivery'])],
+            'is_rush' => ['nullable', 'boolean'],
+            'send_sms' => ['nullable', 'boolean'],
             'notes' => ['nullable', 'string'],
         ]);
 
@@ -231,14 +233,18 @@ class JobOrderController extends Controller
             ]);
         }
 
-        return DB::transaction(function () use ($request, $validated, $user) {
+        $createdOrder = null;
+        $response = DB::transaction(function () use ($request, $validated, $user, &$createdOrder) {
             $settings = SystemSetting::current();
             $subtotal = collect($validated['items'])->sum(fn ($item) => (float) $item['quantity'] * (float) $item['unit_price']);
             $discount = min((float) ($validated['discount'] ?? 0), $subtotal);
             $taxable = max($subtotal - $discount, 0);
             $tax = $settings->vat_enabled ? ($taxable * ((float) $settings->vat_rate / 100)) : 0;
             $total = $taxable + $tax;
-            $paid = min((float) ($validated['paid_amount'] ?? 0), $total);
+            $paymentType = $validated['payment_type'] ?? 'cash';
+            $paid = $paymentType === 'unpaid'
+                ? 0
+                : min((float) ($validated['paid_amount'] ?? 0), $total);
 
             $order = JobOrder::create([
                 'branch_id' => $validated['branch_id'],
@@ -250,6 +256,7 @@ class JobOrderController extends Controller
                 'job_order_number' => $this->nextJobOrderNumber((int) $validated['branch_id']),
                 'status' => 'pending',
                 'transaction_type' => $validated['transaction_type'] ?? 'walk_in',
+                'is_rush' => (bool) ($validated['is_rush'] ?? false),
                 'subtotal' => $subtotal,
                 'discount' => $discount,
                 'tax' => $tax,
@@ -294,7 +301,7 @@ class JobOrderController extends Controller
                     'customer_id' => $order->customer_id,
                     'received_by' => $user->id,
                     'payment_number' => $this->nextPaymentNumber(),
-                    'payment_type' => $validated['payment_type'] ?? 'cash',
+                    'payment_type' => $paymentType,
                     'reference_no' => $validated['payment_reference_no'] ?? null,
                     'amount' => $paid,
                     'settlement_status' => $collectedBranchId === (int) $order->branch_id ? 'local' : 'pending',
@@ -316,10 +323,19 @@ class JobOrderController extends Controller
             Activity::log($request, 'job_order_created', $order, [
                 'job_order_number' => $order->job_order_number,
                 'total' => $order->total,
+                'is_rush' => $order->is_rush,
             ], $order->branch_id);
+
+            $createdOrder = $order;
 
             return redirect()->route('admin.job-orders.index')->with('success', 'Job order created successfully.');
         });
+
+        if ($request->boolean('send_sms') && $createdOrder) {
+            SmsNotifier::jobOrderReceived($createdOrder);
+        }
+
+        return $response;
     }
 
     public function update(Request $request, JobOrder $jobOrder)
@@ -337,6 +353,7 @@ class JobOrderController extends Controller
             'discount' => ['nullable', 'numeric', 'min:0'],
             'status' => ['required', Rule::in(self::STATUSES)],
             'transaction_type' => ['nullable', Rule::in(['walk_in', 'delivery'])],
+            'is_rush' => ['nullable', 'boolean'],
             'notes' => ['nullable', 'string'],
         ]);
 
@@ -390,6 +407,7 @@ class JobOrderController extends Controller
                 'processing_branch_id' => $validated['processing_branch_id'],
                 'status' => $validated['status'],
                 'transaction_type' => $validated['transaction_type'] ?? 'walk_in',
+                'is_rush' => (bool) ($validated['is_rush'] ?? false),
                 'subtotal' => $subtotal,
                 'discount' => $discount,
                 'tax' => $tax,

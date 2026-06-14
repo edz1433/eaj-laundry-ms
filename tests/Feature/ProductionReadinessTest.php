@@ -99,6 +99,7 @@ class ProductionReadinessTest extends TestCase
             'admin.payments.index',
             'admin.receivables.index',
             'admin.expenses.index',
+            'admin.accounts-payable.index',
             'admin.petty-cash.index',
             'admin.z-readings.index',
             'admin.inventory.index',
@@ -113,6 +114,46 @@ class ProductionReadinessTest extends TestCase
             $this->actingAs($superAdmin)
                 ->get(route($route))
                 ->assertOk();
+        }
+    }
+
+    public function test_hidden_legacy_payment_options_are_not_rendered_in_operational_ui(): void
+    {
+        SystemSetting::query()->create([
+            'business_name' => 'SPIN KLEAN LAUNDRY',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'primary_color' => '#0EA5E9',
+            'is_completed' => true,
+        ]);
+
+        Branch::query()->create([
+            'name' => 'Main Branch',
+            'code' => 'MAIN',
+            'is_active' => true,
+        ]);
+
+        $admin = User::factory()->create(['role' => 'super_admin']);
+
+        foreach ([
+            'admin.job-orders.create',
+            'admin.payments.index',
+            'admin.receivables.index',
+            'admin.customers.index',
+            'admin.accounts-payable.index',
+            'admin.z-readings.create',
+        ] as $route) {
+            $this->actingAs($admin)
+                ->get(route($route))
+                ->assertOk()
+                ->assertDontSee('value="bank"', false)
+                ->assertDontSee("value='bank'", false)
+                ->assertDontSee('value="monthly_billing"', false)
+                ->assertDontSee("value='monthly_billing'", false)
+                ->assertDontSee('Monthly Billing');
         }
     }
 
@@ -215,6 +256,51 @@ class ProductionReadinessTest extends TestCase
             ->assertDontSee('JO-FILTER-HUB');
     }
 
+    public function test_customer_module_shows_laundry_visit_count_and_loyal_status(): void
+    {
+        SystemSetting::query()->create([
+            'business_name' => 'SPIN KLEAN LAUNDRY',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'is_completed' => true,
+        ]);
+
+        $branch = Branch::query()->create(['name' => 'Main Branch', 'code' => 'MAIN', 'is_active' => true]);
+        $customer = Customer::query()->create([
+            'branch_id' => $branch->id,
+            'name' => 'Ten Visit Customer',
+            'billing_type' => 'regular',
+            'is_active' => true,
+        ]);
+        $admin = User::factory()->create(['role' => 'super_admin']);
+
+        foreach (range(1, 10) as $orderNumber) {
+            JobOrder::query()->create([
+                'branch_id' => $branch->id,
+                'customer_id' => $customer->id,
+                'job_order_number' => "JO-VISIT-{$orderNumber}",
+                'status' => 'completed',
+                'subtotal' => 0,
+                'discount' => 0,
+                'tax' => 0,
+                'total' => 0,
+                'paid_amount' => 0,
+                'balance' => 0,
+            ]);
+        }
+
+        $this->actingAs($admin)
+            ->get(route('admin.customers.index'))
+            ->assertOk()
+            ->assertSee('Laundry Visits')
+            ->assertSee('Ten Visit Customer')
+            ->assertSee('10')
+            ->assertSee('Loyal');
+    }
+
     public function test_system_assistant_is_role_and_branch_scoped(): void
     {
         SystemSetting::query()->create([
@@ -286,6 +372,57 @@ class ProductionReadinessTest extends TestCase
         $this->actingAs($cashier)
             ->postJson(route('dashboard.assistant'), $payload)
             ->assertForbidden();
+    }
+
+    public function test_dashboard_lists_trusted_customers_with_branch_scoping(): void
+    {
+        SystemSetting::query()->create([
+            'business_name' => 'SPIN KLEAN LAUNDRY',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'primary_color' => '#0EA5E9',
+            'is_completed' => true,
+        ]);
+
+        $branchA = Branch::query()->create(['name' => 'Branch A', 'code' => 'A', 'is_active' => true]);
+        $branchB = Branch::query()->create(['name' => 'Branch B', 'code' => 'B', 'is_active' => true]);
+        $customerA = Customer::query()->create(['branch_id' => $branchA->id, 'name' => 'Trusted Customer A', 'billing_type' => 'regular', 'is_active' => true]);
+        $customerBelowThreshold = Customer::query()->create(['branch_id' => $branchA->id, 'name' => 'Nine Order Customer', 'billing_type' => 'regular', 'is_active' => true]);
+        $customerB = Customer::query()->create(['branch_id' => $branchB->id, 'name' => 'Trusted Customer B', 'billing_type' => 'regular', 'is_active' => true]);
+
+        foreach ([[$branchA, $customerA, 'A', 10], [$branchA, $customerBelowThreshold, 'NINE', 9], [$branchB, $customerB, 'B', 10]] as [$branch, $customer, $number, $orderCount]) {
+            foreach (range(1, $orderCount) as $orderNumber) {
+                JobOrder::query()->create([
+                    'branch_id' => $branch->id,
+                    'customer_id' => $customer->id,
+                    'job_order_number' => "JO-TRUST-{$number}-{$orderNumber}",
+                    'status' => 'washing',
+                    'subtotal' => 100,
+                    'discount' => 0,
+                    'tax' => 0,
+                    'total' => 100,
+                    'paid_amount' => 100,
+                    'balance' => 0,
+                ]);
+            }
+        }
+
+        $manager = User::factory()->create([
+            'role' => 'branch_manager',
+            'branch_id' => $branchA->id,
+            'access' => ['dashboard'],
+        ]);
+
+        $this->actingAs($manager)
+            ->getJson(route('dashboard.data'))
+            ->assertOk()
+            ->assertJsonPath('trusted_customers.0.name', 'Trusted Customer A')
+            ->assertJsonPath('trusted_customers.0.orders_count', '10')
+            ->assertJsonMissing(['name' => 'Nine Order Customer'])
+            ->assertJsonMissing(['name' => 'Trusted Customer B']);
     }
 
     public function test_assistant_active_cycles_include_processing_branch_work(): void
