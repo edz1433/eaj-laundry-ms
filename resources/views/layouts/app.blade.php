@@ -21,7 +21,7 @@
         x-data="{
             sidebarOpen: false,
             desktopSidebarOpen: @js(! $sidebarAutoCollapsed),
-            isDesktop: false,
+            isDesktop: window.matchMedia('(min-width: 1280px)').matches,
             init() {
                 const query = window.matchMedia('(min-width: 1280px)');
                 const sync = () => {
@@ -59,7 +59,10 @@
 
         @include('partials.sidebar')
 
-        <div class="flex-1 flex flex-col min-w-0 transition-[padding] duration-200" :class="desktopSidebarOpen ? 'xl:pl-64' : 'xl:pl-0'">
+        <div
+            class="flex-1 flex min-w-0 flex-col transition-[padding] duration-200 {{ $sidebarAutoCollapsed ? 'xl:pl-0' : 'xl:pl-64' }}"
+            :class="desktopSidebarOpen ? 'xl:!pl-64' : 'xl:!pl-0'"
+        >
             @include('partials.topbar')
 
             <main class="flex-1 p-4 sm:p-6 lg:p-8">

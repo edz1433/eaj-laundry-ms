@@ -20,6 +20,7 @@ npm run build
 php artisan migrate --force
 php artisan storage:link
 php artisan optimize
+php artisan production:check
 ```
 
 The application currently has no scheduled commands or queued jobs. A scheduler or queue worker is not required until asynchronous jobs are introduced.
@@ -29,10 +30,12 @@ The application currently has no scheduled commands or queued jobs. A scheduler 
 ```bash
 php artisan migrate:status
 php artisan about
+php artisan production:check
 php artisan test
 php artisan queue:failed
 ```
 
+- Do not launch while `production:check` reports any failed checks.
 - Confirm `/up` returns HTTP 200 through the public HTTPS domain.
 - Submit a test Job Order and confirm cash, GCash, bank, expenses, Accounts Payable, Dashboard, Reports, and Z Reading reconcile.
 - Send one real Semaphore SMS to a non-PO test customer.

@@ -183,6 +183,9 @@
                     </div>
                 </div>
 
+                {{--
+                Job Order QR receiving is temporarily hidden from the attendance kiosk.
+                Keep this block and its backend routes for future reactivation.
                 <div x-cloak x-show="activeTab === 'scan'" class="flex min-h-0 flex-1 flex-col justify-center gap-3">
                     <div class="text-center">
                         <span class="mx-auto inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -214,19 +217,23 @@
                         <p x-text="scanError"></p>
                     </div>
                 </div>
+                --}}
             </div>
         </section>
 
         <nav class="shrink-0 border-t border-border bg-white px-3 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 dark:border-gray-800 dark:bg-gray-900">
-            <div class="mx-auto grid max-w-md grid-cols-3 gap-2">
+            <div class="mx-auto grid max-w-md grid-cols-2 gap-2">
                 <button type="button" @click="switchTab('clock')" class="flex h-12 items-center justify-center gap-2 rounded-xl text-xs font-bold active:scale-[.98]" :class="activeTab === 'clock' ? 'bg-primary text-white shadow-sm' : 'text-muted'">
                     <span data-lucide="attendance" class="h-4 w-4"></span>
                     Clock
                 </button>
+                {{--
+                Job Order QR receiving menu is temporarily hidden.
                 <button type="button" @click="switchTab('scan')" class="flex h-12 items-center justify-center gap-2 rounded-xl text-xs font-bold active:scale-[.98]" :class="activeTab === 'scan' ? 'bg-primary text-white shadow-sm' : 'text-muted'">
                     <span data-lucide="qr" class="h-4 w-4"></span>
                     Receive
                 </button>
+                --}}
                 <button type="button" @click="switchTab('tasks')" class="flex h-12 items-center justify-center gap-2 rounded-xl text-xs font-bold active:scale-[.98]" :class="activeTab === 'tasks' ? 'bg-primary text-white shadow-sm' : 'text-muted'">
                     <span data-lucide="check" class="h-4 w-4"></span>
                     Tasks

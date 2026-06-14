@@ -7,8 +7,8 @@ use App\Models\Branch;
 use App\Models\User;
 use App\Support\Menu;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class UserController extends Controller
 {
@@ -60,7 +60,7 @@ class UserController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'username' => ['required', 'string', 'max:100', 'unique:users,username'],
-            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'email' => ['nullable', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:6', 'confirmed'],
             'role' => ['required', Rule::in($this->availableRoles($viewer))],
             'branch_id' => ['nullable', 'exists:branches,id'],
@@ -115,7 +115,7 @@ class UserController extends Controller
                 Rule::unique('users', 'username')->ignore($user->id),
             ],
             'email' => [
-                'required',
+                'nullable',
                 'email',
                 'max:255',
                 Rule::unique('users', 'email')->ignore($user->id),

@@ -25,8 +25,8 @@
         </div>
 
         <div>
-            <label class="mb-1.5 block text-sm font-medium">Email</label>
-            <input type="email" name="email" value="{{ old('email', $user->email) }}" required class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
+            <label class="mb-1.5 block text-sm font-medium">Email <span class="font-normal text-muted">(optional)</span></label>
+            <input type="email" name="email" value="{{ old('email', $user->email) }}" placeholder="Optional email address" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
         </div>
 
         <div>

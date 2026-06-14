@@ -9,7 +9,7 @@ class AttendanceEmployee extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = ['branch_id', 'first_name', 'last_name', 'phone', 'username', 'password', 'status', 'last_login_at'];
+    protected $fillable = ['user_id', 'branch_id', 'first_name', 'last_name', 'phone', 'username', 'password', 'status', 'last_login_at'];
 
     protected $hidden = ['password'];
 
@@ -18,6 +18,7 @@ class AttendanceEmployee extends Model
     ];
 
     public function branch() { return $this->belongsTo(Branch::class); }
+    public function user() { return $this->belongsTo(User::class); }
     public function attendanceRecords() { return $this->hasMany(EmployeeAttendanceRecord::class); }
 
     public function getNameAttribute(): string

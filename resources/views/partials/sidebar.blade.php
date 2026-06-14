@@ -12,8 +12,8 @@
 <div x-cloak x-show="sidebarOpen" x-transition.opacity class="fixed inset-0 z-40 bg-black/45 xl:hidden" @click="sidebarOpen = false"></div>
 
 <aside
-    class="fixed inset-y-0 left-0 z-50 flex h-screen w-64 -translate-x-full flex-col overflow-hidden border-r border-sky-950/70 bg-sky-950 text-slate-100 shadow-xl transition-transform duration-200 xl:shadow-none"
-    :class="sidebarVisible ? 'translate-x-0' : '-translate-x-full'"
+    class="fixed inset-y-0 left-0 z-50 flex h-screen w-64 -translate-x-full flex-col overflow-hidden border-r border-sky-950/70 bg-sky-950 text-slate-100 shadow-xl transition-transform duration-200 xl:shadow-none {{ $sidebarAutoCollapsed ? 'xl:-translate-x-full' : 'xl:translate-x-0' }}"
+    :class="sidebarVisible ? '!translate-x-0' : '!-translate-x-full'"
 >
     <div class="pointer-events-none absolute inset-0 opacity-80">
         <div class="absolute -left-20 top-10 h-44 w-44 rounded-full bg-sky-400/10 blur-3xl"></div>

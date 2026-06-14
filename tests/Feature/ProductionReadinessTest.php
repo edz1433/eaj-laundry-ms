@@ -117,6 +117,42 @@ class ProductionReadinessTest extends TestCase
         }
     }
 
+    public function test_sidebar_renders_open_by_default_and_closed_on_pos(): void
+    {
+        SystemSetting::query()->create([
+            'business_name' => 'SPIN KLEAN LAUNDRY',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'is_completed' => true,
+        ]);
+        $branch = Branch::query()->create([
+            'name' => 'Main Branch',
+            'code' => 'MAIN',
+            'is_active' => true,
+        ]);
+        $admin = User::factory()->create([
+            'role' => 'super_admin',
+            'branch_id' => $branch->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('xl:translate-x-0', false)
+            ->assertSee('xl:pl-64', false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.job-orders.create'))
+            ->assertOk()
+            ->assertSee('xl:-translate-x-full', false)
+            ->assertSee('xl:pl-0', false)
+            ->assertSee("sidebarVisible ? '!translate-x-0' : '!-translate-x-full'", false)
+            ->assertSee("desktopSidebarOpen ? 'xl:!pl-64' : 'xl:!pl-0'", false);
+    }
+
     public function test_hidden_legacy_payment_options_are_not_rendered_in_operational_ui(): void
     {
         SystemSetting::query()->create([

@@ -28,7 +28,6 @@
                 Operations board
             </div>
             <h1 class="text-xl font-semibold">Cycle Monitoring</h1>
-            <p class="text-sm text-muted">Start active laundry cycles by processing branch, then mark orders ready or completed.</p>
         </div>
 
         <form method="GET" class="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(12rem,1fr)_12rem_14rem_16rem_12rem_auto]">
@@ -73,6 +72,7 @@
         </form>
     </div>
 
+    <div class="grid items-start gap-4 xl:grid-cols-[minmax(36rem,46rem)_minmax(26rem,1fr)]">
     @if($machineOverviewBranches->isNotEmpty())
         <section class="rounded-xl border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <div class="mb-4 flex flex-wrap items-end justify-between gap-2">
@@ -102,62 +102,79 @@
                             </div>
                         </div>
 
-                        <div class="flex flex-nowrap gap-3 overflow-x-auto pb-2">
-                            @if($machineTotal > 0)
-                                @for($machine = 1; $machine <= $machineTotal; $machine++)
-                                    @php($activeMachine = $branchActiveMachines[$machine] ?? null)
-                                    @php($isAvailable = ! $activeMachine)
-                                    @php($activity = $branchMachineActivity[$machine] ?? ['wash' => 0, 'dry' => 0])
-                                    <div class="machine-status-card w-40 shrink-0 overflow-hidden rounded-xl border border-border bg-gradient-to-b from-white to-slate-50 shadow-sm dark:border-gray-800 dark:from-gray-900 dark:to-gray-950">
-                                        <div class="flex items-center justify-between px-3 py-2">
-                                            <span class="text-sm font-semibold">Machine #{{ $machine }}</span>
-                                            <span class="h-2.5 w-2.5 rounded-full {{ $isAvailable ? 'bg-emerald-500' : 'machine-status-dot-running bg-red-500' }}" title="{{ $isAvailable ? 'Available' : 'In use' }}"></span>
+                        @if($machineTotal > 0)
+                            <div class="space-y-4">
+                                @foreach(['wash' => 'Wash Machines', 'dry' => 'Dry Machines'] as $machineType => $machineLabel)
+                                    <div>
+                                        <div class="mb-2 flex items-center gap-2">
+                                            <span class="h-2.5 w-2.5 rounded-full {{ $machineType === 'wash' ? 'bg-sky-500' : 'bg-violet-500' }}"></span>
+                                            <h4 class="text-xs font-semibold uppercase tracking-[0.14em] text-muted">{{ $machineLabel }}</h4>
                                         </div>
-                                        <img
-                                            src="{{ asset($isAvailable ? 'available.png' : 'unavailable.png') }}"
-                                            alt="Machine #{{ $machine }} {{ $isAvailable ? 'available' : 'unavailable' }}"
-                                            width="112"
-                                            height="112"
-                                            loading="lazy"
-                                            decoding="async"
-                                            class="machine-status-image {{ $isAvailable ? 'machine-status-image-ready' : 'machine-status-image-running' }} mx-auto h-28 w-28 rounded-xl object-cover"
-                                        >
-                                        <div class="grid grid-cols-2 border-t border-border dark:border-gray-800">
-                                            <div class="px-2 py-2 text-center">
-                                                <p class="text-lg font-bold text-sky-600">{{ $activity['wash'] }}</p>
-                                                <p class="text-[10px] font-semibold uppercase tracking-wide text-muted">Washing</p>
-                                            </div>
-                                            <div class="border-l border-border px-2 py-2 text-center dark:border-gray-800">
-                                                <p class="text-lg font-bold text-violet-600">{{ $activity['dry'] }}</p>
-                                                <p class="text-[10px] font-semibold uppercase tracking-wide text-muted">Drying</p>
-                                            </div>
-                                        </div>
-                                        <div class="border-t border-border px-2 py-1.5 text-center text-[10px] font-medium dark:border-gray-800 {{ $isAvailable ? 'text-emerald-600' : 'text-red-600' }}" title="{{ $activeMachine['job_order_number'] ?? 'Ready for use' }}">
-                                            <p class="truncate">{{ $isAvailable ? 'Available' : ucfirst($activeMachine['cycle_type']).' - '.$activeMachine['customer_name'] }}</p>
-                                            @if(! $isAvailable && ($activeMachine['is_rush'] || $activeMachine['is_loyal']))
-                                                <div class="mt-1 flex justify-center gap-1">
-                                                    @if($activeMachine['is_rush'])
-                                                        <span class="rounded bg-amber-100 px-1.5 py-0.5 font-semibold uppercase text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">Rush</span>
-                                                    @endif
-                                                    @if($activeMachine['is_loyal'])
-                                                        <span class="rounded bg-violet-100 px-1.5 py-0.5 font-semibold uppercase text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">Loyal</span>
-                                                    @endif
+                                        <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
+                                            @for($machine = 1; $machine <= $machineTotal; $machine++)
+                                                @php($activeMachine = data_get($branchActiveMachines, $machineType.'.'.$machine))
+                                                @php($isAvailable = ! $activeMachine)
+                                                @php($activityCount = (int) data_get($branchMachineActivity, $machine.'.'.$machineType, 0))
+                                                <div class="machine-status-card min-w-0 overflow-hidden rounded-xl border border-border bg-gradient-to-b from-white to-slate-50 shadow-sm dark:border-gray-800 dark:from-gray-900 dark:to-gray-950">
+                                                    <div class="flex items-center justify-between px-2.5 py-2">
+                                                        <span class="truncate text-xs font-semibold">{{ $machineType === 'wash' ? 'Wash' : 'Dry' }} #{{ $machine }}</span>
+                                                        <span class="h-2.5 w-2.5 rounded-full {{ $isAvailable ? 'bg-emerald-500' : 'machine-status-dot-running bg-red-500' }}" title="{{ $isAvailable ? 'Available' : 'In use' }}"></span>
+                                                    </div>
+                                                    <img
+                                                        src="{{ asset($isAvailable ? 'available.png' : 'unavailable.png') }}"
+                                                        alt="{{ $machineType === 'wash' ? 'Wash' : 'Dry' }} machine #{{ $machine }} {{ $isAvailable ? 'available' : 'unavailable' }}"
+                                                        width="112"
+                                                        height="112"
+                                                        loading="lazy"
+                                                        decoding="async"
+                                                        class="machine-status-image {{ $isAvailable ? 'machine-status-image-ready' : 'machine-status-image-running' }} mx-auto h-20 w-20 rounded-lg object-cover"
+                                                    >
+                                                    <div class="border-t border-border px-1.5 py-1.5 text-center dark:border-gray-800">
+                                                        <p class="text-base font-bold {{ $machineType === 'wash' ? 'text-sky-600' : 'text-violet-600' }}">{{ $activityCount }}</p>
+                                                        <p class="text-[9px] font-semibold uppercase tracking-wide text-muted">{{ $machineType === 'wash' ? 'Washing cycles' : 'Drying cycles' }}</p>
+                                                    </div>
+                                                    <div class="border-t border-border px-2 py-1.5 text-center text-[10px] font-medium dark:border-gray-800 {{ $isAvailable ? 'text-emerald-600' : 'text-red-600' }}" title="{{ $activeMachine['job_order_number'] ?? 'Ready for use' }}">
+                                                        <p class="truncate">{{ $isAvailable ? 'Available' : $activeMachine['customer_name'] }}</p>
+                                                        @if(! $isAvailable)
+                                                            <p class="mt-0.5 truncate font-semibold">{{ $activeMachine['job_order_number'] }}</p>
+                                                        @endif
+                                                        @if(! $isAvailable && ($activeMachine['is_rush'] || $activeMachine['is_loyal']))
+                                                            <div class="mt-1 flex justify-center gap-1">
+                                                                @if($activeMachine['is_rush'])
+                                                                    <span class="rounded bg-amber-100 px-1.5 py-0.5 font-semibold uppercase text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">Rush</span>
+                                                                @endif
+                                                                @if($activeMachine['is_loyal'])
+                                                                    <span class="rounded bg-violet-100 px-1.5 py-0.5 font-semibold uppercase text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">Loyal</span>
+                                                                @endif
+                                                            </div>
+                                                        @endif
+                                                    </div>
                                                 </div>
-                                            @endif
+                                            @endfor
                                         </div>
                                     </div>
-                                @endfor
-                            @else
-                                <p class="w-full rounded-lg border border-dashed border-border py-6 text-center text-sm text-muted dark:border-gray-800">No machines configured.</p>
-                            @endif
-                        </div>
+                                @endforeach
+                            </div>
+                        @else
+                            <p class="w-full rounded-lg border border-dashed border-border py-6 text-center text-sm text-muted dark:border-gray-800">No machines configured.</p>
+                        @endif
                     </article>
                 @endforeach
             </div>
         </section>
     @endif
 
-    <div class="grid gap-3 xl:grid-cols-2">
+    <section class="min-w-0 overflow-hidden rounded-xl border border-border bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div class="flex items-center justify-between border-b border-border px-4 py-3 dark:border-gray-800">
+            <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Job Orders</p>
+                <h2 class="mt-1 text-lg font-semibold">Cycle queue</h2>
+            </div>
+            <span class="rounded-md bg-smoke px-2 py-1 text-xs font-medium text-muted dark:bg-gray-950">{{ $orders->total() }} orders</span>
+        </div>
+
+        <div class="h-[42rem] overflow-y-auto p-3">
+        <div class="grid grid-cols-1 gap-3">
         @forelse($orders as $order)
             @php($processingBranch = $order->processingBranch ?: $order->branch)
             @php($processingBranchId = $order->processing_branch_id ?: $order->branch_id)
@@ -236,7 +253,7 @@
                                     <select name="machine_number" aria-label="Machine" class="h-8 w-20 border-r border-border bg-white px-2 text-xs dark:border-gray-800 dark:bg-gray-950">
                                         <option value="">Machine</option>
                                         @for($machine = 1; $machine <= (int) $processingBranch->machine_count; $machine++)
-                                            @php($usingMachine = $activeMachines[$machine] ?? null)
+                                            @php($usingMachine = data_get($activeMachines, $type.'.'.$machine))
                                             <option value="{{ $machine }}" @disabled($usingMachine)>#{{ $machine }}{{ $usingMachine ? ' - In use' : '' }}</option>
                                         @endfor
                                     </select>
@@ -326,7 +343,7 @@
                                         @csrf
                                         @method('PATCH')
                                         <button title="End cycle" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border hover:bg-white dark:border-gray-800 dark:hover:bg-gray-900">
-                                            <span data-lucide="activity" class="h-4 w-4"></span>
+                                            <span data-lucide="check" class="h-4 w-4"></span>
                                         </button>
                                     </form>
                                 @else
@@ -359,8 +376,11 @@
                 No active job orders to monitor.
             </div>
         @endforelse
-    </div>
+        </div>
+        </div>
 
-    <div>{{ $orders->links() }}</div>
+        <div class="border-t border-border px-4 py-3 dark:border-gray-800">{{ $orders->links() }}</div>
+    </section>
+    </div>
 </div>
 @endsection

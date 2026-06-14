@@ -4,7 +4,7 @@
 
 @section('content')
 <div
-    x-data="{ createOpen: false, editOpen: null }"
+    x-data="{ createOpen: @js($errors->any() && ! old('_method')), editOpen: null }"
     class="space-y-4"
 >
     <div class="flex flex-col gap-3 rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:flex-row sm:items-center sm:justify-between">
@@ -72,7 +72,7 @@
                         <tr>
                             <td class="px-4 py-3">
                                 <p class="font-semibold">{{ $user->name }}</p>
-                                <p class="text-xs text-muted">{{ $user->username }} · {{ $user->email }}</p>
+                                <p class="text-xs text-muted">{{ $user->username }} · {{ $user->email ?: 'No email' }}</p>
                             </td>
                             <td class="px-4 py-3">{{ \App\Support\StatusBadge::label($user->role) }}</td>
                             <td class="px-4 py-3">{{ $user->branch?->name ?? 'All branches' }}</td>

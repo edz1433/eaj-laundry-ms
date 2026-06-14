@@ -215,6 +215,28 @@ class ExampleTest extends TestCase
             ->assertDontSee(asset('logo.png'), false);
     }
 
+    public function test_attendance_kiosk_temporarily_hides_qr_receiving_menu(): void
+    {
+        $branch = Branch::query()->create(['name' => 'Branch A', 'code' => 'A', 'is_active' => true]);
+        $employee = AttendanceEmployee::query()->create([
+            'branch_id' => $branch->id,
+            'first_name' => 'Juan',
+            'last_name' => 'Dela Cruz',
+            'username' => 'juan-no-qr-menu',
+            'password' => Hash::make('password'),
+            'status' => 'active',
+        ]);
+
+        $this
+            ->withSession(['attendance_employee_id' => $employee->id])
+            ->get(route('attendance.kiosk'))
+            ->assertOk()
+            ->assertDontSee('Receive Laundry for Production')
+            ->assertDontSee('Scan Job Order')
+            ->assertDontSee('switchTab(\'scan\')', false)
+            ->assertSee('grid-cols-2', false);
+    }
+
     public function test_system_login_does_not_accept_attendance_employee_credentials(): void
     {
         $branch = Branch::query()->create([
@@ -658,7 +680,7 @@ class ExampleTest extends TestCase
             ->assertJsonPath('redirect', route('attendance.login'));
     }
 
-    public function test_public_attendance_requires_employee_inside_assigned_branch(): void
+    public function test_public_attendance_allows_employee_to_clock_in_at_any_configured_branch(): void
     {
         $branchA = Branch::query()->create([
             'name' => 'Branch A',
@@ -696,8 +718,27 @@ class ExampleTest extends TestCase
             ]);
 
         $response
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors(['location']);
+            ->assertOk()
+            ->assertJsonPath('employee', $employee->name)
+            ->assertJsonPath('branch', $branchB->name);
+
+        $record = \App\Models\EmployeeAttendanceRecord::query()->firstOrFail();
+        $this->assertSame($employee->id, $record->attendance_employee_id);
+        $this->assertSame($branchB->id, $record->branch_id);
+
+        $this
+            ->withSession(['attendance_employee_id' => $employee->id])
+            ->postJson(route('attendance.public-time-out'), [
+                'latitude' => $branchA->latitude,
+                'longitude' => $branchA->longitude,
+                'face_image' => 'data:image/jpeg;base64,'.base64_encode('fake-out'),
+            ])
+            ->assertOk()
+            ->assertJsonPath('branch', $branchA->name);
+
+        $record->refresh();
+        $this->assertSame($branchB->id, $record->branch_id);
+        $this->assertCount(1, $record->clock_out);
     }
 
     public function test_public_attendance_accepts_employee_session_and_allows_multiple_clock_ins(): void

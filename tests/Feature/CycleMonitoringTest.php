@@ -405,7 +405,111 @@ class CycleMonitoringTest extends TestCase
                 'cycle_type' => 'wash',
                 'machine_number' => 2,
             ])
-            ->assertSessionHasErrors('machine_number');
+            ->assertSessionHasErrors([
+                'machine_number' => 'Wash #2 is currently used by JO-TEST-001.',
+            ]);
+    }
+
+    public function test_same_job_order_cannot_start_drying_until_washing_ends(): void
+    {
+        $this->completeSystemSettings();
+        $this->activeTrial();
+
+        $branch = $this->createBranch(['machine_count' => 5]);
+        $customer = $this->createCustomer($branch);
+        $user = User::factory()->create([
+            'role' => 'admin',
+            'branch_id' => $branch->id,
+            'access' => ['cycles'],
+        ]);
+        $order = $this->createJobOrder($branch, $customer, 'JO-WASH-DRY-001');
+
+        $washCycle = CycleRecord::query()->create([
+            'job_order_id' => $order->id,
+            'user_id' => $user->id,
+            'cycle_type' => 'wash',
+            'machine_number' => 1,
+            'cycle_number' => 1,
+            'started_at' => now(),
+        ]);
+        $order->update(['status' => 'washing']);
+
+        $this->actingAs($user)
+            ->post(route('admin.cycles.store', $order), [
+                'cycle_type' => 'dry',
+                'machine_number' => 1,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors([
+                'cycle_type' => 'End the active Washing cycle for JO-WASH-DRY-001 before starting Drying.',
+            ]);
+
+        $this->assertDatabaseMissing('cycle_records', [
+            'job_order_id' => $order->id,
+            'cycle_type' => 'dry',
+            'machine_number' => 1,
+        ]);
+        $this->assertSame('washing', $order->refresh()->status);
+
+        $this->actingAs($user)
+            ->patch(route('admin.cycles.end', $washCycle))
+            ->assertRedirect();
+
+        $this->actingAs($user)
+            ->post(route('admin.cycles.store', $order), [
+                'cycle_type' => 'dry',
+                'machine_number' => 1,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('cycle_records', [
+            'job_order_id' => $order->id,
+            'cycle_type' => 'dry',
+            'machine_number' => 1,
+            'ended_at' => null,
+        ]);
+        $this->assertSame('drying', $order->refresh()->status);
+    }
+
+    public function test_same_number_wash_and_dry_machines_can_run_at_the_same_time(): void
+    {
+        $this->completeSystemSettings();
+        $this->activeTrial();
+
+        $branch = $this->createBranch(['machine_count' => 5]);
+        $customer = $this->createCustomer($branch);
+        $user = User::factory()->create([
+            'role' => 'admin',
+            'branch_id' => $branch->id,
+            'access' => ['cycles'],
+        ]);
+        $washOrder = $this->createJobOrder($branch, $customer, 'JO-WASH-002');
+        $dryOrder = $this->createJobOrder($branch, $customer, 'JO-DRY-002');
+
+        CycleRecord::query()->create([
+            'job_order_id' => $washOrder->id,
+            'user_id' => $user->id,
+            'cycle_type' => 'wash',
+            'machine_number' => 2,
+            'cycle_number' => 1,
+            'started_at' => now(),
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('admin.cycles.store', $dryOrder), [
+                'cycle_type' => 'dry',
+                'machine_number' => 2,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('cycle_records', [
+            'job_order_id' => $dryOrder->id,
+            'cycle_type' => 'dry',
+            'machine_number' => 2,
+            'ended_at' => null,
+        ]);
     }
 
     public function test_machine_overview_shows_live_image_and_filtered_daily_activity(): void
@@ -462,23 +566,33 @@ class CycleMonitoringTest extends TestCase
             ->get(route('admin.cycles.index', ['search' => 'JO-MACHINE-MATCH']))
             ->assertOk()
             ->assertSee('Machine overview')
-            ->assertSee('Machine #5')
+            ->assertSee('xl:grid-cols-[minmax(36rem,46rem)_minmax(26rem,1fr)]', false)
+            ->assertSee('Wash Machines')
+            ->assertSee('Dry Machines')
+            ->assertSee('Wash #5')
+            ->assertSee('Dry #5')
+            ->assertSee('Job Orders')
+            ->assertSee('h-[42rem] overflow-y-auto', false)
             ->assertSee('unavailable.png')
-            ->assertSee('Wash - '.$customer->name)
+            ->assertSee($customer->name)
+            ->assertSee('JO-MACHINE-MATCH')
             ->assertDontSee('Wash - JO-MACHINE-MATCH')
             ->assertSee('Rush')
             ->assertSee('Loyal Customer')
             ->assertSeeInOrder([
-                'Machine #1',
+                'Wash #1',
                 'unavailable.png',
                 '>1</p>',
-                'Washing',
+                'Washing cycles',
+                'Dry Machines',
+                'Dry #1',
                 '>1</p>',
-                'Drying',
+                'Drying cycles',
             ], false)
             ->assertDontSee('JO-MACHINE-HIDDEN');
 
-        $this->assertSame(5, substr_count($response->getContent(), 'text-sm font-semibold">Machine #'));
+        $this->assertSame(5, substr_count($response->getContent(), 'text-xs font-semibold">Wash #'));
+        $this->assertSame(5, substr_count($response->getContent(), 'text-xs font-semibold">Dry #'));
     }
 
     public function test_cycle_monitoring_keeps_large_lists_and_history_bounded(): void

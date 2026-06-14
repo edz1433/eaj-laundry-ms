@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AttendanceEmployee;
 use App\Models\Branch;
 use App\Models\Customer;
 use App\Models\DailyTask;
@@ -14,6 +15,7 @@ use App\Models\SystemTrialSetting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -216,6 +218,101 @@ class UserManagementAccessTest extends TestCase
         $this->assertContains('cycles', $created->access);
         $this->assertContains('users', $created->access);
         $this->assertNotContains('billing', $created->access);
+    }
+
+    public function test_non_admin_user_creation_allows_no_email_without_creating_employee(): void
+    {
+        $this->completeSystemSettings();
+
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'access' => ['users'],
+        ]);
+        $branch = Branch::query()->create([
+            'name' => 'Main Branch',
+            'code' => 'MAIN',
+            'is_active' => true,
+        ]);
+
+        $this
+            ->actingAs($admin)
+            ->post(route('admin.users.store'), [
+                'name' => 'Juan Dela Cruz',
+                'username' => 'juan.cruz',
+                'email' => '',
+                'password' => 'secret123',
+                'password_confirmation' => 'secret123',
+                'role' => 'cashier',
+                'branch_id' => $branch->id,
+                'status' => 'active',
+            ])
+            ->assertRedirect(route('admin.users.index'))
+            ->assertSessionHas('success');
+
+        $user = User::where('username', 'juan.cruz')->firstOrFail();
+
+        $this->assertNull($user->email);
+        $this->assertSame($branch->id, $user->branch_id);
+        $this->assertDatabaseCount('attendance_employees', 0);
+    }
+
+    public function test_updating_user_does_not_modify_separately_managed_employee(): void
+    {
+        $this->completeSystemSettings();
+
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'access' => ['users'],
+        ]);
+        $branch = Branch::query()->create([
+            'name' => 'Main Branch',
+            'code' => 'MAIN',
+            'is_active' => true,
+        ]);
+        $employee = AttendanceEmployee::query()->create([
+            'branch_id' => $branch->id,
+            'first_name' => 'Existing',
+            'last_name' => 'Employee',
+            'username' => 'same.employee',
+            'password' => Hash::make('password'),
+            'status' => 'active',
+        ]);
+
+        $this
+            ->actingAs($admin)
+            ->post(route('admin.users.store'), [
+                'name' => 'Separate User',
+                'username' => 'different-system-login',
+                'email' => '',
+                'password' => 'secret123',
+                'password_confirmation' => 'secret123',
+                'role' => 'staff',
+                'branch_id' => $branch->id,
+                'status' => 'active',
+            ])
+            ->assertRedirect(route('admin.users.index'))
+            ->assertSessionHas('success');
+
+        $user = User::where('username', 'different-system-login')->firstOrFail();
+
+        $this
+            ->actingAs($admin)
+            ->put(route('admin.users.update', $user), [
+                'name' => 'Updated Separate User',
+                'username' => 'updated-system-login',
+                'email' => '',
+                'role' => 'staff',
+                'branch_id' => $branch->id,
+                'status' => 'inactive',
+            ])
+            ->assertRedirect(route('admin.users.index'));
+
+        $employee->refresh();
+
+        $this->assertSame('Existing', $employee->first_name);
+        $this->assertSame('same.employee', $employee->username);
+        $this->assertSame('active', $employee->status);
+        $this->assertNull($employee->user_id);
     }
 
     public function test_branch_level_roles_require_branch_assignment(): void

@@ -189,13 +189,16 @@ class CycleController extends Controller
             ])
             ->groupBy('operating_branch_id')
             ->map(fn ($cycles) => $cycles
-                ->mapWithKeys(fn ($cycle) => [(int) $cycle->machine_number => [
-                    'job_order_number' => $cycle->job_order_number,
-                    'customer_name' => $cycle->customer_name,
-                    'is_rush' => (bool) $cycle->is_rush,
-                    'is_loyal' => (int) $cycle->customer_orders_count >= 10,
-                    'cycle_type' => $cycle->cycle_type,
-                ]])
+                ->groupBy('cycle_type')
+                ->map(fn ($typedCycles) => $typedCycles
+                    ->mapWithKeys(fn ($cycle) => [(int) $cycle->machine_number => [
+                        'job_order_number' => $cycle->job_order_number,
+                        'customer_name' => $cycle->customer_name,
+                        'is_rush' => (bool) $cycle->is_rush,
+                        'is_loyal' => (int) $cycle->customer_orders_count >= 10,
+                        'cycle_type' => $cycle->cycle_type,
+                    ]])
+                    ->all())
                 ->all()
             )
             ->all();
@@ -350,8 +353,26 @@ class CycleController extends Controller
             return back()->withErrors(['machine_number' => 'Please choose a valid machine.'])->withInput();
         }
 
-        if (in_array($validated['cycle_type'], ['wash', 'dry'], true) && ! empty($validated['machine_number']) && $this->machineInUse($jobOrder, (int) $validated['machine_number'])) {
-            return back()->withErrors(['machine_number' => 'This machine is still in use. End the active cycle before assigning it again.'])->withInput();
+        if (
+            $validated['cycle_type'] === 'dry'
+            && $jobOrder->cycles()->where('cycle_type', 'wash')->whereNull('ended_at')->exists()
+        ) {
+            return back()->withErrors([
+                'cycle_type' => "End the active Washing cycle for {$jobOrder->job_order_number} before starting Drying.",
+            ])->withInput();
+        }
+
+        if (in_array($validated['cycle_type'], ['wash', 'dry'], true) && ! empty($validated['machine_number'])) {
+            $conflictingCycle = $this->machineConflict($jobOrder, $validated['cycle_type'], (int) $validated['machine_number']);
+
+            if ($conflictingCycle) {
+                $machineLabel = $validated['cycle_type'] === 'wash' ? 'Wash' : 'Dry';
+                $jobOrderNumber = $conflictingCycle->jobOrder?->job_order_number ?? 'another job order';
+
+                return back()->withErrors([
+                    'machine_number' => "{$machineLabel} #{$validated['machine_number']} is currently used by {$jobOrderNumber}.",
+                ])->withInput();
+            }
         }
 
         $cycleNumber = $jobOrder->cycles()->where('cycle_type', $validated['cycle_type'])->max('cycle_number') + 1;
@@ -444,10 +465,11 @@ class CycleController extends Controller
             });
     }
 
-    private function machineInUse(JobOrder $jobOrder, int $machineNumber): bool
+    private function machineConflict(JobOrder $jobOrder, string $cycleType, int $machineNumber): ?CycleRecord
     {
         return CycleRecord::query()
-            ->whereIn('cycle_type', ['wash', 'dry'])
+            ->with('jobOrder:id,job_order_number')
+            ->where('cycle_type', $cycleType)
             ->where('machine_number', $machineNumber)
             ->whereNull('ended_at')
             ->whereHas('jobOrder', fn ($query) => $query
@@ -457,7 +479,7 @@ class CycleController extends Controller
                         ->whereNull('processing_branch_id')
                         ->where('branch_id', $jobOrder->processing_branch_id ?: $jobOrder->branch_id)))
                 ->whereNotIn('status', ['completed', 'cancelled']))
-            ->exists();
+            ->first();
     }
 
     private function authorizeOrder(Request $request, JobOrder $jobOrder): void

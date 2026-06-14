@@ -31,15 +31,18 @@ class AttendanceController extends Controller
         }
 
         $workDate = today()->toDateString();
+        $workBranch = $this->workBranchForToday($employee);
         $dailyTasks = DailyTask::query()
             ->with(['completions' => fn ($query) => $query
                 ->with(['completer', 'employeeCompleter'])
-                ->where('branch_id', $employee->branch_id)
+                ->where('branch_id', $workBranch->id)
                 ->whereDate('work_date', $workDate)])
             ->where('is_active', true)
-            ->where(fn ($query) => $query->whereNull('branch_id')->orWhere('branch_id', $employee->branch_id))
+            ->where(fn ($query) => $query->whereNull('branch_id')->orWhere('branch_id', $workBranch->id))
             ->orderBy('name')
             ->get();
+
+        $employee->setRelation('branch', $workBranch);
 
         return view('attendance.kiosk', compact('employee', 'dailyTasks', 'workDate'));
     }
@@ -88,8 +91,12 @@ class AttendanceController extends Controller
         $employeesQuery = AttendanceEmployee::query()
             ->with('branch')
             ->where('status', 'active')
-            ->when($selectedBranchId, fn ($query) => $query->where('branch_id', $selectedBranchId))
-            ->when(! $canChooseBranch, fn ($query) => $query->where('branch_id', $user->branch_id))
+            ->when($selectedBranchId, fn ($query) => $query->where(fn ($query) => $query
+                ->where('branch_id', $selectedBranchId)
+                ->orWhereHas('attendanceRecords', fn ($records) => $records
+                    ->where('branch_id', $selectedBranchId)
+                    ->whereDate('work_date', '>=', $dateFrom)
+                    ->whereDate('work_date', '<=', $dateTo))))
             ->when($selectedEmployeeId, fn ($query) => $query->whereKey($selectedEmployeeId))
             ->orderBy('first_name')
             ->orderBy('last_name');
@@ -124,8 +131,8 @@ class AttendanceController extends Controller
     {
         $validated = $this->validateAttendanceRequest($request);
         $employee = $this->attendanceEmployeeForAdmin($request, (int) $validated['employee_id']);
-        $this->assertWithinAttendanceEmployeeBranch($employee, (float) $validated['latitude'], (float) $validated['longitude']);
-        $record = $this->attendanceRecordForToday($employee);
+        $branch = $this->branchForLocation((float) $validated['latitude'], (float) $validated['longitude']);
+        $record = $this->attendanceRecordForToday($employee, $branch);
 
         $record->update([
             'clock_in' => [...($record->clock_in ?? []), now()->format('H:i:s')],
@@ -140,8 +147,8 @@ class AttendanceController extends Controller
     {
         $validated = $this->validateAttendanceRequest($request);
         $employee = $this->attendanceEmployeeForAdmin($request, (int) $validated['employee_id']);
-        $this->assertWithinAttendanceEmployeeBranch($employee, (float) $validated['latitude'], (float) $validated['longitude']);
-        $record = $this->attendanceRecordForToday($employee);
+        $branch = $this->branchForLocation((float) $validated['latitude'], (float) $validated['longitude']);
+        $record = $this->attendanceRecordForToday($employee, $branch);
 
         $record->update([
             'clock_out' => [...($record->clock_out ?? []), now()->format('H:i:s')],
@@ -156,9 +163,8 @@ class AttendanceController extends Controller
     {
         $validated = $this->validatePublicAttendanceRequest($request);
         $employee = $this->employeeFromAttendanceSession();
-        $branch = $employee->branch;
-        $this->assertWithinAttendanceEmployeeBranch($employee, (float) $validated['latitude'], (float) $validated['longitude']);
-        $record = $this->attendanceRecordForToday($employee);
+        $branch = $this->branchForLocation((float) $validated['latitude'], (float) $validated['longitude']);
+        $record = $this->attendanceRecordForToday($employee, $branch);
 
         $record->update([
             'clock_in' => [...($record->clock_in ?? []), now()->format('H:i:s')],
@@ -178,9 +184,8 @@ class AttendanceController extends Controller
     {
         $validated = $this->validatePublicAttendanceRequest($request);
         $employee = $this->employeeFromAttendanceSession();
-        $branch = $employee->branch;
-        $this->assertWithinAttendanceEmployeeBranch($employee, (float) $validated['latitude'], (float) $validated['longitude']);
-        $record = $this->attendanceRecordForToday($employee);
+        $branch = $this->branchForLocation((float) $validated['latitude'], (float) $validated['longitude']);
+        $record = $this->attendanceRecordForToday($employee, $branch);
 
         $record->update([
             'clock_out' => [...($record->clock_out ?? []), now()->format('H:i:s')],
@@ -200,8 +205,7 @@ class AttendanceController extends Controller
     {
         $validated = $this->validatePublicCredentialsRequest($request);
         $employee = $this->employeeFromAttendanceSession();
-        $branch = $employee->branch;
-        $this->assertWithinAttendanceEmployeeBranch($employee, (float) $validated['latitude'], (float) $validated['longitude']);
+        $branch = $this->branchForLocation((float) $validated['latitude'], (float) $validated['longitude']);
 
         return response()->json([
             'employee' => [
@@ -220,8 +224,9 @@ class AttendanceController extends Controller
     public function publicCompleteDailyTask(Request $request, DailyTask $task)
     {
         $employee = $this->employeeFromAttendanceSession();
+        $workBranch = $this->workBranchForToday($employee);
 
-        abort_if($task->branch_id !== null && (int) $task->branch_id !== (int) $employee->branch_id, 403);
+        abort_if($task->branch_id !== null && (int) $task->branch_id !== (int) $workBranch->id, 403);
 
         $validated = $request->validate([
             'photo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
@@ -233,7 +238,7 @@ class AttendanceController extends Controller
         Storage::disk('public')->setVisibility($path, 'public');
         $existing = DailyTaskCompletion::query()
             ->where('daily_task_id', $task->id)
-            ->where('branch_id', $employee->branch_id)
+            ->where('branch_id', $workBranch->id)
             ->whereDate('work_date', $workDate)
             ->first();
 
@@ -242,7 +247,7 @@ class AttendanceController extends Controller
         }
 
         DailyTaskCompletion::updateOrCreate(
-            ['daily_task_id' => $task->id, 'branch_id' => $employee->branch_id, 'work_date' => $workDate],
+            ['daily_task_id' => $task->id, 'branch_id' => $workBranch->id, 'work_date' => $workDate],
             [
                 'completed_by' => null,
                 'completed_by_employee_id' => $employee->id,
@@ -258,13 +263,14 @@ class AttendanceController extends Controller
     public function publicScanJobOrder(Request $request)
     {
         $employee = $this->employeeFromAttendanceSession();
+        $workBranch = $this->workBranchForToday($employee);
         $validated = $request->validate([
             'qr_text' => ['required', 'string', 'max:1000'],
         ]);
 
         $jobOrder = $this->jobOrderFromQrText($validated['qr_text']);
         $productionBranch = app(JobOrderController::class)
-            ->acceptProductionByBranch($request, $jobOrder, (int) $employee->branch_id);
+            ->acceptProductionByBranch($request, $jobOrder, (int) $workBranch->id);
 
         $jobOrder->refresh();
 
@@ -344,25 +350,6 @@ class AttendanceController extends Controller
         return $branch['branch'];
     }
 
-    private function assertWithinAttendanceEmployeeBranch(AttendanceEmployee $employee, float $latitude, float $longitude): void
-    {
-        $employee->loadMissing('branch');
-        $branch = $employee->branch;
-
-        if (! $branch || $branch->latitude === null || $branch->longitude === null) {
-            return;
-        }
-
-        $radius = (int) ($branch->attendance_radius_meters ?: 150);
-        $distance = $this->distanceInMeters((float) $branch->latitude, (float) $branch->longitude, $latitude, $longitude);
-
-        if ($distance > $radius) {
-            throw ValidationException::withMessages([
-                'location' => "Attendance location is outside {$branch->name}'s allowed {$radius}m radius.",
-            ]);
-        }
-    }
-
     private function employeeFromAttendanceSession(): AttendanceEmployee
     {
         $employee = AttendanceEmployee::query()
@@ -393,7 +380,7 @@ class AttendanceController extends Controller
         return $employee;
     }
 
-    private function attendanceRecordForToday(AttendanceEmployee $employee): EmployeeAttendanceRecord
+    private function attendanceRecordForToday(AttendanceEmployee $employee, Branch $branch): EmployeeAttendanceRecord
     {
         $record = EmployeeAttendanceRecord::query()
             ->where('attendance_employee_id', $employee->id)
@@ -405,7 +392,7 @@ class AttendanceController extends Controller
         }
 
         return EmployeeAttendanceRecord::create([
-                'branch_id' => $employee->branch_id,
+                'branch_id' => $branch->id,
                 'attendance_employee_id' => $employee->id,
                 'work_date' => today()->toDateString(),
                 'clock_in' => [],
@@ -415,6 +402,16 @@ class AttendanceController extends Controller
                 'clock_in_locations' => [],
                 'clock_out_locations' => [],
         ]);
+    }
+
+    private function workBranchForToday(AttendanceEmployee $employee): Branch
+    {
+        $branchId = EmployeeAttendanceRecord::query()
+            ->where('attendance_employee_id', $employee->id)
+            ->whereDate('work_date', today())
+            ->value('branch_id');
+
+        return Branch::query()->findOrFail($branchId ?: $employee->branch_id);
     }
 
     private function attendanceRowForEmployee(AttendanceEmployee $employee, ?EmployeeAttendanceRecord $record, string $dateFrom): EmployeeAttendanceRecord
