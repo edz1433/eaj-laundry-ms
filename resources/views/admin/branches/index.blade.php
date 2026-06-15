@@ -59,7 +59,6 @@
                             <td class="px-4 py-3">
                                 <p class="font-medium">{{ $branch->name }}</p>
                                 <p class="text-xs text-muted">{{ $branch->code }} - {{ $branch->address ?: 'No address' }}</p>
-                                <p class="text-xs text-muted">{{ $branch->latitude !== null && $branch->longitude !== null ? 'Geofence: '.($branch->attendance_radius_meters ?: 150).'m' : 'Geofence not set' }}</p>
                             </td>
                             <td class="px-4 py-3">{{ $branch->contact_number ?: 'N/A' }}</td>
                             <td class="px-4 py-3">

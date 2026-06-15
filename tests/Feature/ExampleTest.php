@@ -8,6 +8,7 @@ use App\Models\AttendanceEmployee;
 use App\Models\Branch;
 use App\Models\BranchExpense;
 use App\Models\Customer;
+use App\Models\CycleRecord;
 use App\Models\DailyTask;
 use App\Models\DailyTaskCompletion;
 use App\Models\EmployeeAttendanceRecord;
@@ -248,6 +249,11 @@ class ExampleTest extends TestCase
             ->assertDontSee('Receive Laundry for Production')
             ->assertDontSee('Scan Job Order')
             ->assertDontSee('switchTab(\'scan\')', false)
+            ->assertDontSee('GPS')
+            ->assertDontSee('navigator.geolocation', false)
+            ->assertSee('Clock In')
+            ->assertSee('Clock Out')
+            ->assertSee('Branch A')
             ->assertSee('grid-cols-2', false);
     }
 
@@ -680,6 +686,10 @@ class ExampleTest extends TestCase
             'balance' => 100,
             'completed_at' => now(),
         ]);
+        $order->forceFill([
+            'created_at' => '2026-06-15 08:30:00',
+            'updated_at' => '2026-06-15 08:30:00',
+        ])->save();
         $order->items()->create([
             'laundry_service_id' => $service->id,
             'description' => $service->name,
@@ -693,6 +703,8 @@ class ExampleTest extends TestCase
             ->get(route('admin.job-orders.index', ['status' => 'completed']))
             ->assertOk()
             ->assertSee('JO-A-20260606-0001')
+            ->assertSee('Jun 15, 2026')
+            ->assertSee('08:30 AM')
             ->assertSee(route('admin.job-orders.edit', $order), false);
 
         $this
@@ -725,8 +737,6 @@ class ExampleTest extends TestCase
     public function test_public_attendance_requires_employee_session(): void
     {
         $response = $this->postJson(route('attendance.public-time-in'), [
-            'latitude' => 14.5995124,
-            'longitude' => 120.9842195,
             'face_image' => 'data:image/jpeg;base64,'.base64_encode('fake'),
         ]);
 
@@ -735,23 +745,17 @@ class ExampleTest extends TestCase
             ->assertJsonPath('redirect', route('attendance.login'));
     }
 
-    public function test_public_attendance_allows_employee_to_clock_in_at_any_configured_branch(): void
+    public function test_public_attendance_uses_selected_branch_without_gps(): void
     {
         $branchA = Branch::query()->create([
             'name' => 'Branch A',
             'code' => 'A',
-            'latitude' => 14.5995124,
-            'longitude' => 120.9842195,
-            'attendance_radius_meters' => 100,
             'is_active' => true,
         ]);
 
         $branchB = Branch::query()->create([
             'name' => 'Branch B',
             'code' => 'B',
-            'latitude' => 14.6095124,
-            'longitude' => 120.9942195,
-            'attendance_radius_meters' => 100,
             'is_active' => true,
         ]);
 
@@ -767,8 +771,7 @@ class ExampleTest extends TestCase
         $response = $this
             ->withSession(['attendance_employee_id' => $employee->id])
             ->postJson(route('attendance.public-time-in'), [
-                'latitude' => $branchB->latitude,
-                'longitude' => $branchB->longitude,
+                'branch_id' => $branchB->id,
                 'face_image' => 'data:image/jpeg;base64,'.base64_encode('fake'),
             ]);
 
@@ -780,20 +783,26 @@ class ExampleTest extends TestCase
         $record = EmployeeAttendanceRecord::query()->firstOrFail();
         $this->assertSame($employee->id, $record->attendance_employee_id);
         $this->assertSame($branchB->id, $record->branch_id);
+        $this->assertSame([], $record->clock_in_locations);
 
         $this
             ->withSession(['attendance_employee_id' => $employee->id])
             ->postJson(route('attendance.public-time-out'), [
-                'latitude' => $branchA->latitude,
-                'longitude' => $branchA->longitude,
+                'branch_id' => $branchA->id,
                 'face_image' => 'data:image/jpeg;base64,'.base64_encode('fake-out'),
             ])
             ->assertOk()
             ->assertJsonPath('branch', $branchA->name);
 
-        $record->refresh();
-        $this->assertSame($branchB->id, $record->branch_id);
-        $this->assertCount(1, $record->clock_out);
+        $this->assertDatabaseHas('employee_attendance_records', [
+            'attendance_employee_id' => $employee->id,
+            'branch_id' => $branchA->id,
+        ]);
+        $this->assertDatabaseHas('employee_attendance_records', [
+            'attendance_employee_id' => $employee->id,
+            'branch_id' => $branchB->id,
+        ]);
+        $this->assertSame(2, EmployeeAttendanceRecord::query()->count());
     }
 
     public function test_public_attendance_accepts_employee_session_and_allows_multiple_clock_ins(): void
@@ -803,9 +812,6 @@ class ExampleTest extends TestCase
         $branch = Branch::query()->create([
             'name' => 'Branch A',
             'code' => 'A',
-            'latitude' => 14.5995124,
-            'longitude' => 120.9842195,
-            'attendance_radius_meters' => 100,
             'is_active' => true,
         ]);
 
@@ -819,8 +825,7 @@ class ExampleTest extends TestCase
         ]);
 
         $payload = [
-            'latitude' => $branch->latitude,
-            'longitude' => $branch->longitude,
+            'branch_id' => $branch->id,
             'face_image' => 'data:image/jpeg;base64,'.base64_encode('fake'),
         ];
 
@@ -846,6 +851,7 @@ class ExampleTest extends TestCase
         $record = EmployeeAttendanceRecord::first();
         $this->assertCount(2, $record->clock_in);
         $this->assertCount(2, $record->clock_in_photos);
+        $this->assertSame([], $record->clock_in_locations);
         Storage::disk('uploads')->assertExists($record->clock_in_photos[0]);
     }
 
@@ -863,7 +869,7 @@ class ExampleTest extends TestCase
         ]);
 
         $admin = User::factory()->create(['role' => 'super_admin']);
-        $branch = Branch::query()->create(['name' => 'Branch A', 'code' => 'A', 'is_active' => true]);
+        $branch = Branch::query()->create(['name' => 'Branch A', 'code' => 'A', 'machine_count' => 5, 'is_active' => true]);
         $customer = Customer::query()->create([
             'branch_id' => $branch->id,
             'name' => 'Anna Santos',
@@ -887,6 +893,41 @@ class ExampleTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+        ZReading::query()->create([
+            'branch_id' => $branch->id,
+            'business_date' => today()->subDay()->toDateString(),
+            'reading_number' => 'ZR-A-PREV',
+            'prepared_by' => $admin->id,
+            'signature_name' => $admin->name,
+            'signature_role' => 'super_admin',
+            'machine_counters' => [
+                1 => [
+                    'wash' => ['beginning' => 5049, 'ending' => 5055, 'total' => 6],
+                    'dry' => ['beginning' => 7065, 'ending' => 7073, 'total' => 8],
+                ],
+            ],
+            'closed_at' => now()->subDay(),
+        ]);
+        foreach (range(1, 6) as $cycle) {
+            CycleRecord::query()->create([
+                'job_order_id' => $order->id,
+                'user_id' => $admin->id,
+                'cycle_type' => 'wash',
+                'machine_number' => 1,
+                'cycle_number' => $cycle,
+                'started_at' => now(),
+            ]);
+        }
+        foreach (range(1, 8) as $cycle) {
+            CycleRecord::query()->create([
+                'job_order_id' => $order->id,
+                'user_id' => $admin->id,
+                'cycle_type' => 'dry',
+                'machine_number' => 1,
+                'cycle_number' => $cycle,
+                'started_at' => now(),
+            ]);
+        }
 
         Payment::query()->create([
             'branch_id' => $branch->id,
@@ -1013,6 +1054,14 @@ class ExampleTest extends TestCase
             ->assertSee('Wash Cycles')
             ->assertSee('Dry Cycles')
             ->assertSee('Machine Counter Readings')
+            ->assertSee('lg:grid-cols-5', false)
+            ->assertSee('Beginning comes from the previous Z Reading ending')
+            ->assertSeeInOrder(['Daily Operations Summary', 'Cash Count', 'Machine Counter Readings'])
+            ->assertSeeInOrder(['Wash 1', 'Wash 5', 'Dry 1', 'Dry 5'])
+            ->assertSee('5055')
+            ->assertSee('5061')
+            ->assertSee('7073')
+            ->assertSee('7081')
             ->assertDontSee('Bank');
 
         $this
@@ -1066,19 +1115,13 @@ class ExampleTest extends TestCase
                     '200' => 2,
                 ],
                 'actual_gcash_amount' => '310.00',
-                'machine_counters' => [
-                    1 => [
-                        'wash' => ['beginning' => 5055, 'ending' => 5061],
-                        'dry' => ['beginning' => 7073, 'ending' => 7081],
-                    ],
-                ],
             ])
             ->assertRedirect(route('admin.z-readings.index', [
                 'branch_id' => $branch->id,
                 'business_date' => today()->toDateString(),
             ]));
 
-        $reading = ZReading::query()->firstOrFail();
+        $reading = ZReading::query()->whereDate('business_date', today())->firstOrFail();
 
         $this->assertSame('425.00', $reading->expected_cash_drawer_amount);
         $this->assertSame('400.00', $reading->actual_cash_amount);
@@ -1089,7 +1132,11 @@ class ExampleTest extends TestCase
         $this->assertSame('875.00', $reading->expected_total_amount);
         $this->assertSame('710.00', $reading->actual_total_amount);
         $this->assertSame('-165.00', $reading->over_short_amount);
+        $this->assertSame(5055, $reading->machine_counters[1]['wash']['beginning']);
+        $this->assertSame(5061, $reading->machine_counters[1]['wash']['ending']);
         $this->assertSame(6, $reading->machine_counters[1]['wash']['total']);
+        $this->assertSame(7073, $reading->machine_counters[1]['dry']['beginning']);
+        $this->assertSame(7081, $reading->machine_counters[1]['dry']['ending']);
         $this->assertSame(8, $reading->machine_counters[1]['dry']['total']);
         $this->assertEquals(250.0, $reading->expense_breakdown['owner']);
         $this->assertEquals(50.0, $reading->expense_breakdown['money_movements']['cash_in']);

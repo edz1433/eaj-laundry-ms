@@ -78,6 +78,9 @@ class BranchController extends Controller
         $validated = $request->validate($this->rules($branch));
         $validated['branch_type'] = $validated['branch_type'] ?? 'full_service';
         $validated['is_active'] = $request->boolean('is_active');
+        $validated['latitude'] = null;
+        $validated['longitude'] = null;
+        $validated['attendance_radius_meters'] = null;
 
         $branch->update($validated);
 
@@ -149,9 +152,6 @@ class BranchController extends Controller
             'address' => ['nullable', 'string', 'max:255'],
             'contact_number' => ['nullable', 'string', 'max:50'],
             'branch_type' => ['nullable', Rule::in(['full_service', 'pickup_dropoff'])],
-            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
-            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
-            'attendance_radius_meters' => ['nullable', 'integer', 'min:25', 'max:5000'],
             'machine_count' => ['nullable', 'integer', 'min:0', 'max:100'],
             'is_active' => ['nullable', 'boolean'],
         ];

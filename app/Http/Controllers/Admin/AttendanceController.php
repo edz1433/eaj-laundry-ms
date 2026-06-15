@@ -32,6 +32,10 @@ class AttendanceController extends Controller
 
         $workDate = today()->toDateString();
         $workBranch = $this->workBranchForToday($employee);
+        $branches = Branch::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'address']);
         $dailyTasks = DailyTask::query()
             ->with(['completions' => fn ($query) => $query
                 ->with(['completer', 'employeeCompleter'])
@@ -44,7 +48,7 @@ class AttendanceController extends Controller
 
         $employee->setRelation('branch', $workBranch);
 
-        return view('attendance.kiosk', compact('employee', 'dailyTasks', 'workDate'));
+        return view('attendance.kiosk', compact('employee', 'dailyTasks', 'workDate', 'branches', 'workBranch'));
     }
 
     public function connectivity()
@@ -157,13 +161,12 @@ class AttendanceController extends Controller
     {
         $validated = $this->validateAttendanceRequest($request);
         $employee = $this->attendanceEmployeeForAdmin($request, (int) $validated['employee_id']);
-        $branch = $this->branchForLocation((float) $validated['latitude'], (float) $validated['longitude']);
+        $branch = $this->branchForAttendanceEmployee($employee);
         $record = $this->attendanceRecordForToday($employee, $branch);
 
         $record->update([
             'clock_in' => [...($record->clock_in ?? []), now()->format('H:i:s')],
             'clock_in_photos' => [...($record->clock_in_photos ?? []), $this->storeAttendanceImage($validated['face_image'], 'attendance-proofs')],
-            'clock_in_locations' => [...($record->clock_in_locations ?? []), $this->locationPayload($validated)],
         ]);
 
         return back()->with('success', "{$employee->name} timed in successfully.");
@@ -173,13 +176,12 @@ class AttendanceController extends Controller
     {
         $validated = $this->validateAttendanceRequest($request);
         $employee = $this->attendanceEmployeeForAdmin($request, (int) $validated['employee_id']);
-        $branch = $this->branchForLocation((float) $validated['latitude'], (float) $validated['longitude']);
+        $branch = $this->branchForAttendanceEmployee($employee);
         $record = $this->attendanceRecordForToday($employee, $branch);
 
         $record->update([
             'clock_out' => [...($record->clock_out ?? []), now()->format('H:i:s')],
             'clock_out_photos' => [...($record->clock_out_photos ?? []), $this->storeAttendanceImage($validated['face_image'], 'attendance-proofs')],
-            'clock_out_locations' => [...($record->clock_out_locations ?? []), $this->locationPayload($validated)],
         ]);
 
         return back()->with('success', "{$employee->name} timed out successfully.");
@@ -189,13 +191,12 @@ class AttendanceController extends Controller
     {
         $validated = $this->validatePublicAttendanceRequest($request);
         $employee = $this->employeeFromAttendanceSession();
-        $branch = $this->branchForLocation((float) $validated['latitude'], (float) $validated['longitude']);
+        $branch = $this->branchForPublicSelection((int) $validated['branch_id']);
         $record = $this->attendanceRecordForToday($employee, $branch);
 
         $record->update([
             'clock_in' => [...($record->clock_in ?? []), now()->format('H:i:s')],
             'clock_in_photos' => [...($record->clock_in_photos ?? []), $this->storeAttendanceImage($validated['face_image'], 'attendance-proofs')],
-            'clock_in_locations' => [...($record->clock_in_locations ?? []), $this->locationPayload($validated)],
         ]);
 
         return response()->json([
@@ -210,13 +211,12 @@ class AttendanceController extends Controller
     {
         $validated = $this->validatePublicAttendanceRequest($request);
         $employee = $this->employeeFromAttendanceSession();
-        $branch = $this->branchForLocation((float) $validated['latitude'], (float) $validated['longitude']);
+        $branch = $this->branchForPublicSelection((int) $validated['branch_id']);
         $record = $this->attendanceRecordForToday($employee, $branch);
 
         $record->update([
             'clock_out' => [...($record->clock_out ?? []), now()->format('H:i:s')],
             'clock_out_photos' => [...($record->clock_out_photos ?? []), $this->storeAttendanceImage($validated['face_image'], 'attendance-proofs')],
-            'clock_out_locations' => [...($record->clock_out_locations ?? []), $this->locationPayload($validated)],
         ]);
 
         return response()->json([
@@ -229,9 +229,11 @@ class AttendanceController extends Controller
 
     public function preparePublicAttendance(Request $request)
     {
-        $validated = $this->validatePublicCredentialsRequest($request);
+        $validated = $request->validate([
+            'branch_id' => ['required', 'integer', 'exists:branches,id'],
+        ]);
         $employee = $this->employeeFromAttendanceSession();
-        $branch = $this->branchForLocation((float) $validated['latitude'], (float) $validated['longitude']);
+        $branch = $this->branchForPublicSelection((int) $validated['branch_id']);
 
         return response()->json([
             'employee' => [
@@ -312,8 +314,6 @@ class AttendanceController extends Controller
     {
         return $request->validate([
             'employee_id' => ['required', 'exists:attendance_employees,id'],
-            'latitude' => ['required', 'numeric', 'between:-90,90'],
-            'longitude' => ['required', 'numeric', 'between:-180,180'],
             'face_image' => ['required', 'string'],
         ]);
     }
@@ -321,17 +321,8 @@ class AttendanceController extends Controller
     private function validatePublicAttendanceRequest(Request $request): array
     {
         return $request->validate([
-            'latitude' => ['required', 'numeric', 'between:-90,90'],
-            'longitude' => ['required', 'numeric', 'between:-180,180'],
+            'branch_id' => ['required', 'integer', 'exists:branches,id'],
             'face_image' => ['required', 'string'],
-        ]);
-    }
-
-    private function validatePublicCredentialsRequest(Request $request): array
-    {
-        return $request->validate([
-            'latitude' => ['required', 'numeric', 'between:-90,90'],
-            'longitude' => ['required', 'numeric', 'between:-180,180'],
         ]);
     }
 
@@ -346,33 +337,36 @@ class AttendanceController extends Controller
         }
     }
 
-    private function branchForLocation(float $latitude, float $longitude): Branch
+    private function branchForAttendanceEmployee(AttendanceEmployee $employee): Branch
     {
         $branch = Branch::query()
+            ->whereKey($employee->branch_id)
             ->where('is_active', true)
-            ->whereNotNull('latitude')
-            ->whereNotNull('longitude')
-            ->get()
-            ->map(function (Branch $branch) use ($latitude, $longitude) {
-                $radius = (int) ($branch->attendance_radius_meters ?: 150);
-
-                return [
-                    'branch' => $branch,
-                    'distance' => $this->distanceInMeters((float) $branch->latitude, (float) $branch->longitude, $latitude, $longitude),
-                    'radius' => $radius,
-                ];
-            })
-            ->filter(fn (array $result) => $result['distance'] <= $result['radius'])
-            ->sortBy('distance')
             ->first();
 
         if (! $branch) {
             throw ValidationException::withMessages([
-                'location' => 'This device is not inside any configured branch attendance area.',
+                'branch' => 'The assigned attendance branch is inactive or missing.',
             ]);
         }
 
-        return $branch['branch'];
+        return $branch;
+    }
+
+    private function branchForPublicSelection(int $branchId): Branch
+    {
+        $branch = Branch::query()
+            ->whereKey($branchId)
+            ->where('is_active', true)
+            ->first();
+
+        if (! $branch) {
+            throw ValidationException::withMessages([
+                'branch_id' => 'Please choose an active branch.',
+            ]);
+        }
+
+        return $branch;
     }
 
     private function employeeFromAttendanceSession(): AttendanceEmployee
@@ -409,6 +403,7 @@ class AttendanceController extends Controller
     {
         $record = EmployeeAttendanceRecord::query()
             ->where('attendance_employee_id', $employee->id)
+            ->where('branch_id', $branch->id)
             ->whereDate('work_date', today())
             ->first();
 
@@ -434,6 +429,7 @@ class AttendanceController extends Controller
         $branchId = EmployeeAttendanceRecord::query()
             ->where('attendance_employee_id', $employee->id)
             ->whereDate('work_date', today())
+            ->latest('updated_at')
             ->value('branch_id');
 
         return Branch::query()->findOrFail($branchId ?: $employee->branch_id);
@@ -443,7 +439,6 @@ class AttendanceController extends Controller
     {
         if ($record) {
             $record->setRelation('employee', $employee);
-            $record->setRelation('branch', $employee->branch);
 
             return $record;
         }
@@ -485,15 +480,6 @@ class AttendanceController extends Controller
         return JobOrder::query()
             ->where('job_order_number', $qrText)
             ->firstOrFail();
-    }
-
-    private function locationPayload(array $validated): array
-    {
-        return [
-            'latitude' => (float) $validated['latitude'],
-            'longitude' => (float) $validated['longitude'],
-            'captured_at' => now()->toDateTimeString(),
-        ];
     }
 
     private function storeAttendanceImage(string $image, string $directory): string
@@ -539,18 +525,6 @@ class AttendanceController extends Controller
         } catch (\Throwable) {
             return $fallback;
         }
-    }
-
-    private function distanceInMeters(float $lat1, float $lng1, float $lat2, float $lng2): float
-    {
-        $earthRadius = 6371000;
-        $latDelta = deg2rad($lat2 - $lat1);
-        $lngDelta = deg2rad($lng2 - $lng1);
-
-        $a = sin($latDelta / 2) ** 2
-            + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($lngDelta / 2) ** 2;
-
-        return $earthRadius * 2 * atan2(sqrt($a), sqrt(1 - $a));
     }
 
     private function challengeCacheKey(string $nonce): string

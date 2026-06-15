@@ -187,22 +187,6 @@
                         <textarea name="branch_address" rows="3" class="w-full rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 py-2 text-sm">{{ old('branch_address', $branch->address) }}</textarea>
                     </div>
 
-                    <div>
-                        <label class="block text-sm font-medium mb-2">Attendance Latitude</label>
-                        <input type="number" step="0.0000001" name="branch_latitude" value="{{ old('branch_latitude', $branch->latitude) }}" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium mb-2">Attendance Longitude</label>
-                        <input type="number" step="0.0000001" name="branch_longitude" value="{{ old('branch_longitude', $branch->longitude) }}" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
-                    </div>
-
-                    <div class="lg:col-span-2">
-                        <label class="block text-sm font-medium mb-2">Allowed Attendance Radius (meters)</label>
-                        <input type="number" min="25" max="5000" name="attendance_radius_meters" value="{{ old('attendance_radius_meters', $branch->attendance_radius_meters) }}" placeholder="150" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
-                        <p class="mt-1 text-xs text-muted">Set branch coordinates to require employee time clock records inside this radius.</p>
-                    </div>
-
                     <div class="lg:col-span-2">
                         <label class="block text-sm font-medium mb-2">Washing Machines</label>
                         <input type="number" min="0" max="100" name="machine_count" value="{{ old('machine_count', $branch->machine_count ?? 0) }}" placeholder="5" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">

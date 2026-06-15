@@ -79,7 +79,6 @@
                         <th class="px-4 py-3">Time In Proof</th>
                         <th class="px-4 py-3">Clock Out</th>
                         <th class="px-4 py-3">Time Out Proof</th>
-                        <th class="px-4 py-3">GPS</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-border dark:divide-gray-800">
@@ -168,17 +167,9 @@
                                     @endforelse
                                 </div>
                             </td>
-                            <td class="px-4 py-3 text-xs text-muted">
-                                @php($location = ($record->clock_in_locations[0] ?? null) ?: ($record->clock_out_locations[0] ?? null))
-                                @if($location)
-                                    {{ $location['latitude'] ?? '' }}, {{ $location['longitude'] ?? '' }}
-                                @else
-                                    -
-                                @endif
-                            </td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="px-4 py-10 text-center text-muted">No attendance logs for this date.</td></tr>
+                        <tr><td colspan="6" class="px-4 py-10 text-center text-muted">No attendance logs for this date.</td></tr>
                     @endforelse
                 </tbody>
             </table>

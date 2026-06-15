@@ -23,7 +23,7 @@
                 <div class="min-w-0">
                     <p class="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">{{ $appBusinessName }}</p>
                     <h1 class="truncate text-base font-bold">{{ $employee->name }}</h1>
-                    <p class="truncate text-xs text-muted">{{ $employee->branch?->name }}</p>
+                    <p class="truncate text-xs text-muted" x-text="branchName"></p>
                 </div>
             </div>
             <div class="flex shrink-0 items-center gap-2">
@@ -60,9 +60,6 @@
                             <span class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold backdrop-blur" :class="cameraReady ? 'bg-green-500/90 text-white' : 'bg-black/70 text-white/70'">
                                 <span class="h-1.5 w-1.5 rounded-full bg-current"></span> CAM
                             </span>
-                            <span class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold backdrop-blur" :class="latitude && longitude ? 'bg-green-500/90 text-white' : 'bg-black/70 text-white/70'">
-                                <span class="h-1.5 w-1.5 rounded-full bg-current"></span> GPS
-                            </span>
                         </div>
                     </div>
 
@@ -72,7 +69,6 @@
                                 <p class="truncate text-xs font-semibold" x-text="message"></p>
                                 <p class="mt-0.5 truncate text-[10px] text-white/70" x-text="branchAddress"></p>
                             </div>
-                            <button x-show="activeTab === 'clock' && proofPreview" type="button" @click="proofImage = ''; proofPreview = ''; message = 'Capture a new proof photo.'" class="shrink-0 rounded-lg bg-white/15 px-2.5 py-1.5 text-[10px] font-semibold">Retake</button>
                         </div>
                     </div>
                 </div>
@@ -84,7 +80,7 @@
                 </div>
 
                 <div x-show="!secureContext" x-cloak class="mb-2 shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
-                    Camera and GPS require HTTPS. Open the secure application URL.
+                    Camera requires HTTPS. Open the secure application URL.
                 </div>
 
                 <div x-show="cameraHelp" x-cloak class="mb-2 shrink-0 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
@@ -92,47 +88,25 @@
                 </div>
 
                 <div x-show="activeTab === 'clock'" class="flex min-h-0 flex-1 flex-col justify-center gap-2.5">
-                    <div class="grid grid-cols-3 gap-1.5">
-                        <div class="rounded-xl border px-2 py-2 text-center" :class="latitude && longitude ? 'border-green-200 bg-green-50 text-green-700' : 'border-border bg-smoke text-muted dark:border-gray-800 dark:bg-gray-950'">
-                            <p class="text-[9px] font-bold uppercase tracking-wide">Location</p>
-                            <p class="mt-0.5 truncate text-[11px] font-semibold" x-text="latitude && longitude ? 'Ready' : 'Waiting'"></p>
-                        </div>
-                        <div class="rounded-xl border px-2 py-2 text-center" :class="verified ? 'border-green-200 bg-green-50 text-green-700' : 'border-border bg-smoke text-muted dark:border-gray-800 dark:bg-gray-950'">
-                            <p class="text-[9px] font-bold uppercase tracking-wide">Branch</p>
-                            <p class="mt-0.5 truncate text-[11px] font-semibold" x-text="verified ? 'Verified' : 'Check'"></p>
-                        </div>
-                        <div class="rounded-xl border px-2 py-2 text-center" :class="proofImage ? 'border-green-200 bg-green-50 text-green-700' : 'border-border bg-smoke text-muted dark:border-gray-800 dark:bg-gray-950'">
-                            <p class="text-[9px] font-bold uppercase tracking-wide">Photo</p>
-                            <p class="mt-0.5 truncate text-[11px] font-semibold" x-text="proofImage ? 'Captured' : 'Needed'"></p>
-                        </div>
+                    <div class="rounded-xl border border-border bg-smoke p-2 dark:border-gray-800 dark:bg-gray-950">
+                        <label class="mb-1.5 block px-1 text-[10px] font-bold uppercase tracking-wide text-muted">Branch</label>
+                        <select x-model="selectedBranchId" @change="syncSelectedBranch()" class="h-12 w-full rounded-lg border border-border bg-white px-3 text-sm font-semibold dark:border-gray-800 dark:bg-gray-900">
+                            @foreach($branches as $optionBranch)
+                                <option value="{{ $optionBranch->id }}">{{ $optionBranch->name }}</option>
+                            @endforeach
+                        </select>
                     </div>
-
-                    <div class="grid grid-cols-2 gap-2">
-                        <button type="button" @click="locate()" :disabled="verifying" class="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-border bg-white px-3 text-sm font-semibold shadow-sm active:scale-[.98] disabled:opacity-50 dark:border-gray-800 dark:bg-gray-950">
-                            <span data-lucide="attendance" class="h-4 w-4 text-primary"></span>
-                            Refresh GPS
-                        </button>
-                        <button type="button" @click="prepare()" :disabled="!online || !latitude || !longitude || verifying" class="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-primary px-3 text-sm font-semibold text-white shadow-sm active:scale-[.98] disabled:opacity-40">
-                            <span data-lucide="shieldCheck" class="h-4 w-4"></span>
-                            <span x-text="verifying ? 'Checking...' : 'Verify Branch'"></span>
-                        </button>
-                    </div>
-
-                    <button type="button" @click="captureProof()" :disabled="!verified || !cameraReady" class="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border-2 border-primary bg-primary/5 text-sm font-bold text-primary active:scale-[.99] disabled:border-border disabled:bg-smoke disabled:text-muted disabled:opacity-60 dark:disabled:border-gray-800 dark:disabled:bg-gray-950">
-                        <span data-lucide="eye" class="h-4 w-4"></span>
-                        <span x-text="proofImage ? 'Capture Again' : 'Capture Proof Photo'"></span>
-                    </button>
 
                     <div x-show="lastResult" x-cloak class="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-center text-xs font-semibold text-green-800">
                         <p x-text="lastResult"></p>
                     </div>
 
                     <div class="grid grid-cols-2 gap-2">
-                        <button type="button" @click="submit(@js(route('attendance.public-time-in')))" :disabled="!online || !canSubmit || submitting" class="h-14 rounded-xl bg-primary text-base font-bold text-white shadow-md active:scale-[.98] disabled:opacity-40">
-                            TIME IN
+                        <button type="button" @click="submit(@js(route('attendance.public-time-in')), 'Clock In')" :disabled="!online || !canSubmit || submitting" class="h-14 rounded-xl bg-primary text-base font-bold text-white shadow-md active:scale-[.98] disabled:opacity-40">
+                            <span x-text="submitting ? 'SAVING...' : 'Clock In'"></span>
                         </button>
-                        <button type="button" @click="submit(@js(route('attendance.public-time-out')))" :disabled="!online || !canSubmit || submitting" class="h-14 rounded-xl border-2 border-primary bg-white text-base font-bold text-primary shadow-sm active:scale-[.98] disabled:border-border disabled:text-muted disabled:opacity-40 dark:bg-gray-950">
-                            TIME OUT
+                        <button type="button" @click="submit(@js(route('attendance.public-time-out')), 'Clock Out')" :disabled="!online || !canSubmit || submitting" class="h-14 rounded-xl border-2 border-primary bg-white text-base font-bold text-primary shadow-sm active:scale-[.98] disabled:border-border disabled:text-muted disabled:opacity-40 dark:bg-gray-950">
+                            <span x-text="submitting ? 'SAVING...' : 'Clock Out'"></span>
                         </button>
                     </div>
                 </div>
@@ -246,7 +220,6 @@
         function publicTimeClock() {
             return {
                 stream: null,
-                locationWatchId: null,
                 cameraOpenId: 0,
                 activeTab: 'clock',
                 openTaskId: null,
@@ -256,12 +229,11 @@
                 connectivityTimer: null,
                 cameraHelp: '',
                 employeeName: @js($employee->name),
-                branchName: @js($employee->branch?->name),
-                branchAddress: @js($employee->branch?->address ?: 'No branch address'),
-                latitude: '',
-                longitude: '',
-                locationAccuracy: null,
-                verified: false,
+                branches: @js($branches->map(fn ($branch) => ['id' => (string) $branch->id, 'name' => $branch->name, 'address' => $branch->address ?: 'No branch address'])->values()),
+                selectedBranchId: @js((string) $workBranch->id),
+                branchName: @js($workBranch->name),
+                branchAddress: @js($workBranch->address ?: 'No branch address'),
+                verified: true,
                 verifying: false,
                 submitting: false,
                 proofImage: '',
@@ -273,9 +245,10 @@
                 scanResult: '',
                 scanError: '',
                 currentTime: '',
-                message: 'Allow GPS, capture proof, then clock in or clock out.',
+                resetTimer: null,
+                message: 'Choose branch, then tap Clock In or Clock Out.',
                 get canSubmit() {
-                    return this.verified && this.proofImage && this.latitude && this.longitude;
+                    return this.selectedBranchId && this.cameraReady;
                 },
                 init() {
                     this.startClock();
@@ -284,12 +257,11 @@
                     this.connectivityTimer = window.setInterval(() => this.checkConnectivity(), 15000);
                     this.$nextTick(() => {
                         if (!this.secureContext) {
-                            this.message = 'Camera and GPS need HTTPS on phones. Plain IP/HTTP access is blocked by the browser.';
+                            this.message = 'Camera needs HTTPS on phones. Plain IP/HTTP access is blocked by the browser.';
                             return;
                         }
 
                         this.startCamera();
-                        this.locate();
                     });
                 },
                 bindDeviceEvents() {
@@ -306,7 +278,6 @@
                         }
 
                         this.checkConnectivity();
-                        this.locate();
 
                         if (this.activeTab === 'clock') {
                             this.startCamera();
@@ -316,7 +287,6 @@
                     });
                     window.addEventListener('beforeunload', () => {
                         this.stopCamera();
-                        this.stopLocationWatch();
                         window.clearInterval(this.connectivityTimer);
                     });
                 },
@@ -368,7 +338,16 @@
                     this.refreshIcons();
                 },
                 async startCamera() {
-                    await this.openCamera('user', 'Camera ready. Verify employee and branch.');
+                    await this.openCamera('user', 'Camera ready. Choose branch, then tap Clock In or Clock Out.');
+                },
+                syncSelectedBranch() {
+                    const selected = this.branches.find(branch => String(branch.id) === String(this.selectedBranchId));
+                    this.branchName = selected?.name || 'Selected branch';
+                    this.branchAddress = selected?.address || 'No branch address';
+                    this.proofImage = '';
+                    this.proofPreview = '';
+                    this.lastResult = '';
+                    this.message = 'Branch selected. Tap Clock In or Clock Out.';
                 },
                 async startQrScanner() {
                     this.proofPreview = '';
@@ -417,7 +396,7 @@
 
                     if (!this.secureContext) {
                         this.cameraReady = false;
-                        this.cameraHelp = 'Phone browsers block camera and GPS on HTTP/IP access. Use HTTPS for this system URL.';
+                        this.cameraHelp = 'Phone browsers block camera on HTTP/IP access. Use HTTPS for this system URL.';
                         this.message = this.cameraHelp;
                         return false;
                     }
@@ -488,7 +467,7 @@
                 },
                 cameraErrorMessage(error) {
                     if (!this.secureContext) {
-                        return 'Phone browsers block camera and GPS on HTTP/IP access. Use HTTPS for this system URL.';
+                        return 'Phone browsers block camera on HTTP/IP access. Use HTTPS for this system URL.';
                     }
 
                     if (error?.name === 'NotAllowedError' || error?.name === 'SecurityError') {
@@ -505,95 +484,11 @@
 
                     return 'Camera could not open. Use HTTPS and allow camera permission, then try again.';
                 },
-                locate() {
-                    if (!this.secureContext) {
-                        this.message = 'GPS needs HTTPS on phones. Plain IP/HTTP access is blocked by the browser.';
-                        return;
-                    }
-
-                    if (!navigator.geolocation) {
-                        this.message = 'GPS is not supported by this browser.';
-                        return;
-                    }
-
-                    this.stopLocationWatch();
-                    this.message = 'Getting accurate GPS location...';
-                    this.locationWatchId = navigator.geolocation.watchPosition(
-                        position => {
-                            this.latitude = position.coords.latitude.toFixed(7);
-                            this.longitude = position.coords.longitude.toFixed(7);
-                            this.locationAccuracy = position.coords.accuracy ? Math.round(position.coords.accuracy) : null;
-                            this.message = this.locationAccuracy
-                                ? `GPS ready (accuracy about ${this.locationAccuracy}m).`
-                                : 'GPS location ready.';
-
-                            if (this.locationAccuracy !== null && this.locationAccuracy <= 50) {
-                                this.stopLocationWatch();
-                            }
-                        },
-                        error => {
-                            this.stopLocationWatch();
-                            this.message = this.locationErrorMessage(error);
-                        },
-                        { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 }
-                    );
-                },
-                stopLocationWatch() {
-                    if (this.locationWatchId === null) return;
-
-                    navigator.geolocation.clearWatch(this.locationWatchId);
-                    this.locationWatchId = null;
-                },
-                locationErrorMessage(error) {
-                    if (!this.secureContext) {
-                        return 'GPS requires an HTTPS application URL.';
-                    }
-
-                    if (error?.code === 1) {
-                        return 'Location permission is blocked. Enable precise location for this app, then tap Refresh GPS.';
-                    }
-
-                    if (error?.code === 2) {
-                        return 'GPS location is unavailable. Turn on device Location and try again.';
-                    }
-
-                    if (error?.code === 3) {
-                        return 'GPS timed out. Move near a window or outdoors, then tap Refresh GPS.';
-                    }
-
-                    return 'Could not get the device location.';
-                },
-                async prepare() {
-                    this.verifying = true;
-                    this.verified = false;
-                    this.proofImage = '';
-                    this.proofPreview = '';
-                    this.lastResult = '';
-                    this.message = 'Verifying employee login and branch location...';
-
-                    const response = await this.sendJson(@js(route('attendance.prepare')), {
-                        latitude: this.latitude,
-                        longitude: this.longitude,
-                    });
-
-                    this.verifying = false;
-
-                    if (!response.ok) {
-                        this.message = response.message;
-                        return;
-                    }
-
-                    this.employeeName = response.data.employee.name;
-                    this.branchName = response.data.branch.name;
-                    this.branchAddress = response.data.branch.address || 'No branch address';
-                    this.verified = true;
-                    this.message = 'Verified. Capture proof photo with overlay.';
-                },
                 captureProof() {
                     const video = this.$refs.video;
                     if (!video.videoWidth) {
                         this.message = 'Open the camera first.';
-                        return;
+                        return false;
                     }
 
                     const maxWidth = 900;
@@ -614,7 +509,6 @@
                         this.employeeName,
                         this.branchName,
                         this.branchAddress,
-                        `GPS: ${this.latitude}, ${this.longitude}${this.locationAccuracy ? ' +/- ' + this.locationAccuracy + 'm' : ''}`,
                         new Date().toLocaleString([], { hour12: true }),
                     ];
                     const wrappedLines = this.overlayLines(context, lines, width - 48);
@@ -631,7 +525,8 @@
 
                     this.proofImage = canvas.toDataURL('image/jpeg', 0.72);
                     this.proofPreview = this.proofImage;
-                    this.message = `Proof captured (${Math.round(this.proofImage.length * 0.75 / 1024)} KB approx).`;
+                    this.message = `Photo captured. Saving attendance...`;
+                    return true;
                 },
                 overlayLines(context, lines, maxWidth) {
                     const wrapped = [];
@@ -661,19 +556,23 @@
 
                     return wrapped;
                 },
-                async submit(url) {
+                async submit(url, actionLabel) {
                     if (!this.canSubmit) {
-                        this.message = 'Verify employee, capture proof, and allow GPS first.';
+                        this.message = 'Choose a branch and make sure the camera is ready first.';
                         return;
                     }
 
                     this.submitting = true;
                     this.lastResult = '';
-                    this.message = 'Saving attendance...';
+                    this.message = `${actionLabel} photo capture...`;
+
+                    if (!this.captureProof()) {
+                        this.submitting = false;
+                        return;
+                    }
 
                     const response = await this.sendJson(url, {
-                        latitude: this.latitude,
-                        longitude: this.longitude,
+                        branch_id: this.selectedBranchId,
                         face_image: this.proofImage,
                     });
 
@@ -685,9 +584,15 @@
                     }
 
                     this.lastResult = response.data.message;
-                    this.message = `${response.data.employee} recorded at ${response.data.time}.`;
+                    this.message = `${response.data.employee} ${actionLabel.toLowerCase()} at ${response.data.branch} - ${response.data.time}.`;
+                    window.clearTimeout(this.resetTimer);
+                    this.resetTimer = window.setTimeout(() => this.resetClock(), 1800);
+                },
+                resetClock() {
                     this.proofImage = '';
                     this.proofPreview = '';
+                    this.lastResult = '';
+                    this.message = 'Ready for next Clock In or Clock Out.';
                     this.$nextTick(() => {
                         if (this.stream && this.$refs.video) {
                             this.$refs.video.srcObject = this.stream;

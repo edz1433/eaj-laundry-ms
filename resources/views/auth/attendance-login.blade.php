@@ -25,7 +25,7 @@
                     Attendance tracking
                 </div>
                 <h1 class="text-xl font-semibold tracking-normal">Employee Time Clock</h1>
-                <p class="mt-1 text-sm text-muted">Login to clock in or clock out with photo and branch location.</p>
+                <p class="mt-1 text-sm text-muted">Login to clock in or clock out with a proof photo.</p>
             </div>
 
             <form method="POST" action="{{ route('attendance.login.submit') }}" class="space-y-4" x-on:submit="loading = true">

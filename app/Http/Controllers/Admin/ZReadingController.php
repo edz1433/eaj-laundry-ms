@@ -108,6 +108,7 @@ class ZReadingController extends Controller
             (int) collect($summary['machine_cycles'])->max('machine_number'),
             (int) collect(array_keys($reading?->machine_counters ?? []))->max()
         );
+        $machineCounters = $this->machineCountersForDate((int) $branch->id, $businessDate, $machineCount, $summary, $reading);
 
         return view('admin.z-readings.create', [
             'branch' => $branch,
@@ -118,6 +119,7 @@ class ZReadingController extends Controller
             'reading' => $reading,
             'summary' => $summary,
             'machineCount' => $machineCount,
+            'machineCounters' => $machineCounters,
         ]);
     }
 
@@ -146,8 +148,16 @@ class ZReadingController extends Controller
         $cashCount = $this->normalizedCashCount($validated['cash_count'] ?? []);
         $actualCash = $this->cashCountTotal($cashCount);
         $actualGcash = round((float) ($validated['actual_gcash_amount'] ?? 0), 2);
-        $machineCounters = $this->normalizedMachineCounters($validated['machine_counters'] ?? []);
         $summary = $this->summary($branchId, $businessDate);
+        $machineCount = max(
+            1,
+            (int) Branch::query()->whereKey($branchId)->value('machine_count'),
+            (int) collect($summary['machine_cycles'])->max('machine_number'),
+            (int) collect(array_keys($validated['machine_counters'] ?? []))->max()
+        );
+        $machineCounters = $this->normalizedMachineCounters(
+            $validated['machine_counters'] ?? $this->machineCountersForDate($branchId, $businessDate, $machineCount, $summary)
+        );
         $actualTotal = round($actualCash + $actualGcash, 2);
         $overShort = round($actualTotal - (float) $summary['expected_total_amount'], 2);
 
@@ -427,6 +437,47 @@ class ZReadingController extends Controller
     {
         return collect(self::DENOMINATIONS)
             ->mapWithKeys(fn (string $label, string $value) => [$value => max(0, (int) ($cashCount[$value] ?? 0))])
+            ->all();
+    }
+
+    private function machineCountersForDate(int $branchId, string $businessDate, int $machineCount, array $summary, ?ZReading $reading = null): array
+    {
+        if ($reading?->machine_counters) {
+            return $reading->machine_counters;
+        }
+
+        $previousReading = ZReading::query()
+            ->where('branch_id', $branchId)
+            ->whereDate('business_date', '<', $businessDate)
+            ->latest('business_date')
+            ->latest('id')
+            ->first(['machine_counters']);
+        $previousCounters = $previousReading?->machine_counters ?? [];
+
+        $cycleCounts = collect($summary['machine_cycles'] ?? [])
+            ->groupBy('machine_number')
+            ->map(fn ($rows) => collect($rows)->mapWithKeys(fn ($row) => [
+                $row['cycle_type'] => (int) $row['cycle_count'],
+            ])->all());
+
+        return collect(range(1, $machineCount))
+            ->mapWithKeys(function (int $machine) use ($previousCounters, $cycleCounts) {
+                $types = [];
+
+                foreach (['wash', 'dry'] as $type) {
+                    $beginning = (int) (data_get($previousCounters, "{$machine}.{$type}.ending") ?? 0);
+                    $total = (int) data_get($cycleCounts, "{$machine}.{$type}", 0);
+                    $ending = $beginning + $total;
+
+                    $types[$type] = [
+                        'beginning' => $beginning,
+                        'ending' => $ending,
+                        'total' => $total,
+                    ];
+                }
+
+                return [$machine => $types];
+            })
             ->all();
     }
 

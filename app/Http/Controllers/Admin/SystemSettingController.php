@@ -77,9 +77,6 @@ class SystemSettingController extends Controller
             'branch_address' => ['nullable', 'string', 'max:255'],
             'branch_contact' => ['nullable', 'string', 'max:50'],
             'branch_type' => ['nullable', Rule::in(['full_service', 'pickup_dropoff'])],
-            'branch_latitude' => ['nullable', 'numeric', 'between:-90,90'],
-            'branch_longitude' => ['nullable', 'numeric', 'between:-180,180'],
-            'attendance_radius_meters' => ['nullable', 'integer', 'min:25', 'max:5000'],
             'machine_count' => ['nullable', 'integer', 'min:0', 'max:100'],
             'receipt_header' => ['nullable', 'string'],
             'receipt_footer' => ['nullable', 'string'],
@@ -124,8 +121,7 @@ class SystemSettingController extends Controller
                 PublicUpload::delete($settings->business_logo);
             }
 
-            $validated['business_logo'] = $request->file('business_logo')
-                ->store('settings', PublicUpload::DISK);
+            $validated['business_logo'] = PublicUpload::store($request->file('business_logo'), 'settings');
         }
 
         $branch->update([
@@ -134,9 +130,9 @@ class SystemSettingController extends Controller
             'address' => $validated['branch_address'] ?? null,
             'contact_number' => $validated['branch_contact'] ?? null,
             'branch_type' => $validated['branch_type'] ?? 'full_service',
-            'latitude' => $validated['branch_latitude'] ?? null,
-            'longitude' => $validated['branch_longitude'] ?? null,
-            'attendance_radius_meters' => $validated['attendance_radius_meters'] ?? null,
+            'latitude' => null,
+            'longitude' => null,
+            'attendance_radius_meters' => null,
             'machine_count' => $validated['machine_count'] ?? 0,
         ]);
 
@@ -158,9 +154,6 @@ class SystemSettingController extends Controller
             $validated['branch_address'],
             $validated['branch_contact'],
             $validated['branch_type'],
-            $validated['branch_latitude'],
-            $validated['branch_longitude'],
-            $validated['attendance_radius_meters'],
             $validated['machine_count'],
             $validated['receipt_header'],
             $validated['receipt_footer'],

@@ -79,7 +79,7 @@
         <table class="w-full text-left text-sm">
             <thead class="border-b border-border bg-smoke text-xs uppercase text-muted dark:border-gray-800 dark:bg-gray-950">
                 <tr>
-                    <th class="px-4 py-3">JO #</th><th class="px-4 py-3">Customer</th><th class="px-4 py-3">Branch</th><th class="px-4 py-3">Processing</th><th class="px-4 py-3">Total</th><th class="px-4 py-3">Balance</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th>
+                    <th class="px-4 py-3">JO #</th><th class="px-4 py-3">Created</th><th class="px-4 py-3">Customer</th><th class="px-4 py-3">Branch</th><th class="px-4 py-3">Processing</th><th class="px-4 py-3">Total</th><th class="px-4 py-3">Balance</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-border dark:divide-gray-800">
@@ -90,6 +90,10 @@
                             @if($order->is_rush)
                                 <span class="mt-1 inline-flex rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-800 dark:border-amber-900/60 dark:bg-amber-500/10 dark:text-amber-300">Rush</span>
                             @endif
+                        </td>
+                        <td class="px-4 py-3">
+                            <p class="font-medium">{{ $order->created_at?->format('M d, Y') }}</p>
+                            <p class="text-xs text-muted">{{ $order->created_at?->format('h:i A') }}</p>
                         </td>
                         <td class="px-4 py-3">
                             <p>{{ $order->customer?->name }}</p>
@@ -138,7 +142,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="8" class="px-4 py-10 text-center text-muted">No job orders found.</td></tr>
+                    <tr><td colspan="9" class="px-4 py-10 text-center text-muted">No job orders found.</td></tr>
                 @endforelse
             </tbody>
         </table>

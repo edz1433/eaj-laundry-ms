@@ -8,6 +8,8 @@ use App\Models\SystemSetting;
 use App\Models\SystemTrialSetting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class SystemSettingsTest extends TestCase
@@ -32,7 +34,6 @@ class SystemSettingsTest extends TestCase
                 'branch_code' => 'FWB',
                 'branch_address' => '123 Clean Water Avenue',
                 'branch_contact' => '09170000000',
-                'attendance_radius_meters' => 150,
                 'machine_count' => 6,
                 'receipt_header' => 'Fresh Wash',
                 'receipt_footer' => 'Thank you',
@@ -60,6 +61,81 @@ class SystemSettingsTest extends TestCase
             'receipt_header' => 'Fresh Wash',
             'job_order_prefix' => 'FWB',
         ]);
+    }
+
+    public function test_business_logo_upload_uses_public_uploads_and_reflects_on_shared_pages(): void
+    {
+        Storage::fake('uploads');
+        $this->completeSystemSettings();
+        $this->activeTrial();
+
+        $branch = $this->createBranch();
+        $admin = User::factory()->create([
+            'role' => 'super_admin',
+            'branch_id' => $branch->id,
+            'access' => ['settings'],
+        ]);
+
+        $this->get(route('login'))
+            ->assertOk()
+            ->assertSee(asset('logo.png'), false);
+
+        $this->actingAs($admin)
+            ->put(route('admin.settings.update'), [
+                'branch_id' => $branch->id,
+                'branch_name' => $branch->name,
+                'branch_code' => $branch->code,
+                'branch_address' => $branch->address,
+                'branch_contact' => $branch->contact_number,
+                'branch_type' => 'full_service',
+                'machine_count' => 5,
+                'business_name' => 'Logo Laundry',
+                'business_logo' => $this->tinyPngUpload('brand.png'),
+                'contact_number' => '09171234567',
+                'business_address' => 'Manila',
+                'currency' => 'PHP',
+                'primary_color' => '#0EA5E9',
+            ])
+            ->assertRedirect(route('admin.settings.edit', ['branch_id' => $branch->id]));
+
+        $logoPath = SystemSetting::current()->business_logo;
+
+        $this->assertNotNull($logoPath);
+        Storage::disk('uploads')->assertExists($logoPath);
+
+        $this->actingAs($admin)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee(Storage::disk('uploads')->url($logoPath), false)
+            ->assertDontSee(asset('logo.png'), false);
+    }
+
+    public function test_branch_settings_no_longer_show_attendance_geofence_fields(): void
+    {
+        $this->completeSystemSettings();
+        $this->activeTrial();
+
+        $branch = $this->createBranch();
+        $manager = User::factory()->create([
+            'role' => 'branch_manager',
+            'branch_id' => $branch->id,
+            'access' => ['settings', 'branches'],
+        ]);
+
+        $this->actingAs($manager)
+            ->get(route('admin.settings.edit'))
+            ->assertOk()
+            ->assertDontSee('Attendance Latitude')
+            ->assertDontSee('Attendance Longitude')
+            ->assertDontSee('Allowed Attendance Radius');
+
+        $this->actingAs($manager)
+            ->get(route('admin.branches.index'))
+            ->assertOk()
+            ->assertDontSee('Geofence')
+            ->assertDontSee('name="latitude"', false)
+            ->assertDontSee('name="longitude"', false)
+            ->assertDontSee('attendance_radius_meters', false);
     }
 
     public function test_settings_rejects_too_long_branch_address_cleanly(): void
@@ -130,5 +206,15 @@ class SystemSettingsTest extends TestCase
             'contact_number' => '09171234567',
             'is_active' => true,
         ]);
+    }
+
+    private function tinyPngUpload(string $name): UploadedFile
+    {
+        $path = tempnam(sys_get_temp_dir(), 'logo_');
+        file_put_contents($path, base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADElEQVR42mP8z8AARQAHAQH9pWfNAAAAAElFTkSuQmCC'
+        ));
+
+        return new UploadedFile($path, $name, 'image/png', null, true);
     }
 }
