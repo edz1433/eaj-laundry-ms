@@ -56,7 +56,7 @@
                                     </span>
                                     <div class="min-w-0">
                                         <p class="truncate text-sm font-medium" x-text="service.name"></p>
-                                        <p class="mt-1 text-xs capitalize text-muted" x-text="service.pricing_type"></p>
+                                        <p class="mt-1 text-xs capitalize text-muted" x-text="`${service.report_category.replaceAll('_', ' ')} / ${service.pricing_type}`"></p>
                                     </div>
                                 </div>
                                 <span class="shrink-0 rounded-md bg-white px-2 py-1 text-xs font-medium text-primary shadow-sm dark:bg-gray-900">
@@ -336,10 +336,17 @@ function posPage(branches, processingBranches, services, customers, vatRate, vat
         typeFilter: 'all',
         serviceTypes: [
             { value: 'all', label: 'All', icon: 'services' },
-            { value: 'kilo', label: 'Kilo', icon: 'scale' },
-            { value: 'load', label: 'Load', icon: 'laundry' },
-            { value: 'piece', label: 'Piece', icon: 'shirt' },
-            { value: 'custom', label: 'Custom', icon: 'sparkles' },
+            { value: 'wash', label: 'Wash', icon: 'laundry' },
+            { value: 'dry', label: 'Dry', icon: 'droplets' },
+            { value: 'dry_extend', label: 'Dry Extend', icon: 'timer' },
+            { value: 'fabcon', label: 'Fabcon', icon: 'sparkles' },
+            { value: 'detergent', label: 'Detergent', icon: 'package' },
+            { value: 'fold', label: 'Fold', icon: 'shirt' },
+            { value: 'rush', label: 'Rush', icon: 'zap' },
+            { value: 'delivery', label: 'Delivery', icon: 'truck' },
+            { value: 'small', label: 'Small', icon: 'package' },
+            { value: 'big', label: 'Big', icon: 'package-open' },
+            { value: 'other', label: 'Other', icon: 'more-horizontal' },
         ],
         init() {
             this.setDefaultProcessingBranch();
@@ -459,7 +466,7 @@ function posPage(branches, processingBranches, services, customers, vatRate, vat
         get filteredServices() {
             const term = this.serviceSearch.toLowerCase().trim();
             return this.availableServices.filter(service => {
-                const matchesType = this.typeFilter === 'all' || service.pricing_type === this.typeFilter;
+                const matchesType = this.typeFilter === 'all' || service.report_category === this.typeFilter;
                 const matchesSearch = !term || service.name.toLowerCase().includes(term);
                 return matchesType && matchesSearch;
             });

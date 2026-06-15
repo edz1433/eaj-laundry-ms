@@ -62,7 +62,9 @@
     </style>
 </head>
 <body>
-    @php($currency = $settings->currency ?? 'PHP')
+    @php
+        $currency = $settings->currency ?? 'PHP';
+    @endphp
 
     <div class="header">
         <h1>{{ $settings->business_name ?? 'Laundry System' }} Reports</h1>
@@ -94,6 +96,102 @@
                 <tr><td>{{ $label }}</td><td class="right">{{ $currency }} {{ number_format((float) $financialSummary[$key], 2) }}</td><td>{{ $treatment }}</td></tr>
             @endforeach
         </tbody>
+    </table>
+
+    <h2>Consolidated Z Reading</h2>
+    <p class="muted">Daily end-of-day closings for the selected branch and date range. Previous payments received in this period: {{ $currency }} {{ number_format((float) $zPreviousPaymentTotal, 2) }}.</p>
+    <table class="report">
+        <thead><tr><th>Metric</th><th class="right">Value</th><th>Metric</th><th class="right">Value</th></tr></thead>
+        <tbody>
+            <tr><td>Readings</td><td class="right">{{ number_format((int) $zReadingSummary->reading_count) }}</td><td>Job Orders</td><td class="right">{{ number_format((int) $zReadingSummary->transaction_count) }}</td></tr>
+            <tr><td>Expected Total</td><td class="right">{{ $currency }} {{ number_format((float) $zReadingSummary->expected_total, 2) }}</td><td>Actual Total</td><td class="right">{{ $currency }} {{ number_format((float) $zReadingSummary->actual_total, 2) }}</td></tr>
+            <tr><td>Expected Cash</td><td class="right">{{ $currency }} {{ number_format((float) $zReadingSummary->expected_cash, 2) }}</td><td>Actual Cash</td><td class="right">{{ $currency }} {{ number_format((float) $zReadingSummary->actual_cash, 2) }}</td></tr>
+            <tr><td>Expected GCash</td><td class="right">{{ $currency }} {{ number_format((float) $zReadingSummary->expected_gcash, 2) }}</td><td>Actual GCash</td><td class="right">{{ $currency }} {{ number_format((float) $zReadingSummary->actual_gcash, 2) }}</td></tr>
+            <tr><td>Balance Over / Short</td><td class="right">{{ $currency }} {{ number_format((float) $zReadingSummary->over_short, 2) }}</td><td>Previous Payments</td><td class="right">{{ $currency }} {{ number_format((float) $zPreviousPaymentTotal, 2) }}</td></tr>
+        </tbody>
+    </table>
+
+    <table class="report">
+        <thead><tr><th>Date</th><th>Branch</th><th>Reading</th><th class="right">Orders</th><th class="right">Expected</th><th class="right">Actual</th><th class="right">Over / Short</th></tr></thead>
+        <tbody>
+            @forelse($zReadings as $reading)
+                @php
+                    $rowExpected = (float) $reading->expected_cash_drawer_amount + (float) $reading->expected_gcash_amount;
+                    $rowActual = (float) $reading->actual_cash_amount + (float) $reading->actual_gcash_amount;
+                @endphp
+                <tr><td>{{ $reading->business_date?->format('M d, Y') }}</td><td>{{ $reading->branch?->name }}</td><td>{{ $reading->reading_number }}</td><td class="right">{{ number_format((int) $reading->transaction_count) }}</td><td class="right">{{ $currency }} {{ number_format($rowExpected, 2) }}</td><td class="right">{{ $currency }} {{ number_format($rowActual, 2) }}</td><td class="right">{{ $currency }} {{ number_format($rowActual - $rowExpected, 2) }}</td></tr>
+            @empty
+                <tr><td colspan="7" class="empty">No Z readings found.</td></tr>
+            @endforelse
+        </tbody>
+    </table>
+
+    <h2>Daily Operations by Date</h2>
+    <table class="report" style="font-size:7px;">
+        <thead>
+            <tr>
+                <th>Date</th><th>Branch</th><th class="right">Orders</th>
+                @foreach($zCategoryLabels as $label)<th class="right">{{ $label }}</th>@endforeach
+                <th class="right">Amount</th><th class="right">Cash</th><th class="right">GCash</th><th class="right">Unpaid</th>
+            </tr>
+        </thead>
+        <tbody>
+            @forelse($zDailyOperations as $row)
+                <tr>
+                    <td>{{ \Illuminate\Support\Carbon::parse($row->business_date)->format('M d, Y') }}</td>
+                    <td>{{ $row->branch_name }}</td>
+                    <td class="right">{{ number_format($row->order_count) }}</td>
+                    @foreach(array_keys($zCategoryLabels) as $category)
+                        <td class="right">{{ number_format((float) ($row->{$category.'_amount'} ?? 0), 2) }}</td>
+                    @endforeach
+                    <td class="right">{{ number_format((float) $row->sales_amount, 2) }}</td>
+                    <td class="right">{{ number_format((float) $row->cash_amount, 2) }}</td>
+                    <td class="right">{{ number_format((float) $row->gcash_amount, 2) }}</td>
+                    <td class="right">{{ number_format((float) $row->unpaid_amount, 2) }}</td>
+                </tr>
+            @empty
+                <tr><td colspan="{{ count($zCategoryLabels) + 7 }}" class="empty">No daily operations found.</td></tr>
+            @endforelse
+            @if($zDailyOperations->isNotEmpty())
+                <tr style="font-weight:bold; background:#f3f4f6;">
+                    <td colspan="3" class="right">DATE RANGE TOTAL</td>
+                    @foreach(array_keys($zCategoryLabels) as $category)
+                        <td class="right">{{ number_format((float) data_get($zCategoryTotals, $category.'.total_amount', 0), 2) }}</td>
+                    @endforeach
+                    <td class="right">{{ number_format((float) $zDailyOperations->sum('sales_amount'), 2) }}</td>
+                    <td class="right">{{ number_format((float) $zDailyOperations->sum('cash_amount'), 2) }}</td>
+                    <td class="right">{{ number_format((float) $zDailyOperations->sum('gcash_amount'), 2) }}</td>
+                    <td class="right">{{ number_format((float) $zDailyOperations->sum('unpaid_amount'), 2) }}</td>
+                </tr>
+            @endif
+        </tbody>
+    </table>
+
+    <table style="width:100%; border-collapse:collapse;">
+        <tr>
+            <td style="width:50%; vertical-align:top; padding-right:5px;">
+                <table class="report">
+                    <thead><tr><th>Worksheet Column</th><th class="right">Qty</th><th class="right">Amount</th></tr></thead>
+                    <tbody>
+                        @foreach($zCategoryLabels as $category => $label)
+                            <tr><td>{{ $label }}</td><td class="right">{{ number_format((float) data_get($zCategoryTotals, $category.'.quantity', 0), 2) }}</td><td class="right">{{ $currency }} {{ number_format((float) data_get($zCategoryTotals, $category.'.total_amount', 0), 2) }}</td></tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </td>
+            <td style="width:50%; vertical-align:top; padding-left:5px;">
+                <table class="report">
+                    <thead><tr><th>Branch / Machine</th><th>Cycle</th><th class="right">Count</th></tr></thead>
+                    <tbody>
+                        @forelse($zMachineCycles as $cycle)
+                            <tr><td>{{ $cycle->branch_name }} #{{ $cycle->machine_number }}</td><td>{{ \App\Support\StatusBadge::label($cycle->cycle_type) }}</td><td class="right">{{ number_format((int) $cycle->cycle_count) }}</td></tr>
+                        @empty
+                            <tr><td colspan="3" class="empty">No machine cycles.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </td>
+        </tr>
     </table>
 
     <h2>Operational Summary</h2>
@@ -148,7 +246,9 @@
         <thead><tr><th>Date</th><th>Branch</th><th>Movement</th><th>Reference</th><th>Recorded By</th><th class="right">Amount</th></tr></thead>
         <tbody>
             @forelse($moneyMovements as $movement)
-                @php($signedAmount = $movement->direction === 'in' ? (float) $movement->amount : -1 * (float) $movement->amount)
+                @php
+                    $signedAmount = $movement->direction === 'in' ? (float) $movement->amount : -1 * (float) $movement->amount;
+                @endphp
                 <tr><td>{{ $movement->movement_date?->format('M d, Y') }}</td><td>{{ $movement->branch?->name }}</td><td>{{ $movement->type_label }}<br><span class="muted">{{ $movement->description }}</span></td><td>{{ $movement->reference_no ?: 'N/A' }}</td><td>{{ $movement->recorder?->name ?? 'System' }}</td><td class="right">{{ $signedAmount < 0 ? '-' : '+' }} {{ $currency }} {{ number_format(abs($signedAmount), 2) }}</td></tr>
             @empty
                 <tr><td colspan="6" class="empty">No cash drawer movements found.</td></tr>

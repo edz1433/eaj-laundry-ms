@@ -56,11 +56,12 @@ Artisan::command('production:check', function (Migrator $migrator) {
         $addCheck('Database migrations', false, 'Migration status could not be read.');
     }
 
-    $publicStorage = public_path('storage');
-    $storageTarget = storage_path('app/public');
-    $storageLinked = file_exists($publicStorage)
-        && realpath($publicStorage) === realpath($storageTarget);
-    $addCheck('Public storage link', $storageLinked, 'public/storage must link to storage/app/public.');
+    $uploadsPath = public_path('uploads');
+    $addCheck(
+        'Public uploads',
+        is_dir($uploadsPath) && is_writable($uploadsPath),
+        'public/uploads must exist and be writable.'
+    );
     $addCheck('Storage writable', is_writable(storage_path()), 'The storage directory must be writable.');
     $addCheck('Cache writable', is_writable(base_path('bootstrap/cache')), 'bootstrap/cache must be writable.');
     $addCheck('Built assets', file_exists(public_path('build/manifest.json')), 'Run npm run build before launch.');

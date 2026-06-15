@@ -212,7 +212,7 @@ class CycleController extends Controller
             ->whereNotNull('cycle_records.machine_number')
             ->where('cycle_records.started_at', '>=', Carbon::parse($activityDateFrom)->startOfDay())
             ->where('cycle_records.started_at', '<=', Carbon::parse($activityDateTo)->endOfDay())
-            ->whereIn('job_order_id', (clone $ordersQuery)->select('job_orders.id'))
+            ->whereIn(DB::raw('COALESCE(job_orders.processing_branch_id, job_orders.branch_id)'), $machineOverviewBranchIds)
             ->groupByRaw('COALESCE(job_orders.processing_branch_id, job_orders.branch_id), cycle_records.machine_number, cycle_records.cycle_type')
             ->get([
                 DB::raw('COALESCE(job_orders.processing_branch_id, job_orders.branch_id) as operating_branch_id'),

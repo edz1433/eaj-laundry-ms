@@ -18,10 +18,11 @@ composer install --no-dev --classmap-authoritative
 npm ci
 npm run build
 php artisan migrate --force
-php artisan storage:link
 php artisan optimize
 php artisan production:check
 ```
+
+Uploaded files are written directly to `public/uploads`; no storage symlink is required.
 
 The application currently has no scheduled commands or queued jobs. A scheduler or queue worker is not required until asynchronous jobs are introduced.
 

@@ -4,10 +4,10 @@ namespace Database\Seeders;
 
 use App\Models\Branch;
 use App\Support\DefaultInventoryItems;
-use App\Support\DefaultServiceInventoryUsages;
+use App\Support\ExcelSampleServices;
 use Illuminate\Database\Seeder;
 
-class InventorySeeder extends Seeder
+class ExcelSampleServiceSeeder extends Seeder
 {
     public function run(): void
     {
@@ -15,7 +15,7 @@ class InventorySeeder extends Seeder
             ->where('is_active', true)
             ->each(function (Branch $branch) {
                 DefaultInventoryItems::seedForBranch($branch);
-                DefaultServiceInventoryUsages::seedForBranch($branch);
+                ExcelSampleServices::seedForBranch($branch);
             });
     }
 }

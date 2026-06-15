@@ -595,6 +595,59 @@ class CycleMonitoringTest extends TestCase
         $this->assertSame(5, substr_count($response->getContent(), 'text-xs font-semibold">Dry #'));
     }
 
+    public function test_machine_usage_counts_ignore_search_customer_and_status_filters(): void
+    {
+        $this->completeSystemSettings();
+        $this->activeTrial();
+
+        $branch = $this->createBranch(['machine_count' => 2]);
+        $visibleCustomer = $this->createCustomer($branch);
+        $hiddenCustomer = Customer::query()->create([
+            'branch_id' => $branch->id,
+            'name' => 'Other Machine Customer',
+            'phone' => '09170000000',
+            'billing_type' => 'regular',
+            'is_active' => true,
+        ]);
+        $user = User::factory()->create([
+            'role' => 'admin',
+            'branch_id' => $branch->id,
+            'access' => ['cycles'],
+        ]);
+        $visibleOrder = $this->createJobOrder($branch, $visibleCustomer, 'JO-USAGE-VISIBLE');
+        $hiddenOrder = $this->createJobOrder($branch, $hiddenCustomer, 'JO-USAGE-HIDDEN');
+        $hiddenOrder->update(['status' => 'completed', 'completed_at' => '2026-06-10 12:00:00']);
+
+        foreach ([$visibleOrder, $hiddenOrder] as $order) {
+            CycleRecord::query()->create([
+                'job_order_id' => $order->id,
+                'user_id' => $user->id,
+                'cycle_type' => 'wash',
+                'machine_number' => 1,
+                'cycle_number' => 1,
+                'started_at' => '2026-06-10 09:00:00',
+                'ended_at' => '2026-06-10 10:00:00',
+            ]);
+        }
+
+        $this->actingAs($user)
+            ->get(route('admin.cycles.index', [
+                'search' => 'JO-USAGE-VISIBLE',
+                'customer_id' => $visibleCustomer->id,
+                'status' => 'pending',
+                'date_range' => '2026-06-10 to 2026-06-10',
+            ]))
+            ->assertOk()
+            ->assertSee('JO-USAGE-VISIBLE')
+            ->assertDontSee('JO-USAGE-HIDDEN')
+            ->assertSeeInOrder([
+                'Wash #1',
+                '>2</p>',
+                'Washing cycles',
+            ], false)
+            ->assertSee('Usage counts by cycle date only');
+    }
+
     public function test_cycle_monitoring_keeps_large_lists_and_history_bounded(): void
     {
         $this->completeSystemSettings();

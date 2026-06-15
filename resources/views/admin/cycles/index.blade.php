@@ -81,7 +81,7 @@
                     <h2 class="mt-1 text-lg font-semibold">Live availability</h2>
                 </div>
                 <p class="text-xs text-muted">
-                    Activity:
+                    Usage counts by cycle date only:
                     {{ \Illuminate\Support\Carbon::parse($activityDateFrom)->format('M d, Y') }}
                     @if($activityDateFrom !== $activityDateTo)
                         - {{ \Illuminate\Support\Carbon::parse($activityDateTo)->format('M d, Y') }}
@@ -133,22 +133,22 @@
                                                         <p class="text-base font-bold {{ $machineType === 'wash' ? 'text-sky-600' : 'text-violet-600' }}">{{ $activityCount }}</p>
                                                         <p class="text-[9px] font-semibold uppercase tracking-wide text-muted">{{ $machineType === 'wash' ? 'Washing cycles' : 'Drying cycles' }}</p>
                                                     </div>
-                                                    <div class="border-t border-border px-2 py-1.5 text-center text-[10px] font-medium dark:border-gray-800 {{ $isAvailable ? 'text-emerald-600' : 'text-red-600' }}" title="{{ $activeMachine['job_order_number'] ?? 'Ready for use' }}">
-                                                        <p class="truncate">{{ $isAvailable ? 'Available' : $activeMachine['customer_name'] }}</p>
-                                                        @if(! $isAvailable)
+                                                    @if(! $isAvailable)
+                                                        <div class="border-t border-border px-2 py-1.5 text-center text-[10px] font-medium text-red-600 dark:border-gray-800" title="{{ $activeMachine['job_order_number'] }}">
+                                                            <p class="truncate">{{ $activeMachine['customer_name'] }}</p>
                                                             <p class="mt-0.5 truncate font-semibold">{{ $activeMachine['job_order_number'] }}</p>
-                                                        @endif
-                                                        @if(! $isAvailable && ($activeMachine['is_rush'] || $activeMachine['is_loyal']))
-                                                            <div class="mt-1 flex justify-center gap-1">
-                                                                @if($activeMachine['is_rush'])
-                                                                    <span class="rounded bg-amber-100 px-1.5 py-0.5 font-semibold uppercase text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">Rush</span>
-                                                                @endif
-                                                                @if($activeMachine['is_loyal'])
-                                                                    <span class="rounded bg-violet-100 px-1.5 py-0.5 font-semibold uppercase text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">Loyal</span>
-                                                                @endif
-                                                            </div>
-                                                        @endif
-                                                    </div>
+                                                            @if($activeMachine['is_rush'] || $activeMachine['is_loyal'])
+                                                                <div class="mt-1 flex justify-center gap-1">
+                                                                    @if($activeMachine['is_rush'])
+                                                                        <span class="rounded bg-amber-100 px-1.5 py-0.5 font-semibold uppercase text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">Rush</span>
+                                                                    @endif
+                                                                    @if($activeMachine['is_loyal'])
+                                                                        <span class="rounded bg-violet-100 px-1.5 py-0.5 font-semibold uppercase text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">Loyal</span>
+                                                                    @endif
+                                                                </div>
+                                                            @endif
+                                                        </div>
+                                                    @endif
                                                 </div>
                                             @endfor
                                         </div>

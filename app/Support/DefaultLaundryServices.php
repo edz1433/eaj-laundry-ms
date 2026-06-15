@@ -31,6 +31,8 @@ class DefaultLaundryServices
             ['name' => 'Pickup and Delivery', 'pricing_type' => 'custom', 'price' => 150],
             ['name' => 'Detergent', 'pricing_type' => 'custom', 'price' => 15],
             ['name' => 'Fabric Conditioner', 'pricing_type' => 'custom', 'price' => 15],
+            ['name' => 'Plastic Small', 'pricing_type' => 'custom', 'price' => 15],
+            ['name' => 'Plastic Big', 'pricing_type' => 'custom', 'price' => 25],
             ['name' => 'Bleach', 'pricing_type' => 'custom', 'price' => 20],
             ['name' => 'Stain Treatment', 'pricing_type' => 'piece', 'price' => 30],
             ['name' => 'Deep Cleaning', 'pricing_type' => 'kilo', 'price' => 220],
@@ -75,6 +77,7 @@ class DefaultLaundryServices
                 ],
                 [
                     'pricing_type' => $service['pricing_type'],
+                    'report_category' => $service['report_category'] ?? ServiceCategories::infer($service['name']),
                     'price' => $service['price'],
                     'is_active' => true,
                     'deleted_at' => null,

@@ -43,8 +43,8 @@
                 </div>
 
                 @if($completion)
-                    <a href="{{ asset('storage/'.$completion->photo_path) }}" target="_blank" class="mb-3 block overflow-hidden rounded-md border border-border dark:border-gray-800">
-                        <img src="{{ asset('storage/'.$completion->photo_path) }}" alt="{{ $task->name }} proof" class="h-44 w-full object-cover">
+                    <a href="{{ \App\Support\PublicUpload::url($completion->photo_path) }}" target="_blank" class="mb-3 block overflow-hidden rounded-md border border-border dark:border-gray-800">
+                        <img src="{{ \App\Support\PublicUpload::url($completion->photo_path) }}" alt="{{ $task->name }} proof" class="h-44 w-full object-cover">
                     </a>
                     @if($completion->remarks)
                         <p class="mb-3 rounded-md bg-smoke p-2 text-sm text-muted dark:bg-gray-950">{{ $completion->remarks }}</p>

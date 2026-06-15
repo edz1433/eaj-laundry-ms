@@ -132,6 +132,9 @@ Route::middleware(['auth', 'settings.completed', 'billing.access'])->group(funct
         Route::get('/reports/pdf', [ReportController::class, 'pdf'])
             ->middleware('menu.access:reports')
             ->name('reports.pdf');
+        Route::get('/reports/z-reading/pdf', [ReportController::class, 'zReadingPdf'])
+            ->middleware('menu.access:reports')
+            ->name('reports.z-reading.pdf');
 
         Route::middleware('menu.access:expenses')->group(function () {
             Route::get('/expenses', [ExpenseController::class, 'index'])->name('expenses.index');

@@ -18,6 +18,8 @@ class DefaultInventoryItems
             ['name' => 'Dryer Sheet', 'sku' => 'SUP-DRYER-SHEET', 'unit' => 'pcs', 'quantity' => 300, 'reorder_level' => 60, 'unit_cost' => 3],
             ['name' => 'Laundry Bag', 'sku' => 'PKG-LAUNDRY-BAG', 'unit' => 'pcs', 'quantity' => 500, 'reorder_level' => 100, 'unit_cost' => 4],
             ['name' => 'Plastic Packaging', 'sku' => 'PKG-PLASTIC', 'unit' => 'pcs', 'quantity' => 500, 'reorder_level' => 100, 'unit_cost' => 2],
+            ['name' => 'Plastic Small', 'sku' => 'PKG-PLASTIC-SMALL', 'unit' => 'pcs', 'quantity' => 500, 'reorder_level' => 100, 'unit_cost' => 2],
+            ['name' => 'Plastic Big', 'sku' => 'PKG-PLASTIC-BIG', 'unit' => 'pcs', 'quantity' => 500, 'reorder_level' => 100, 'unit_cost' => 3],
             ['name' => 'Hanger', 'sku' => 'PKG-HANGER', 'unit' => 'pcs', 'quantity' => 200, 'reorder_level' => 50, 'unit_cost' => 5],
         ];
     }
@@ -25,21 +27,40 @@ class DefaultInventoryItems
     public static function seedForBranch(Branch $branch): void
     {
         foreach (self::all() as $item) {
-            Inventory::withTrashed()->updateOrCreate(
-                [
+            $inventory = Inventory::withTrashed()
+                ->where('branch_id', $branch->id)
+                ->where(function ($query) use ($item) {
+                    $query->where('sku', $item['sku'])
+                        ->orWhere('name', $item['name']);
+                })
+                ->first();
+
+            if (! $inventory) {
+                Inventory::query()->create($item + [
                     'branch_id' => $branch->id,
-                    'name' => $item['name'],
-                ],
-                [
-                    'sku' => $item['sku'],
-                    'unit' => $item['unit'],
-                    'quantity' => $item['quantity'],
-                    'reorder_level' => $item['reorder_level'],
-                    'unit_cost' => $item['unit_cost'],
                     'is_active' => true,
-                    'deleted_at' => null,
-                ]
-            );
+                ]);
+
+                continue;
+            }
+
+            $attributes = [
+                'name' => $item['name'],
+                'sku' => $item['sku'],
+                'unit' => $item['unit'],
+                'reorder_level' => $item['reorder_level'],
+                'unit_cost' => $item['unit_cost'],
+                'is_active' => true,
+                'deleted_at' => null,
+            ];
+
+            // Initialize records created without opening stock, but never overwrite
+            // quantities that have already participated in inventory movements.
+            if ((float) $inventory->quantity === 0.0 && ! $inventory->movements()->exists()) {
+                $attributes['quantity'] = $item['quantity'];
+            }
+
+            $inventory->update($attributes);
         }
     }
 }

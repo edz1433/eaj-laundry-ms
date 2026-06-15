@@ -443,7 +443,7 @@ class UserManagementAccessTest extends TestCase
     public function test_branch_manager_cannot_complete_other_branch_daily_task(): void
     {
         $this->completeSystemSettings();
-        Storage::fake('public');
+        Storage::fake('uploads');
 
         [$branchA, $branchB] = $this->twoBranches();
         $manager = User::factory()->create([

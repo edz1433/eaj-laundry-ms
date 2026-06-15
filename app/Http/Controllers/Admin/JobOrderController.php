@@ -8,6 +8,7 @@ use App\Models\BranchSetting;
 use App\Models\Customer;
 use App\Models\CustomerLedger;
 use App\Models\Inventory;
+use App\Models\InventoryMovement;
 use App\Models\JobOrder;
 use App\Models\LaundryService;
 use App\Models\Payment;
@@ -112,7 +113,7 @@ class JobOrderController extends Controller
         $services = LaundryService::where('is_active', true)
             ->when(! in_array($user->role, ['super_admin', 'admin'], true), fn ($q) => $q->where('branch_id', $user->branch_id))
             ->orderBy('name')
-            ->get(['id', 'branch_id', 'name', 'pricing_type', 'price']);
+            ->get(['id', 'branch_id', 'name', 'report_category', 'pricing_type', 'price']);
         $selectedCustomerId = '';
         if ($request->filled('customer_id')) {
             $selectedCustomerId = (string) Customer::where('is_active', true)
@@ -147,7 +148,7 @@ class JobOrderController extends Controller
                 ->where('is_active', true)
                 ->orWhereIn('id', $serviceIds))
             ->orderBy('name')
-            ->get(['id', 'branch_id', 'name', 'pricing_type', 'price']);
+            ->get(['id', 'branch_id', 'name', 'report_category', 'pricing_type', 'price']);
 
         $branches = Branch::query()
             ->whereKey($branchId)
@@ -158,6 +159,7 @@ class JobOrderController extends Controller
             ->map(fn ($item) => [
                 'id' => $item->laundry_service_id,
                 'name' => $item->description,
+                'report_category' => $item->service_category,
                 'quantity' => (float) $item->quantity,
                 'price' => (float) $item->unit_price,
             ])
@@ -222,19 +224,20 @@ class JobOrderController extends Controller
         }
 
         $serviceIds = collect($validated['items'])->pluck('laundry_service_id')->unique()->values();
-        $servicesBelongToBranch = LaundryService::query()
+        $selectedServices = LaundryService::query()
             ->whereIn('id', $serviceIds)
             ->where('branch_id', $validated['branch_id'])
-            ->count() === $serviceIds->count();
+            ->get()
+            ->keyBy('id');
 
-        if (! $servicesBelongToBranch) {
+        if ($selectedServices->count() !== $serviceIds->count()) {
             throw ValidationException::withMessages([
                 'items' => 'All services must belong to the selected branch.',
             ]);
         }
 
         $createdOrder = null;
-        $response = DB::transaction(function () use ($request, $validated, $user, &$createdOrder) {
+        $response = DB::transaction(function () use ($request, $validated, $selectedServices, $user, &$createdOrder) {
             $settings = SystemSetting::current();
             $subtotal = collect($validated['items'])->sum(fn ($item) => (float) $item['quantity'] * (float) $item['unit_price']);
             $discount = min((float) ($validated['discount'] ?? 0), $subtotal);
@@ -267,9 +270,11 @@ class JobOrderController extends Controller
             ]);
 
             foreach ($validated['items'] as $item) {
+                $service = $selectedServices->get((int) $item['laundry_service_id']);
                 $order->items()->create([
                     'laundry_service_id' => $item['laundry_service_id'],
                     'description' => $item['description'],
+                    'service_category' => $service->report_category,
                     'quantity' => $item['quantity'],
                     'unit_price' => $item['unit_price'],
                     'total' => (float) $item['quantity'] * (float) $item['unit_price'],
@@ -369,20 +374,23 @@ class JobOrderController extends Controller
         }
 
         $serviceIds = collect($validated['items'])->pluck('laundry_service_id')->unique()->values();
-        $servicesBelongToBranch = LaundryService::query()
+        $selectedServices = LaundryService::query()
             ->whereIn('id', $serviceIds)
             ->where('branch_id', $jobOrder->branch_id)
-            ->count() === $serviceIds->count();
+            ->get()
+            ->keyBy('id');
 
-        if (! $servicesBelongToBranch) {
+        if ($selectedServices->count() !== $serviceIds->count()) {
             throw ValidationException::withMessages([
                 'items' => 'All services must belong to this job order branch.',
             ]);
         }
 
-        return DB::transaction(function () use ($request, $validated, $jobOrder) {
+        return DB::transaction(function () use ($request, $validated, $selectedServices, $jobOrder) {
             $previousProcessingBranchId = (int) ($jobOrder->processing_branch_id ?: $jobOrder->branch_id);
+            $inventoryWasDeducted = (bool) $jobOrder->inventory_deducted_at;
             $validated['processing_branch_id'] = $this->resolveProcessingBranchId($jobOrder->branch, $validated['processing_branch_id'] ?? null, $request->user());
+            $processingBranchChanged = (int) $validated['processing_branch_id'] !== $previousProcessingBranchId;
             $settings = SystemSetting::current();
             $subtotal = collect($validated['items'])->sum(fn ($item) => (float) $item['quantity'] * (float) $item['unit_price']);
             $discount = min((float) ($validated['discount'] ?? 0), $subtotal);
@@ -391,11 +399,17 @@ class JobOrderController extends Controller
             $total = $taxable + $tax;
             $paid = (float) $jobOrder->payments()->sum('amount');
 
+            if ($inventoryWasDeducted) {
+                $this->restoreInventoryForOrder($jobOrder, $request->user()?->id);
+            }
+
             $jobOrder->items()->delete();
             foreach ($validated['items'] as $item) {
+                $service = $selectedServices->get((int) $item['laundry_service_id']);
                 $jobOrder->items()->create([
                     'laundry_service_id' => $item['laundry_service_id'],
                     'description' => $item['description'],
+                    'service_category' => $service->report_category,
                     'quantity' => $item['quantity'],
                     'unit_price' => $item['unit_price'],
                     'total' => (float) $item['quantity'] * (float) $item['unit_price'],
@@ -418,7 +432,7 @@ class JobOrderController extends Controller
                 'completed_at' => $validated['status'] === 'completed' ? ($jobOrder->completed_at ?: now()) : null,
             ];
 
-            if ((int) $validated['processing_branch_id'] !== $previousProcessingBranchId && $jobOrder->branch?->isPickupDropoff()) {
+            if ($processingBranchChanged && $jobOrder->branch?->isPickupDropoff()) {
                 $orderUpdates += [
                     'current_branch_id' => $jobOrder->branch_id,
                     'release_branch_id' => $jobOrder->branch_id,
@@ -431,6 +445,16 @@ class JobOrderController extends Controller
             }
 
             $jobOrder->update($orderUpdates);
+
+            $shouldDeductInventory = $validated['status'] !== 'cancelled'
+                && (! $jobOrder->branch?->isPickupDropoff() || ($inventoryWasDeducted && ! $processingBranchChanged));
+
+            if ($shouldDeductInventory) {
+                $this->deductInventoryForOrder($jobOrder, $validated['items'], $request->user()?->id);
+                $jobOrder->update(['inventory_deducted_at' => now()]);
+            } elseif ($inventoryWasDeducted) {
+                $jobOrder->update(['inventory_deducted_at' => null]);
+            }
 
             Payment::query()
                 ->where('job_order_id', $jobOrder->id)
@@ -716,6 +740,40 @@ class JobOrderController extends Controller
             $inventory->update([
                 'quantity' => (float) $inventory->quantity - $quantity,
             ]);
+        }
+    }
+
+    private function restoreInventoryForOrder(JobOrder $order, ?int $userId): void
+    {
+        $deductionRemark = "Auto deducted for {$order->job_order_number}";
+        $restoreRemark = "Auto restored for {$order->job_order_number}";
+
+        $movements = InventoryMovement::query()
+            ->whereIn('remarks', [$deductionRemark, $restoreRemark])
+            ->get()
+            ->groupBy('inventory_id');
+
+        foreach ($movements as $inventoryId => $inventoryMovements) {
+            $deducted = (float) $inventoryMovements->where('movement_type', 'out')->sum('quantity');
+            $restored = (float) $inventoryMovements->where('movement_type', 'in')->sum('quantity');
+            $quantity = round($deducted - $restored, 4);
+
+            if ($quantity <= 0) {
+                continue;
+            }
+
+            $inventory = Inventory::query()->whereKey($inventoryId)->lockForUpdate()->first();
+            if (! $inventory) {
+                continue;
+            }
+
+            $inventory->movements()->create([
+                'user_id' => $userId,
+                'movement_type' => 'in',
+                'quantity' => $quantity,
+                'remarks' => $restoreRemark,
+            ]);
+            $inventory->update(['quantity' => (float) $inventory->quantity + $quantity]);
         }
     }
 

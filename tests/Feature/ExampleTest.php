@@ -18,6 +18,7 @@ use App\Models\Payment;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Models\ZReading;
+use App\Support\PublicUpload;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
@@ -177,10 +178,10 @@ class ExampleTest extends TestCase
 
     public function test_attendance_kiosk_uses_uploaded_business_logo(): void
     {
-        Storage::fake('public');
+        Storage::fake('uploads');
 
         $logoPath = 'settings/brand.png';
-        Storage::disk('public')->put($logoPath, 'fake-logo');
+        Storage::disk('uploads')->put($logoPath, 'fake-logo');
         SystemSetting::query()->create([
             'business_name' => 'EAJ Laundry',
             'contact_number' => '09171234567',
@@ -211,8 +212,21 @@ class ExampleTest extends TestCase
             ->withSession(['attendance_employee_id' => $employee->id])
             ->get(route('attendance.kiosk'))
             ->assertOk()
-            ->assertSee(asset('storage/'.$logoPath), false)
+            ->assertSee(Storage::disk('uploads')->url($logoPath), false)
             ->assertDontSee(asset('logo.png'), false);
+    }
+
+    public function test_legacy_public_storage_upload_is_copied_to_public_uploads(): void
+    {
+        Storage::fake('public');
+        Storage::fake('uploads');
+        Storage::disk('public')->put('settings/legacy-logo.png', 'legacy-logo');
+
+        $this->assertSame(
+            Storage::disk('uploads')->url('settings/legacy-logo.png'),
+            PublicUpload::url('settings/legacy-logo.png')
+        );
+        Storage::disk('uploads')->assertExists('settings/legacy-logo.png');
     }
 
     public function test_attendance_kiosk_temporarily_hides_qr_receiving_menu(): void
@@ -439,7 +453,7 @@ class ExampleTest extends TestCase
 
     public function test_attendance_module_shows_attached_proof_buttons(): void
     {
-        Storage::fake('public');
+        Storage::fake('uploads');
 
         SystemSetting::query()->create([
             'business_name' => 'EAJ Laundry',
@@ -478,8 +492,10 @@ class ExampleTest extends TestCase
             'clock_in_locations' => [['latitude' => 14.1, 'longitude' => 121.1]],
             'clock_out_locations' => [['latitude' => 14.1, 'longitude' => 121.1]],
         ]);
-        Storage::disk('public')->put('attendance-proofs/in.jpg', $this->tinyJpeg());
-        Storage::disk('public')->put('attendance-proofs/out.jpg', $this->tinyJpeg());
+        Storage::disk('uploads')->put('attendance-proofs/in.jpg', $this->tinyJpeg());
+        Storage::disk('uploads')->put('attendance-proofs/out.jpg', $this->tinyJpeg());
+        $this->assertSame(public_path('uploads'), config('filesystems.disks.uploads.root'));
+        $this->assertStringEndsWith('/uploads', config('filesystems.disks.uploads.url'));
 
         $this
             ->actingAs($manager)
@@ -530,7 +546,7 @@ class ExampleTest extends TestCase
 
     public function test_employee_kiosk_can_upload_daily_task_proof_for_assigned_branch(): void
     {
-        Storage::fake('public');
+        Storage::fake('uploads');
 
         $branch = Branch::query()->create(['name' => 'Branch A', 'code' => 'A', 'is_active' => true]);
         $employee = AttendanceEmployee::query()->create([
@@ -565,7 +581,7 @@ class ExampleTest extends TestCase
         $completion = DailyTaskCompletion::firstOrFail();
         $this->assertSame($employee->id, $completion->completed_by_employee_id);
         $this->assertSame($branch->id, $completion->branch_id);
-        Storage::disk('public')->assertExists($completion->photo_path);
+        Storage::disk('uploads')->assertExists($completion->photo_path);
     }
 
     public function test_branch_without_configured_daily_tasks_shows_empty_checklist(): void
@@ -782,7 +798,7 @@ class ExampleTest extends TestCase
 
     public function test_public_attendance_accepts_employee_session_and_allows_multiple_clock_ins(): void
     {
-        Storage::fake('public');
+        Storage::fake('uploads');
 
         $branch = Branch::query()->create([
             'name' => 'Branch A',
@@ -830,7 +846,7 @@ class ExampleTest extends TestCase
         $record = EmployeeAttendanceRecord::first();
         $this->assertCount(2, $record->clock_in);
         $this->assertCount(2, $record->clock_in_photos);
-        Storage::disk('public')->assertExists($record->clock_in_photos[0]);
+        Storage::disk('uploads')->assertExists($record->clock_in_photos[0]);
     }
 
     public function test_z_reading_saves_cash_count_balance_and_generates_pdf(): void
@@ -991,7 +1007,13 @@ class ExampleTest extends TestCase
             ]))
             ->assertOk()
             ->assertSee('Create Z Reading')
-            ->assertSee('Expected Cash Drawer');
+            ->assertSee('Expected Cash Drawer')
+            ->assertSee('Daily Operations Summary')
+            ->assertSee('Previous Payments')
+            ->assertSee('Wash Cycles')
+            ->assertSee('Dry Cycles')
+            ->assertSee('Machine Counter Readings')
+            ->assertDontSee('Bank');
 
         $this
             ->actingAs($admin)
@@ -1044,7 +1066,12 @@ class ExampleTest extends TestCase
                     '200' => 2,
                 ],
                 'actual_gcash_amount' => '310.00',
-                'actual_bank_amount' => '55.00',
+                'machine_counters' => [
+                    1 => [
+                        'wash' => ['beginning' => 5055, 'ending' => 5061],
+                        'dry' => ['beginning' => 7073, 'ending' => 7081],
+                    ],
+                ],
             ])
             ->assertRedirect(route('admin.z-readings.index', [
                 'branch_id' => $branch->id,
@@ -1057,24 +1084,51 @@ class ExampleTest extends TestCase
         $this->assertSame('400.00', $reading->actual_cash_amount);
         $this->assertSame('450.00', $reading->expected_gcash_amount);
         $this->assertSame('310.00', $reading->actual_gcash_amount);
-        $this->assertSame('375.00', $reading->expected_bank_amount);
-        $this->assertSame('55.00', $reading->actual_bank_amount);
-        $this->assertSame('1250.00', $reading->expected_total_amount);
-        $this->assertSame('765.00', $reading->actual_total_amount);
-        $this->assertSame('-485.00', $reading->over_short_amount);
+        $this->assertSame('0.00', $reading->expected_bank_amount);
+        $this->assertSame('0.00', $reading->actual_bank_amount);
+        $this->assertSame('875.00', $reading->expected_total_amount);
+        $this->assertSame('710.00', $reading->actual_total_amount);
+        $this->assertSame('-165.00', $reading->over_short_amount);
+        $this->assertSame(6, $reading->machine_counters[1]['wash']['total']);
+        $this->assertSame(8, $reading->machine_counters[1]['dry']['total']);
         $this->assertEquals(250.0, $reading->expense_breakdown['owner']);
         $this->assertEquals(50.0, $reading->expense_breakdown['money_movements']['cash_in']);
         $this->assertEquals(25.0, $reading->expense_breakdown['money_movements']['cash_out']);
         $this->assertEquals(200.0, $reading->expense_breakdown['accounts_payable']['gcash_funding']);
         $this->assertEquals(50.0, $reading->expense_breakdown['accounts_payable']['gcash_repayments']);
-        $this->assertEquals(400.0, $reading->expense_breakdown['accounts_payable']['bank_funding']);
-        $this->assertEquals(75.0, $reading->expense_breakdown['accounts_payable']['bank_repayments']);
+        $this->assertArrayNotHasKey('bank_funding', $reading->expense_breakdown['accounts_payable']);
+        $this->assertArrayNotHasKey('bank_repayments', $reading->expense_breakdown['accounts_payable']);
 
-        $this
+        $pdfResponse = $this
             ->actingAs($admin)
             ->get(route('admin.z-readings.pdf', $reading))
             ->assertOk()
             ->assertHeader('content-type', 'application/pdf');
+
+        $this->assertStringContainsString('/MediaBox [0.000 0.000 841.890 595.280]', $pdfResponse->getContent());
+
+        $reportResponse = $this
+            ->actingAs($admin)
+            ->get(route('admin.reports.index', [
+                'branch_id' => $branch->id,
+                'date_range' => today()->toDateString().' to '.today()->toDateString(),
+            ]))
+            ->assertOk()
+            ->assertSee('Consolidated Z Reading')
+            ->assertSee($reading->reading_number)
+            ->assertSee('Service Totals')
+            ->assertSee('Machine Cycle Totals');
+
+        $consolidatedPdf = $this
+            ->actingAs($admin)
+            ->get(route('admin.reports.pdf', [
+                'branch_id' => $branch->id,
+                'date_range' => today()->toDateString().' to '.today()->toDateString(),
+            ]))
+            ->assertOk()
+            ->assertHeader('content-type', 'application/pdf');
+
+        $this->assertStringContainsString('/MediaBox [0.000 0.000 841.890 595.280]', $consolidatedPdf->getContent());
     }
 
     private function tinyJpeg(): string

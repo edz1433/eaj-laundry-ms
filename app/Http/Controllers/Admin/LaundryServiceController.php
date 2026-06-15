@@ -4,8 +4,11 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
+use App\Models\Inventory;
 use App\Models\LaundryService;
 use App\Support\Activity;
+use App\Support\ServiceCategories;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rule;
@@ -29,7 +32,7 @@ class LaundryServiceController extends Controller
             ? ($request->integer('branch_id') ?: $branches->first()?->id)
             : $user->branch_id;
 
-        $services = LaundryService::with('branch')
+        $services = LaundryService::with(['branch', 'inventoryUsages'])
             ->where('branch_id', $selectedBranchId)
             ->when(in_array($request->pricing_type, self::PRICING_TYPES, true), fn ($query) => $query->where('pricing_type', $request->pricing_type))
             ->when(in_array($request->status, self::STATUS_FILTERS, true), fn ($query) => $query->where('is_active', $request->status === 'active'))
@@ -37,8 +40,14 @@ class LaundryServiceController extends Controller
             ->latest()
             ->paginate(10)
             ->withQueryString();
+        $inventoryItems = Inventory::query()
+            ->where('branch_id', $selectedBranchId)
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'unit', 'quantity']);
+        $serviceCategories = ServiceCategories::LABELS;
 
-        return view('admin.services.index', compact('services', 'branches', 'selectedBranchId', 'canChooseBranch'));
+        return view('admin.services.index', compact('services', 'branches', 'selectedBranchId', 'canChooseBranch', 'inventoryItems', 'serviceCategories'));
     }
 
     public function store(Request $request)
@@ -47,14 +56,19 @@ class LaundryServiceController extends Controller
         $validated = $this->normalizeBranch($validated);
         $validated['is_active'] = $request->boolean('is_active', true);
 
-        $service = LaundryService::create($validated);
+        $service = DB::transaction(function () use ($validated) {
+            $service = LaundryService::create(collect($validated)->except('inventory_usages')->all());
+            $this->syncInventoryUsages($service, $validated['inventory_usages'] ?? []);
+
+            return $service;
+        });
 
         Activity::log($request, 'service_created', $service, [
             'name' => $service->name,
             'price' => $service->price,
         ], $service->branch_id);
 
-        return redirect()->route('admin.services.index')->with('success', 'Service created successfully.');
+        return redirect()->route('admin.services.index', ['branch_id' => $service->branch_id])->with('success', 'Service created successfully.');
     }
 
     public function update(Request $request, LaundryService $service)
@@ -65,14 +79,17 @@ class LaundryServiceController extends Controller
         $validated = $this->normalizeBranch($validated);
         $validated['is_active'] = $request->boolean('is_active');
 
-        $service->update($validated);
+        DB::transaction(function () use ($service, $validated) {
+            $service->update(collect($validated)->except('inventory_usages')->all());
+            $this->syncInventoryUsages($service, $validated['inventory_usages'] ?? []);
+        });
 
         Activity::log($request, 'service_updated', $service, [
             'name' => $service->name,
             'price' => $service->price,
         ], $service->branch_id);
 
-        return redirect()->route('admin.services.index')->with('success', 'Service updated successfully.');
+        return redirect()->route('admin.services.index', ['branch_id' => $service->branch_id])->with('success', 'Service updated successfully.');
     }
 
     public function destroy(LaundryService $service)
@@ -92,10 +109,40 @@ class LaundryServiceController extends Controller
         return [
             'branch_id' => ['required', 'exists:branches,id'],
             'name' => ['required', 'string', 'max:255'],
+            'report_category' => ['required', Rule::in(ServiceCategories::keys())],
             'pricing_type' => ['required', Rule::in(['kilo', 'load', 'piece', 'custom'])],
             'price' => ['required', 'numeric', 'min:0'],
             'is_active' => ['nullable', 'boolean'],
+            'inventory_usages' => ['nullable', 'array'],
+            'inventory_usages.*' => ['nullable', 'numeric', 'min:0', 'max:999999.9999'],
         ];
+    }
+
+    private function syncInventoryUsages(LaundryService $service, array $usages): void
+    {
+        $quantities = collect($usages)
+            ->filter(fn ($quantity) => is_numeric($quantity) && (float) $quantity > 0)
+            ->mapWithKeys(fn ($quantity, $inventoryId) => [(int) $inventoryId => (float) $quantity]);
+
+        $validInventoryIds = Inventory::query()
+            ->where('branch_id', $service->branch_id)
+            ->whereIn('id', $quantities->keys())
+            ->pluck('id');
+
+        if ($validInventoryIds->count() !== $quantities->count()) {
+            throw ValidationException::withMessages([
+                'inventory_usages' => 'Every inventory usage must belong to the selected service branch.',
+            ]);
+        }
+
+        $service->inventoryUsages()->whereNotIn('inventory_id', $validInventoryIds)->delete();
+
+        foreach ($validInventoryIds as $inventoryId) {
+            $service->inventoryUsages()->updateOrCreate(
+                ['inventory_id' => $inventoryId],
+                ['quantity' => $quantities->get($inventoryId)]
+            );
+        }
     }
 
     private function normalizeBranch(array $validated): array

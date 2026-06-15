@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class JobOrderItem extends Model
 {
-    protected $fillable = ['job_order_id', 'laundry_service_id', 'description', 'quantity', 'unit_price', 'total', 'instructions'];
+    protected $fillable = ['job_order_id', 'laundry_service_id', 'description', 'service_category', 'quantity', 'unit_price', 'total', 'instructions'];
 
     protected $casts = ['quantity' => 'decimal:2', 'unit_price' => 'decimal:2', 'total' => 'decimal:2'];
 

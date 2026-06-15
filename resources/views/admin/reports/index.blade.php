@@ -43,7 +43,11 @@
 
             <a href="{{ route('admin.reports.pdf', request()->query()) }}" target="_blank" class="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium hover:bg-smoke dark:border-gray-800 dark:bg-gray-950 dark:hover:bg-gray-900">
                 <span data-lucide="file-text" class="h-4 w-4"></span>
-                View PDF
+                Full Reports PDF
+            </a>
+            <a href="{{ route('admin.reports.z-reading.pdf', request()->query()) }}" target="_blank" class="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-white hover:opacity-90">
+                <span data-lucide="receipt" class="h-4 w-4"></span>
+                Daily-Style Z Reading PDF
             </a>
         </div>
     </div>
@@ -78,6 +82,7 @@
     <div class="flex gap-1 overflow-x-auto rounded-lg border border-border bg-white p-1 shadow-sm dark:border-gray-800 dark:bg-gray-900">
         @foreach([
             'sales' => 'Sales',
+            'z_reading' => 'Z Reading',
             'operations' => 'Operations',
             'receivables' => 'Receivables',
             'inventory' => 'Inventory Usage',
@@ -90,6 +95,126 @@
         ] as $key => $label)
             <button type="button" @click="tab = '{{ $key }}'" class="h-8 shrink-0 rounded-md px-3 text-sm font-medium" :class="tab === '{{ $key }}' ? 'bg-primary text-white' : 'text-muted hover:bg-smoke dark:hover:bg-gray-950'">{{ $label }}</button>
         @endforeach
+    </div>
+
+    <div x-show="tab === 'z_reading'" class="space-y-4">
+        <div class="rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div class="mb-3">
+                <h2 class="text-base font-semibold">Consolidated Z Reading</h2>
+                <p class="text-sm text-muted">Daily closings consolidated by the selected branch and date range, following the manual workbook structure.</p>
+            </div>
+            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                @foreach([
+                    ['Readings', number_format((int) $zReadingSummary->reading_count)],
+                    ['Job Orders', number_format((int) $zReadingSummary->transaction_count)],
+                    ['Expected Total', ($settings->currency ?? 'PHP').' '.number_format((float) $zReadingSummary->expected_total, 2)],
+                    ['Actual Total', ($settings->currency ?? 'PHP').' '.number_format((float) $zReadingSummary->actual_total, 2)],
+                    ['Over / Short', ($settings->currency ?? 'PHP').' '.number_format((float) $zReadingSummary->over_short, 2)],
+                    ['Expected Cash', ($settings->currency ?? 'PHP').' '.number_format((float) $zReadingSummary->expected_cash, 2)],
+                    ['Actual Cash', ($settings->currency ?? 'PHP').' '.number_format((float) $zReadingSummary->actual_cash, 2)],
+                    ['Expected GCash', ($settings->currency ?? 'PHP').' '.number_format((float) $zReadingSummary->expected_gcash, 2)],
+                    ['Actual GCash', ($settings->currency ?? 'PHP').' '.number_format((float) $zReadingSummary->actual_gcash, 2)],
+                    ['Previous Payments', ($settings->currency ?? 'PHP').' '.number_format((float) $zPreviousPaymentTotal, 2)],
+                ] as [$label, $value])
+                    <div class="rounded-md bg-smoke p-3 dark:bg-gray-950">
+                        <p class="text-xs text-muted">{{ $label }}</p>
+                        <p class="mt-1 font-semibold">{{ $value }}</p>
+                    </div>
+                @endforeach
+            </div>
+        </div>
+
+        <x-report-table title="Daily Z Readings">
+            <x-slot:head><th class="px-4 py-3">Date</th><th class="px-4 py-3">Branch</th><th class="px-4 py-3">Reading</th><th class="px-4 py-3 text-right">Orders</th><th class="px-4 py-3 text-right">Expected</th><th class="px-4 py-3 text-right">Actual</th><th class="px-4 py-3 text-right">Over / Short</th></x-slot:head>
+            @forelse($zReadings as $reading)
+                @php
+                    $rowExpected = (float) $reading->expected_cash_drawer_amount + (float) $reading->expected_gcash_amount;
+                    $rowActual = (float) $reading->actual_cash_amount + (float) $reading->actual_gcash_amount;
+                    $rowVariance = $rowActual - $rowExpected;
+                @endphp
+                <tr>
+                    <td class="px-4 py-3">{{ $reading->business_date?->format('M d, Y') }}</td>
+                    <td class="px-4 py-3">{{ $reading->branch?->name }}</td>
+                    <td class="px-4 py-3 font-medium">{{ $reading->reading_number }}</td>
+                    <td class="px-4 py-3 text-right">{{ number_format((int) $reading->transaction_count) }}</td>
+                    <td class="px-4 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format($rowExpected, 2) }}</td>
+                    <td class="px-4 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format($rowActual, 2) }}</td>
+                    <td class="px-4 py-3 text-right font-semibold {{ $rowVariance < 0 ? 'text-red-600' : ($rowVariance > 0 ? 'text-emerald-600' : '') }}">{{ $settings->currency ?? 'PHP' }} {{ number_format($rowVariance, 2) }}</td>
+                </tr>
+            @empty
+                <tr><td colspan="7" class="px-4 py-10 text-center text-muted">No Z readings in this period.</td></tr>
+            @endforelse
+        </x-report-table>
+
+        <x-report-table title="Daily Operations by Date">
+            <x-slot:head>
+                <th class="px-3 py-3">Date</th>
+                <th class="px-3 py-3">Branch</th>
+                <th class="px-3 py-3 text-right">Orders</th>
+                @foreach($zCategoryLabels as $label)
+                    <th class="px-3 py-3 text-right">{{ $label }}</th>
+                @endforeach
+                <th class="px-3 py-3 text-right">Amount</th>
+                <th class="px-3 py-3 text-right">Cash</th>
+                <th class="px-3 py-3 text-right">GCash</th>
+                <th class="px-3 py-3 text-right">Unpaid</th>
+            </x-slot:head>
+            @forelse($zDailyOperations as $row)
+                <tr>
+                    <td class="px-3 py-3 whitespace-nowrap">{{ \Illuminate\Support\Carbon::parse($row->business_date)->format('M d, Y') }}</td>
+                    <td class="px-3 py-3 whitespace-nowrap">{{ $row->branch_name }}</td>
+                    <td class="px-3 py-3 text-right">{{ number_format($row->order_count) }}</td>
+                    @foreach(array_keys($zCategoryLabels) as $category)
+                        <td class="px-3 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) ($row->{$category.'_amount'} ?? 0), 2) }}</td>
+                    @endforeach
+                    <td class="px-3 py-3 text-right font-semibold">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->sales_amount, 2) }}</td>
+                    <td class="px-3 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->cash_amount, 2) }}</td>
+                    <td class="px-3 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->gcash_amount, 2) }}</td>
+                    <td class="px-3 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->unpaid_amount, 2) }}</td>
+                </tr>
+            @empty
+                <tr><td colspan="{{ count($zCategoryLabels) + 7 }}" class="px-4 py-10 text-center text-muted">No daily operations in this period.</td></tr>
+            @endforelse
+            @if($zDailyOperations->isNotEmpty())
+                <tr class="bg-smoke font-semibold dark:bg-gray-950">
+                    <td colspan="3" class="px-3 py-3 text-right">DATE RANGE TOTAL</td>
+                    @foreach(array_keys($zCategoryLabels) as $category)
+                        <td class="px-3 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) data_get($zCategoryTotals, $category.'.total_amount', 0), 2) }}</td>
+                    @endforeach
+                    <td class="px-3 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $zDailyOperations->sum('sales_amount'), 2) }}</td>
+                    <td class="px-3 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $zDailyOperations->sum('cash_amount'), 2) }}</td>
+                    <td class="px-3 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $zDailyOperations->sum('gcash_amount'), 2) }}</td>
+                    <td class="px-3 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $zDailyOperations->sum('unpaid_amount'), 2) }}</td>
+                </tr>
+            @endif
+        </x-report-table>
+
+        <div class="grid gap-4 xl:grid-cols-3">
+            <x-report-table title="Payment Totals">
+                <x-slot:head><th class="px-4 py-3">Method</th><th class="px-4 py-3 text-right">Count</th><th class="px-4 py-3 text-right">Amount</th></x-slot:head>
+                @forelse($zPaymentSummary as $payment)
+                    <tr><td class="px-4 py-3">{{ \App\Support\StatusBadge::label($payment->payment_type) }}</td><td class="px-4 py-3 text-right">{{ number_format((int) $payment->payments_count) }}</td><td class="px-4 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $payment->total_amount, 2) }}</td></tr>
+                @empty
+                    <tr><td colspan="3" class="px-4 py-10 text-center text-muted">No payments.</td></tr>
+                @endforelse
+            </x-report-table>
+
+            <x-report-table title="Service Totals by Worksheet Category">
+                <x-slot:head><th class="px-4 py-3">Column</th><th class="px-4 py-3 text-right">Qty</th><th class="px-4 py-3 text-right">Amount</th></x-slot:head>
+                @foreach($zCategoryLabels as $category => $label)
+                    <tr><td class="px-4 py-3">{{ $label }}</td><td class="px-4 py-3 text-right">{{ number_format((float) data_get($zCategoryTotals, $category.'.quantity', 0), 2) }}</td><td class="px-4 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) data_get($zCategoryTotals, $category.'.total_amount', 0), 2) }}</td></tr>
+                @endforeach
+            </x-report-table>
+
+            <x-report-table title="Machine Cycle Totals">
+                <x-slot:head><th class="px-4 py-3">Branch / Machine</th><th class="px-4 py-3">Cycle</th><th class="px-4 py-3 text-right">Count</th></x-slot:head>
+                @forelse($zMachineCycles as $cycle)
+                    <tr><td class="px-4 py-3">{{ $cycle->branch_name }} #{{ $cycle->machine_number }}</td><td class="px-4 py-3">{{ \App\Support\StatusBadge::label($cycle->cycle_type) }}</td><td class="px-4 py-3 text-right">{{ number_format((int) $cycle->cycle_count) }}</td></tr>
+                @empty
+                    <tr><td colspan="3" class="px-4 py-10 text-center text-muted">No machine cycles.</td></tr>
+                @endforelse
+            </x-report-table>
+        </div>
     </div>
 
     <div x-show="tab === 'operations'" class="space-y-4">
@@ -239,7 +364,9 @@
     <x-report-table title="Cash Drawer Movements" x-show="tab === 'cash'">
         <x-slot:head><th class="px-4 py-3">Date</th><th class="px-4 py-3">Branch</th><th class="px-4 py-3">Movement</th><th class="px-4 py-3">Reference</th><th class="px-4 py-3">Recorded By</th><th class="px-4 py-3 text-right">Amount</th></x-slot:head>
         @forelse($moneyMovements as $movement)
-            @php($signedAmount = $movement->direction === 'in' ? (float) $movement->amount : -1 * (float) $movement->amount)
+            @php
+                $signedAmount = $movement->direction === 'in' ? (float) $movement->amount : -1 * (float) $movement->amount;
+            @endphp
             <tr><td class="px-4 py-3">{{ $movement->movement_date?->format('M d, Y') }}</td><td class="px-4 py-3">{{ $movement->branch?->name }}</td><td class="px-4 py-3"><p class="font-medium">{{ $movement->type_label }}</p><p class="text-xs text-muted">{{ $movement->description }}</p></td><td class="px-4 py-3">{{ $movement->reference_no ?: 'N/A' }}</td><td class="px-4 py-3">{{ $movement->recorder?->name ?? 'System' }}</td><td class="px-4 py-3 text-right font-medium {{ $signedAmount < 0 ? 'text-red-600' : 'text-emerald-600' }}">{{ $signedAmount < 0 ? '-' : '+' }} {{ $settings->currency ?? 'PHP' }} {{ number_format(abs($signedAmount), 2) }}</td></tr>
         @empty
             <tr><td colspan="6" class="px-4 py-10 text-center text-muted">No cash drawer movements found.</td></tr>

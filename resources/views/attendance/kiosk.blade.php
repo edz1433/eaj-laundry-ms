@@ -166,7 +166,7 @@
                                 <form x-cloak x-show="openTaskId === {{ $task->id }}" x-transition method="POST" action="{{ route('attendance.daily-tasks.complete', $task) }}" enctype="multipart/form-data" class="mt-2 space-y-2 border-t border-border pt-2 dark:border-gray-800">
                                     @csrf
                                     @if($completion)
-                                        <a href="{{ asset('storage/'.$completion->photo_path) }}" target="_blank" class="block text-xs font-semibold text-primary">View current proof</a>
+                                        <a href="{{ \App\Support\PublicUpload::url($completion->photo_path) }}" target="_blank" class="block text-xs font-semibold text-primary">View current proof</a>
                                     @endif
                                     <input type="file" name="photo" accept="image/*" capture="environment" required class="w-full rounded-lg border border-border bg-white px-2 py-2 text-xs dark:border-gray-800 dark:bg-gray-900">
                                     <div class="grid grid-cols-[1fr_auto] gap-2">

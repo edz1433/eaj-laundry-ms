@@ -6,8 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\DailyTask;
 use App\Models\DailyTaskCompletion;
+use App\Support\PublicUpload;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 
 class DailyTaskController extends Controller
 {
@@ -52,8 +52,7 @@ class DailyTaskController extends Controller
 
         abort_if($task->branch_id !== null && (int) $task->branch_id !== (int) $validated['branch_id'], 403);
 
-        $path = $request->file('photo')->store('daily-tasks', 'public');
-        Storage::disk('public')->setVisibility($path, 'public');
+        $path = $request->file('photo')->store('daily-tasks', PublicUpload::DISK);
         $existing = DailyTaskCompletion::query()
             ->where('daily_task_id', $task->id)
             ->where('branch_id', $validated['branch_id'])
@@ -61,7 +60,7 @@ class DailyTaskController extends Controller
             ->first();
 
         if ($existing?->photo_path) {
-            Storage::disk('public')->delete($existing->photo_path);
+            PublicUpload::delete($existing->photo_path);
         }
 
         DailyTaskCompletion::updateOrCreate(

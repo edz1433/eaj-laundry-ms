@@ -28,6 +28,8 @@ class DefaultServiceInventoryUsages
             'Extra Dry 30 Minutes' => ['Dryer Sheet' => 0.75],
             'Detergent' => ['Detergent Powder' => 0.10],
             'Fabric Conditioner' => ['Fabric Conditioner' => 0.08],
+            'Plastic Small' => ['Plastic Small' => 1],
+            'Plastic Big' => ['Plastic Big' => 1],
             'Bleach' => ['Bleach' => 0.10],
             'Stain Treatment' => ['Stain Remover' => 0.05],
             'Deep Cleaning' => ['Detergent Powder' => 0.12, 'Stain Remover' => 0.03, 'Disinfectant' => 0.03],
@@ -96,6 +98,16 @@ class DefaultServiceInventoryUsages
                     ['quantity' => $quantity]
                 );
             }
+
+            $validInventoryIds = collect($items)
+                ->keys()
+                ->map(fn (string $inventoryName) => $inventory->get($inventoryName)?->id)
+                ->filter()
+                ->values();
+
+            $service->inventoryUsages()
+                ->whereNotIn('inventory_id', $validInventoryIds)
+                ->delete();
         }
     }
 }

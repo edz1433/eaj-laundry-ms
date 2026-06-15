@@ -7,7 +7,19 @@
     $currency = $appSettings?->currency ?? 'PHP';
     $cashCount = old('cash_count', $reading?->cash_count ?? []);
     $actualGcash = old('actual_gcash_amount', $reading?->actual_gcash_amount ?? $summary['expected_gcash_amount']);
-    $legacyCashlessAmount = old('actual_bank_amount', $reading?->actual_bank_amount ?? $summary['expected_bank_amount']);
+    $savedMachineCounters = old('machine_counters', $reading?->machine_counters ?? []);
+    $machineCounters = collect(range(1, $machineCount))->mapWithKeys(fn ($machine) => [
+        (string) $machine => [
+            'wash' => [
+                'beginning' => data_get($savedMachineCounters, "{$machine}.wash.beginning", ''),
+                'ending' => data_get($savedMachineCounters, "{$machine}.wash.ending", ''),
+            ],
+            'dry' => [
+                'beginning' => data_get($savedMachineCounters, "{$machine}.dry.beginning", ''),
+                'ending' => data_get($savedMachineCounters, "{$machine}.dry.ending", ''),
+            ],
+        ],
+    ])->all();
 @endphp
 
 <div
@@ -16,23 +28,27 @@
         counts: @js(collect($denominations)->mapWithKeys(fn ($label, $value) => [$value => (int) ($cashCount[$value] ?? 0)])->all()),
         expectedCashDrawer: Number(@js($summary['expected_cash_drawer_amount'])),
         expectedGcash: Number(@js($summary['expected_gcash_amount'])),
-        legacyExpected: Number(@js($summary['expected_bank_amount'])),
         actualGcash: Number(@js($actualGcash ?: 0)),
-        legacyActual: Number(@js($legacyCashlessAmount ?: 0)),
+        machineCounters: @js($machineCounters),
         get actualCash() {
             return this.denominations.reduce((total, value) => total + (Number(value) * Number(this.counts[value] || 0)), 0);
         },
         get expectedTotal() {
-            return this.expectedCashDrawer + this.expectedGcash + this.legacyExpected;
+            return this.expectedCashDrawer + this.expectedGcash;
         },
         get actualTotal() {
-            return this.actualCash + Number(this.actualGcash || 0) + Number(this.legacyActual || 0);
+            return this.actualCash + Number(this.actualGcash || 0);
         },
         get overShort() {
             return this.actualTotal - this.expectedTotal;
         },
         money(value) {
             return Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        },
+        cycleTotal(machine, type) {
+            const values = this.machineCounters[machine]?.[type] || {};
+            if (values.beginning === '' || values.ending === '' || values.beginning == null || values.ending == null) return 0;
+            return Math.max(0, Number(values.ending) - Number(values.beginning));
         }
     }"
     class="space-y-4"
@@ -44,7 +60,7 @@
                 End-of-day closing
             </div>
             <h1 class="text-xl font-semibold tracking-normal">Create Z Reading</h1>
-            <p class="text-sm text-muted">Encode cash count, cashless balances, and over/short reconciliation.</p>
+            <p class="text-sm text-muted">Encode machine counters, cash count, GCash, and over/short reconciliation.</p>
         </div>
 
         <div class="flex flex-wrap gap-2">
@@ -109,10 +125,69 @@
         </div>
     </div>
 
+    <div class="rounded-lg border border-border bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div class="mb-3">
+            <h2 class="text-base font-semibold">Daily Operations Summary</h2>
+            <p class="text-xs text-muted">Workbook-style totals are summarized here; transaction, payment, expense, inventory, and machine details are included in the PDF.</p>
+        </div>
+        <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            @foreach([
+                ['Job Orders', number_format((int) $summary['transaction_count'])],
+                ['Total Sales', $currency.' '.number_format((float) $summary['daily_total_sales'], 2)],
+                ['Current Payments', $currency.' '.number_format((float) $summary['current_sales_payment_total'], 2)],
+                ['Previous Payments', $currency.' '.number_format((float) $summary['previous_payment_total'], 2)],
+                ['Unpaid', $currency.' '.number_format((float) $summary['daily_unpaid_amount'], 2)],
+                ['Expenses', $currency.' '.number_format((float) array_sum(array_column(data_get($summary, 'expense_breakdown.items', []), 'amount')), 2)],
+                ['Wash Cycles', number_format((int) collect($summary['machine_cycles'])->where('cycle_type', 'wash')->sum('cycle_count'))],
+                ['Dry Cycles', number_format((int) collect($summary['machine_cycles'])->where('cycle_type', 'dry')->sum('cycle_count'))],
+            ] as [$label, $value])
+                <div class="rounded-md bg-smoke p-2.5 dark:bg-gray-950">
+                    <p class="text-[11px] font-medium uppercase tracking-wide text-muted">{{ $label }}</p>
+                    <p class="mt-1 text-sm font-semibold">{{ $value }}</p>
+                </div>
+            @endforeach
+        </div>
+    </div>
+
     <form method="POST" action="{{ route('admin.z-readings.store') }}" class="grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(19rem,0.85fr)]">
         @csrf
         <input type="hidden" name="branch_id" value="{{ $branch->id }}">
         <input type="hidden" name="business_date" value="{{ $businessDate }}">
+
+        <div class="rounded-lg border border-border bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900 lg:col-span-2">
+            <div class="mb-3">
+                <h2 class="text-base font-semibold">Machine Counter Readings</h2>
+                <p class="text-xs text-muted">Enter the physical beginning and ending meter readings shown on each machine.</p>
+            </div>
+            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                @for($machine = 1; $machine <= $machineCount; $machine++)
+                    @foreach(['wash' => 'Wash', 'dry' => 'Dry'] as $type => $label)
+                        <div class="overflow-hidden rounded-md border border-border dark:border-gray-800">
+                            <div class="bg-smoke px-3 py-2 text-center text-xs font-semibold uppercase dark:bg-gray-950">{{ $label }} {{ $machine }}</div>
+                            <div class="grid grid-cols-2 gap-2 p-2">
+                                @foreach(['beginning' => 'Beginning', 'ending' => 'Ending'] as $field => $fieldLabel)
+                                    <label>
+                                        <span class="text-[11px] font-medium uppercase text-muted">{{ $fieldLabel }}</span>
+                                        <input
+                                            name="machine_counters[{{ $machine }}][{{ $type }}][{{ $field }}]"
+                                            x-model.number="machineCounters['{{ $machine }}']['{{ $type }}']['{{ $field }}']"
+                                            type="number"
+                                            min="0"
+                                            step="1"
+                                            class="mt-1 h-9 w-full rounded-md border border-border bg-white px-2 text-right text-sm font-semibold dark:border-gray-800 dark:bg-gray-950"
+                                        >
+                                    </label>
+                                @endforeach
+                            </div>
+                            <div class="flex justify-between border-t border-border bg-blue-50 px-3 py-2 text-xs font-semibold dark:border-gray-800 dark:bg-blue-950/30">
+                                <span>Total {{ $label }} Cycle</span>
+                                <span x-text="cycleTotal('{{ $machine }}', '{{ $type }}')"></span>
+                            </div>
+                        </div>
+                    @endforeach
+                @endfor
+            </div>
+        </div>
 
         <div class="rounded-lg border border-border bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <div class="flex flex-col gap-2 border-b border-border p-3 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-between">
@@ -155,7 +230,6 @@
                         <span class="text-xs font-medium text-muted">Actual GCash Balance</span>
                         <input name="actual_gcash_amount" x-model.number="actualGcash" type="number" min="0" step="0.01" inputmode="decimal" class="mt-1 h-9 w-full rounded-md border border-border bg-white px-3 text-sm font-semibold dark:border-gray-800 dark:bg-gray-950">
                     </label>
-                    <input type="hidden" name="actual_bank_amount" :value="legacyActual">
                 </div>
                 <div class="mt-3 space-y-1.5 border-t border-border pt-3 text-sm dark:border-gray-800">
                     <div class="flex justify-between"><span class="text-muted">Cash payments</span><span class="font-medium">{{ $currency }} {{ number_format((float) $summary['expected_cash_amount'], 2) }}</span></div>
@@ -164,7 +238,7 @@
                     <div class="flex justify-between"><span class="text-muted">Cash withdrawn</span><span class="font-medium">- {{ $currency }} {{ number_format((float) data_get($summary, 'expense_breakdown.money_movements.cash_out', 0), 2) }}</span></div>
                     <div class="flex justify-between"><span class="text-muted">Expected GCash net balance</span><span class="font-medium">{{ $currency }} {{ number_format((float) $summary['expected_gcash_amount'], 2) }}</span></div>
                     <div class="rounded-md bg-smoke px-2 py-1.5 text-xs text-muted dark:bg-gray-950">
-                        Cashless expected balances include owner funding and subtract accounts payable repayments made through the same channel.
+                        Expected GCash includes owner funding and subtracts accounts payable repayments made through GCash.
                     </div>
                     <div class="flex justify-between border-t border-border pt-2 font-semibold dark:border-gray-800"><span>Expected Total</span><span>{{ $currency }} {{ number_format((float) $summary['expected_total_amount'], 2) }}</span></div>
                 </div>

@@ -18,6 +18,7 @@ class DatabaseSeeder extends Seeder
             UserSeeder::class,
             LaundryServiceSeeder::class,
             InventorySeeder::class,
+            ExcelSampleServiceSeeder::class,
             ServiceInventoryUsageSeeder::class,
             BranchSettingSeeder::class,
         ]);

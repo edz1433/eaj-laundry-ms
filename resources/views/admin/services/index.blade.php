@@ -66,6 +66,7 @@
                     <tr>
                         <th class="px-4 py-3">Service</th>
                         <th class="px-4 py-3">Branch</th>
+                        <th class="px-4 py-3">Z Reading</th>
                         <th class="px-4 py-3">Pricing</th>
                         <th class="px-4 py-3">Price</th>
                         <th class="px-4 py-3">Status</th>
@@ -77,6 +78,7 @@
                         <tr>
                             <td class="px-4 py-3 font-medium">{{ $service->name }}</td>
                             <td class="px-4 py-3">{{ $service->branch?->name ?? 'N/A' }}</td>
+                            <td class="px-4 py-3">{{ $serviceCategories[$service->report_category] ?? 'Other' }}</td>
                             <td class="px-4 py-3">{{ ucfirst($service->pricing_type) }}</td>
                             <td class="px-4 py-3">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $service->price, 2) }}</td>
                             <td class="px-4 py-3">
@@ -99,7 +101,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="px-4 py-10 text-center text-muted">No services found.</td></tr>
+                        <tr><td colspan="7" class="px-4 py-10 text-center text-muted">No services found.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -108,7 +110,7 @@
     </div>
 
     <div x-cloak x-show="createOpen" x-transition class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-        <div @click.outside="createOpen = false" class="w-full max-w-xl rounded-lg bg-white p-5 shadow-2xl dark:bg-gray-900">
+        <div @click.outside="createOpen = false" class="w-full max-w-3xl rounded-lg bg-white p-5 shadow-2xl dark:bg-gray-900">
             <div class="mb-4 flex items-center justify-between">
                 <h2 class="inline-flex items-center gap-2 text-lg font-semibold"><span data-lucide="services" class="h-4 w-4 text-primary"></span>Add Service</h2>
                 <button type="button" @click="createOpen = false" class="rounded-md p-2 hover:bg-smoke dark:hover:bg-gray-800"><span data-lucide="x" class="h-4 w-4"></span></button>
@@ -119,7 +121,7 @@
 
     @foreach($services as $service)
         <div x-cloak x-show="editOpen === {{ $service->id }}" x-transition class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div @click.outside="editOpen = null" class="w-full max-w-xl rounded-lg bg-white p-5 shadow-2xl dark:bg-gray-900">
+            <div @click.outside="editOpen = null" class="w-full max-w-3xl rounded-lg bg-white p-5 shadow-2xl dark:bg-gray-900">
                 <div class="mb-4 flex items-center justify-between">
                     <h2 class="inline-flex items-center gap-2 text-lg font-semibold"><span data-lucide="settings" class="h-4 w-4 text-primary"></span>Edit Service</h2>
                     <button type="button" @click="editOpen = null" class="rounded-md p-2 hover:bg-smoke dark:hover:bg-gray-800"><span data-lucide="x" class="h-4 w-4"></span></button>

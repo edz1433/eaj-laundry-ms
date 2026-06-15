@@ -9,10 +9,10 @@ use App\Models\DailyTask;
 use App\Models\DailyTaskCompletion;
 use App\Models\EmployeeAttendanceRecord;
 use App\Models\JobOrder;
+use App\Support\PublicUpload;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -143,11 +143,11 @@ class AttendanceController extends Controller
         abort_unless(
             is_string($path)
                 && str_starts_with($path, 'attendance-proofs/')
-                && Storage::disk('public')->exists($path),
+                && PublicUpload::exists($path),
             404
         );
 
-        return Storage::disk('public')->response($path, basename($path), [
+        return PublicUpload::response($path, [
             'Cache-Control' => 'private, max-age=86400',
             'X-Content-Type-Options' => 'nosniff',
         ]);
@@ -260,8 +260,7 @@ class AttendanceController extends Controller
         ]);
 
         $workDate = today()->toDateString();
-        $path = $request->file('photo')->store('daily-tasks', 'public');
-        Storage::disk('public')->setVisibility($path, 'public');
+        $path = PublicUpload::store($request->file('photo'), 'daily-tasks');
         $existing = DailyTaskCompletion::query()
             ->where('daily_task_id', $task->id)
             ->where('branch_id', $workBranch->id)
@@ -269,7 +268,7 @@ class AttendanceController extends Controller
             ->first();
 
         if ($existing?->photo_path) {
-            Storage::disk('public')->delete($existing->photo_path);
+            PublicUpload::delete($existing->photo_path);
         }
 
         DailyTaskCompletion::updateOrCreate(
@@ -508,8 +507,7 @@ class AttendanceController extends Controller
         abort_if($decoded === false, 422, 'Invalid attendance image.');
         $path = $directory.'/'.uniqid('attendance_', true).'.'.$extension;
 
-        Storage::disk('public')->put($path, $decoded);
-        Storage::disk('public')->setVisibility($path, 'public');
+        PublicUpload::put($path, $decoded);
 
         return $path;
     }

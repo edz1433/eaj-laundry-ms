@@ -7,8 +7,8 @@ use App\Models\Branch;
 use App\Models\BranchSetting;
 use App\Models\SystemSetting;
 use App\Support\Activity;
+use App\Support\PublicUpload;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class SystemSettingController extends Controller
@@ -121,12 +121,11 @@ class SystemSettingController extends Controller
 
         if ($canManageGlobal && $request->hasFile('business_logo')) {
             if ($settings->business_logo) {
-                Storage::disk('public')->delete($settings->business_logo);
+                PublicUpload::delete($settings->business_logo);
             }
 
             $validated['business_logo'] = $request->file('business_logo')
-                ->store('settings', 'public');
-            Storage::disk('public')->setVisibility($validated['business_logo'], 'public');
+                ->store('settings', PublicUpload::DISK);
         }
 
         $branch->update([

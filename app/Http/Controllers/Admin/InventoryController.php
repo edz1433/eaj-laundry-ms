@@ -66,8 +66,8 @@ class InventoryController extends Controller
             ->count();
 
         $items = $baseQuery
-            ->latest()
-            ->paginate(10)
+            ->orderBy('name')
+            ->paginate(50)
             ->withQueryString();
 
         $suppliers = Supplier::query()

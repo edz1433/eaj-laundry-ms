@@ -3,8 +3,8 @@
 namespace App\Providers;
 
 use App\Models\SystemSetting;
+use App\Support\PublicUpload;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
@@ -38,9 +38,7 @@ class AppServiceProvider extends ServiceProvider
                 }
 
                 $businessName = $settings?->business_name ?: config('app.name', 'Laundry System');
-                $businessLogo = $settings?->business_logo && Storage::disk('public')->exists($settings->business_logo)
-                    ? asset('storage/'.$settings->business_logo)
-                    : asset('logo.png');
+                $businessLogo = PublicUpload::url($settings?->business_logo) ?: asset('logo.png');
 
                 $shared = [
                     'appSettings' => $settings,
