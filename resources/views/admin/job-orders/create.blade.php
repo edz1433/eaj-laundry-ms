@@ -6,6 +6,7 @@
 @section('content')
 <div
     x-data="posPage(@js($branches), @js($processingBranches), @js($services), @js($customers), @js((float) ($appSettings?->vat_rate ?? 0)), @js((bool) ($appSettings?->vat_enabled ?? false)))"
+    x-init="init()"
 >
     <form
         method="POST"
@@ -14,82 +15,28 @@
     >
         @csrf
 
+        <!-- LEFT SIDE -->
         <section class="min-h-0 min-w-0">
-            <div class="flex h-full min-h-0 flex-col rounded-lg border border-border bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900 lg:p-4">
-                <div class="mb-3 flex shrink-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <!-- MODERN TOP BAR - Clean & Simple -->
+            <div class="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <!-- Left: Title & Orders Link -->
+                <div class="flex items-center gap-4">
                     <div>
-                        <h2 class="font-semibold">Service Catalog</h2>
-                        <p class="text-sm text-muted">Tap a service to add it to the cart.</p>
+                        <h2 class="text-sm font-semibold text-dark dark:text-white">New Job Order</h2>
+                        <p class="text-[10px] text-muted">Create customer order</p>
                     </div>
-
-                    <div class="flex h-9 w-full items-center gap-2 rounded-md border border-border px-3 dark:border-gray-800 xl:w-64">
-                        <span data-lucide="search" class="h-4 w-4 text-muted"></span>
-                        <input type="search" x-model.debounce.200ms="serviceSearch" placeholder="Search services..." class="w-full bg-transparent text-sm outline-none">
-                    </div>
+                    <a href="{{ route('admin.job-orders.index') }}" class="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary/10 px-3 text-xs font-medium text-primary hover:bg-primary/20 dark:bg-primary/20 dark:hover:bg-primary/30">
+                        <span data-lucide="list-ordered" class="h-3.5 w-3.5"></span>
+                        Orders
+                    </a>
                 </div>
 
-                <div class="mb-3 flex shrink-0 gap-1 overflow-x-auto rounded-md bg-smoke p-1 dark:bg-gray-950" x-effect="serviceTypes; refreshIcons()">
-                    <template x-for="type in serviceTypes" :key="type.value">
-                        <button
-                            type="button"
-                            @click="typeFilter = type.value; refreshIcons()"
-                            class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-sm px-3 text-sm font-medium"
-                            :class="typeFilter === type.value ? 'bg-white text-dark shadow-sm dark:bg-gray-900 dark:text-white' : 'text-muted hover:text-dark dark:hover:text-white'"
-                        >
-                            <span :data-lucide="type.icon" class="h-3.5 w-3.5"></span>
-                            <span x-text="type.label"></span>
-                        </button>
-                    </template>
-                </div>
-
-                <div class="grid min-h-0 flex-1 content-start gap-2 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-3" x-effect="filteredServices.map(service => service.id).join(','); refreshIcons()">
-                    <template x-for="service in filteredServices" :key="service.id">
-                        <button
-                            type="button"
-                            @click="add(service)"
-                            class="group rounded-md border border-border p-3 text-left transition hover:border-primary hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950"
-                        >
-                            <div class="flex items-start justify-between gap-3">
-                                <div class="flex min-w-0 items-start gap-2.5">
-                                    <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-                                        <span :data-lucide="serviceIcon(service)" class="h-5 w-5"></span>
-                                    </span>
-                                    <div class="min-w-0">
-                                        <p class="truncate text-sm font-medium" x-text="service.name"></p>
-                                        <p class="mt-1 text-xs capitalize text-muted" x-text="`${service.report_category.replaceAll('_', ' ')} / ${service.pricing_type}`"></p>
-                                    </div>
-                                </div>
-                                <span class="shrink-0 rounded-md bg-white px-2 py-1 text-xs font-medium text-primary shadow-sm dark:bg-gray-900">
-                                    {{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(service.price)"></span>
-                                </span>
-                            </div>
-                        </button>
-                    </template>
-
-                    <div x-show="filteredServices.length === 0" class="col-span-full rounded-md border border-dashed border-border p-8 text-center text-sm text-muted dark:border-gray-800">
-                        No services match your filter.
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <aside class="min-h-0 w-full md:self-stretch lg:w-80 xl:w-[22rem] xl:justify-self-end">
-            <div class="flex h-full w-full min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                <div class="shrink-0 space-y-2 border-b border-border p-3 dark:border-gray-800">
-                    <div class="flex items-center justify-between gap-3">
-                        <div class="min-w-0">
-                            <h1 class="truncate text-sm font-semibold">New Job Order</h1>
-                            <p class="text-[11px] text-muted">Customer and cart</p>
-                        </div>
-                        <a href="{{ route('admin.job-orders.index') }}" class="inline-flex h-8 shrink-0 items-center rounded-md border border-border px-2.5 text-xs font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
-                            Orders
-                        </a>
-                    </div>
-
+                <!-- Right: Branch Selection - Clean Badge Style -->
+                <div class="ml-auto flex items-center gap-3">
                     @if(in_array(auth()->user()->role, ['super_admin', 'admin'], true))
-                        <div>
-                            <label class="mb-1.5 block text-xs font-medium text-muted">Branch</label>
-                            <select name="branch_id" x-model="branchId" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950" required>
+                        <div class="flex items-center gap-2">
+                            <span data-lucide="store" class="h-3.5 w-3.5 text-muted"></span>
+                            <select name="branch_id" x-model="branchId" class="h-8 rounded-md border-0 bg-smoke px-2 text-xs font-medium dark:bg-gray-800" required>
                                 @foreach($branches as $branch)
                                     <option value="{{ $branch->id }}" @selected($branchId == $branch->id)>{{ $branch->name }}</option>
                                 @endforeach
@@ -97,6 +44,10 @@
                         </div>
                     @else
                         <input type="hidden" name="branch_id" value="{{ $branchId }}">
+                        <div class="flex items-center gap-2 rounded-md bg-primary/10 px-3 py-1">
+                            <span data-lucide="store" class="h-3.5 w-3.5 text-primary"></span>
+                            <span class="text-xs font-medium text-primary">{{ $branches->firstWhere('id', (int) $branchId)?->name }}</span>
+                        </div>
                     @endif
 
                     @php
@@ -105,202 +56,358 @@
                     @endphp
 
                     @if($canSelectProcessingBranch)
-                        <div>
-                            <label class="mb-1.5 block text-xs font-medium text-muted">Receiving Production Branch</label>
-                            <select name="processing_branch_id" x-model="processingBranchId" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950" required>
+                        <div class="flex items-center gap-2">
+                            <span data-lucide="git-branch" class="h-3.5 w-3.5 text-muted"></span>
+                            <select name="processing_branch_id" x-model="processingBranchId" class="h-8 rounded-md border-0 bg-smoke px-2 text-xs font-medium dark:bg-gray-800" required>
                                 <template x-for="branch in processingBranches" :key="branch.id">
-                                    <option :value="branch.id" x-text="`${branch.name} - receives by QR scan`"></option>
+                                    <option :value="branch.id" x-text="branch.name"></option>
                                 </template>
                             </select>
-                            <p class="mt-1 text-[11px] text-muted" x-text="selectedBranch && selectedBranch.branch_type === 'pickup_dropoff' ? 'This only assigns where the laundry should be received. It enters that branch cycle after they scan the QR.' : 'Production defaults to the selected full-service branch.'"></p>
                         </div>
                     @else
                         <input type="hidden" name="processing_branch_id" value="{{ $branchId }}">
-                    @endif
-
-                    <div>
-                        <div class="mb-1.5 flex items-center justify-between gap-2">
-                            <label class="block text-xs font-medium text-muted">Customer</label>
-                            <button type="button" @click="quickCustomerOpen = true; refreshIcons()" class="inline-flex h-7 items-center gap-1.5 rounded-md border border-border px-2 text-xs font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
-                                <span data-lucide="plus" class="h-3.5 w-3.5"></span>
-                                Add
-                            </button>
+                        <div class="flex items-center gap-1.5">
+                            <span data-lucide="git-branch" class="h-3.5 w-3.5 text-muted"></span>
+                            <span class="text-xs text-muted">{{ $branches->firstWhere('id', (int) $branchId)?->name }}</span>
                         </div>
-                        <div class="relative" @click.outside="customerOpen = false">
-                            <input type="hidden" name="customer_id" :value="selectedCustomerId">
-                            <div class="flex h-9 items-center gap-2 rounded-md border border-border bg-white px-3 dark:border-gray-800 dark:bg-gray-950">
-                                <span data-lucide="search" class="h-4 w-4 shrink-0 text-muted"></span>
-                                <input
-                                    type="search"
-                                    x-model="customerSearch"
-                                    @focus="customerOpen = true"
-                                    @input="selectedCustomerId = ''; customerOpen = true"
-                                    placeholder="Search customer..."
-                                    class="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                                    autocomplete="off"
-                                >
-                                <button type="button" x-show="selectedCustomerId" @click="clearCustomer()" title="Clear customer" aria-label="Clear customer" class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md hover:bg-smoke dark:hover:bg-gray-900">
-                                    <span data-lucide="x" class="h-3.5 w-3.5"></span>
-                                </button>
+                    @endif
+                </div>
+            </div>
+
+            <!-- CUSTOMER & ORDER OPTIONS - Clean Grid -->
+            <div class="mb-3 grid grid-cols-1 gap-2 rounded-lg border border-border bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900 md:grid-cols-3">
+                <!-- Customer -->
+                <div class="relative" @click.outside="customerOpen = false">
+                    <label class="mb-1 block text-[10px] font-medium text-muted">Customer</label>
+                    <input type="hidden" name="customer_id" :value="selectedCustomerId">
+                    <div class="flex h-9 items-center gap-2 rounded-md border border-border bg-white px-3 dark:border-gray-800 dark:bg-gray-950">
+                        <span data-lucide="user" class="h-4 w-4 shrink-0 text-muted"></span>
+                        <input
+                            type="search"
+                            x-model="customerSearch"
+                            @focus="customerOpen = true"
+                            @input="selectedCustomerId = ''; customerOpen = true"
+                            placeholder="Search or select customer..."
+                            class="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                            autocomplete="off"
+                        >
+                        <button type="button" @click="quickCustomerOpen = true; refreshIcons()" title="Add new customer" class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-primary hover:bg-primary/10">
+                            <span data-lucide="plus" class="h-4 w-4"></span>
+                        </button>
+                        <button type="button" x-show="selectedCustomerId" @click="clearCustomer()" title="Clear customer" class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md hover:bg-smoke dark:hover:bg-gray-900">
+                            <span data-lucide="x" class="h-4 w-4"></span>
+                        </button>
+                    </div>
+                    <div x-cloak x-show="customerOpen" x-transition class="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-border bg-white p-1 shadow-lg dark:border-gray-800 dark:bg-gray-950">
+                        <template x-for="customer in filteredCustomers" :key="customer.id">
+                            <button type="button" @click="selectCustomer(customer)" class="flex w-full items-center justify-between gap-2 rounded-sm px-3 py-2 text-left text-sm hover:bg-smoke dark:hover:bg-gray-900">
+                                <span class="min-w-0">
+                                    <span class="block truncate font-medium" x-text="customer.name"></span>
+                                    <span class="block truncate text-xs text-muted" x-text="`${customer.phone || 'No phone'}`"></span>
+                                </span>
+                                <span x-show="String(selectedCustomerId) === String(customer.id)" data-lucide="check" class="h-4 w-4 shrink-0 text-primary"></span>
+                            </button>
+                        </template>
+                        <div x-show="filteredCustomers.length === 0" class="px-3 py-6 text-center text-sm text-muted">No customers found</div>
+                    </div>
+                </div>
+
+                <!-- Notes -->
+                <div>
+                    <label class="mb-1 block text-[10px] font-medium text-muted">Notes / Instructions</label>
+                    <textarea name="notes" rows="1" placeholder="Add notes..." class="h-9 w-full rounded-md border border-border bg-white px-3 py-1.5 text-sm shadow-sm dark:border-gray-800 dark:bg-gray-950"></textarea>
+                </div>
+
+                <!-- Options -->
+                <div class="flex items-center gap-3">
+                    <label class="flex h-9 cursor-pointer items-center gap-2 mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 text-sm font-medium text-amber-800 dark:border-amber-900/60 dark:bg-amber-500/10 dark:text-amber-300">
+                        <input type="checkbox" name="is_rush" value="1" class="rounded border-amber-300 text-amber-600">
+                        <span data-lucide="zap" class="h-4 w-4"></span>
+                        Rush
+                    </label>
+                    <div class="flex h-9 rounded-md bg-smoke p-0.5 dark:bg-gray-950 mt-3">
+                        <label class="flex cursor-pointer items-center gap-1.5 rounded-sm px-3 text-xs font-medium has-[:checked]:bg-white has-[:checked]:text-primary has-[:checked]:shadow-sm dark:has-[:checked]:bg-gray-900">
+                            <input type="radio" name="transaction_type" value="walk_in" checked class="sr-only">
+                            <span data-lucide="user" class="h-3.5 w-3.5"></span>
+                            Walk-in
+                        </label>
+                        <label class="flex cursor-pointer items-center gap-1.5 rounded-sm px-3 text-xs font-medium has-[:checked]:bg-orange-100 has-[:checked]:text-orange-700 has-[:checked]:shadow-sm dark:has-[:checked]:bg-orange-500/10 dark:has-[:checked]:text-orange-300">
+                            <input type="radio" name="transaction_type" value="delivery" class="sr-only">
+                            <span data-lucide="truck" class="h-3.5 w-3.5"></span>
+                            Delivery
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SERVICE CATALOG -->
+            <div class="flex h-[calc(100%-13.5rem)] flex-col rounded-lg border border-border bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <!-- Catalog Header -->
+                <div class="mb-3 flex shrink-0 items-center justify-between gap-3">
+                    <div class="flex items-center gap-3">
+                        <span data-lucide="grid" class="h-4 w-4 text-muted"></span>
+                        <h3 class="text-sm font-semibold">Service Catalog</h3>
+                        <span class="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary" x-text="filteredServices.length"></span>
+                    </div>
+                    <div class="flex h-9 w-48 items-center gap-2 rounded-md border border-border px-3 dark:border-gray-800">
+                        <span data-lucide="search" class="h-4 w-4 text-muted"></span>
+                        <input type="search" x-model.debounce.200ms="serviceSearch" placeholder="Search services..." class="w-full bg-transparent text-sm outline-none">
+                    </div>
+                </div>
+
+                <!-- Category Filters -->
+                <div class="mb-3 flex shrink-0 gap-0.5 overflow-x-auto rounded-md bg-smoke p-0.5 dark:bg-gray-950">
+                    <template x-for="type in serviceTypes" :key="type.value">
+                        <button type="button" @click="typeFilter = type.value; refreshIcons()" class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-sm px-3 text-xs font-medium whitespace-nowrap" :class="typeFilter === type.value ? 'bg-white text-dark shadow-sm dark:bg-gray-900 dark:text-white' : 'text-muted hover:text-dark dark:hover:text-white'">
+                            <span :data-lucide="type.icon" class="h-3.5 w-3.5"></span>
+                            <span x-text="type.label"></span>
+                        </button>
+                    </template>
+                </div>
+
+                <!-- Service Grid -->
+                <div class="grid min-h-0 flex-1 content-start gap-2 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3" x-effect="filteredServices.map(service => service.id).join(','); refreshIcons()">
+                    <template x-for="service in filteredServices" :key="service.id">
+                        <button type="button" @click="add(service)" class="group rounded-lg border border-border p-3 text-left transition-all hover:border-primary hover:bg-primary/5 hover:shadow-sm dark:border-gray-800 dark:hover:bg-gray-950">
+                            <div class="flex items-start justify-between gap-2">
+                                <div class="flex min-w-0 items-start gap-2.5">
+                                    <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition group-hover:scale-105">
+                                        <span :data-lucide="serviceIcon(service)" class="h-5 w-5"></span>
+                                    </span>
+                                    <div class="min-w-0">
+                                        <p class="truncate text-sm font-medium" x-text="service.name"></p>
+                                        <p class="mt-0.5 text-[10px] capitalize text-muted" x-text="service.pricing_type"></p>
+                                    </div>
+                                </div>
+                                <span class="shrink-0 rounded-md bg-primary/10 px-2 py-1 text-xs font-bold text-primary">
+                                    {{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(service.price)"></span>
+                                </span>
                             </div>
+                        </button>
+                    </template>
+                    <div x-show="filteredServices.length === 0" class="col-span-full rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted dark:border-gray-800">
+                        <span data-lucide="package" class="mx-auto mb-2 block h-8 w-8"></span>
+                        No services match your filter.
+                    </div>
+                </div>
+            </div>
+        </section>
 
-                            <div
-                                x-cloak
-                                x-show="customerOpen"
-                                x-transition
-                                class="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-border bg-white p-1 shadow-lg dark:border-gray-800 dark:bg-gray-950"
-                            >
-                                <template x-for="customer in filteredCustomers" :key="customer.id">
-                                    <button
-                                        type="button"
-                                        @click="selectCustomer(customer)"
-                                        class="flex w-full items-center justify-between gap-3 rounded-sm px-3 py-2 text-left text-sm hover:bg-smoke dark:hover:bg-gray-900"
-                                    >
-                                        <span class="min-w-0">
-                                            <span class="block truncate font-medium" x-text="customer.name"></span>
-                                            <span class="block truncate text-xs text-muted" x-text="`${customer.phone || 'No phone'} - ${formatBilling(customer.billing_type)}`"></span>
-                                        </span>
-                                        <span x-show="String(selectedCustomerId) === String(customer.id)" data-lucide="check" class="h-4 w-4 shrink-0 text-primary"></span>
-                                    </button>
-                                </template>
+        <!-- RIGHT SIDE - CART -->
+        <aside class="min-h-0 w-full md:self-stretch lg:w-80 xl:w-[22rem] xl:justify-self-end">
+            <div class="flex h-full w-full min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <!-- Cart Header -->
+                <div class="shrink-0 border-b border-border p-4 dark:border-gray-800">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <span data-lucide="shopping-cart" class="h-5 w-5 text-muted"></span>
+                            <div>
+                                <h2 class="text-sm font-semibold">Cart</h2>
+                                <p class="text-xs text-muted"><span x-text="items.length"></span> item<span x-show="items.length !== 1">s</span></p>
+                            </div>
+                        </div>
+                        <button type="button" x-show="items.length" @click="items = []" title="Clear cart" class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10">
+                            <span data-lucide="trash-2" class="h-4 w-4"></span>
+                        </button>
+                    </div>
+                </div>
 
-                                <div x-show="filteredCustomers.length === 0" class="px-3 py-6 text-center text-sm text-muted">
-                                    No customers found for this branch.
+                <!-- Cart Items -->
+                <div class="min-h-[6rem] flex-1 space-y-2 overflow-y-auto p-3">
+                    <template x-for="(item, index) in items" :key="index">
+                        <div class="rounded-lg border border-border bg-white p-3 transition hover:border-primary/30 dark:border-gray-800 dark:bg-gray-950">
+                            <input type="hidden" :name="`items[${index}][laundry_service_id]`" :value="item.id">
+                            <input type="hidden" :name="`items[${index}][description]`" :value="item.name">
+
+                            <div class="flex items-start justify-between gap-2">
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex items-start justify-between gap-2">
+                                        <p class="truncate text-sm font-medium" x-text="item.name"></p>
+                                        <button type="button" @click="items.splice(index, 1)" title="Remove" class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10">
+                                            <span data-lucide="x" class="h-3.5 w-3.5"></span>
+                                        </button>
+                                    </div>
+                                    <div class="mt-1 flex items-center gap-3">
+                                        <div class="flex h-8 overflow-hidden rounded-md border border-border dark:border-gray-800">
+                                            <button type="button" @click="item.quantity = Math.max(Number(item.quantity || 0) - 1, 0.01)" class="flex w-8 items-center justify-center hover:bg-smoke dark:hover:bg-gray-900 text-sm">−</button>
+                                            <input type="number" step="0.01" min="0.01" :name="`items[${index}][quantity]`" x-model.number="item.quantity" aria-label="Quantity" class="w-12 border-x border-border bg-transparent text-center text-sm outline-none dark:border-gray-800">
+                                            <button type="button" @click="item.quantity = Number(item.quantity || 0) + 1" class="flex w-8 items-center justify-center hover:bg-smoke dark:hover:bg-gray-900 text-sm">+</button>
+                                        </div>
+                                        <span class="text-xs text-muted">×</span>
+                                        <div class="flex items-center rounded-md border border-border px-2 dark:border-gray-800">
+                                            <span class="mr-1 text-[10px] text-muted">{{ $appSettings?->currency ?? 'PHP' }}</span>
+                                            <input type="number" step="0.01" min="0" :name="`items[${index}][unit_price]`" x-model.number="item.price" aria-label="Unit price" class="w-16 bg-transparent py-1 text-right text-sm outline-none">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="shrink-0 text-right">
+                                    <p class="text-sm font-semibold text-primary">{{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(item.quantity * item.price)"></span></p>
                                 </div>
                             </div>
                         </div>
-                        <p x-show="!selectedCustomerId && customerSearch" class="mt-1.5 text-xs text-amber-600 dark:text-amber-300">
-                            Select a customer from the list before saving.
-                        </p>
-                    </div>
+                    </template>
 
-                    <textarea name="notes" rows="2" placeholder="Notes / instructions" class="w-full rounded-md border border-border bg-white px-3 py-2 text-sm shadow-sm dark:border-gray-800 dark:bg-gray-950"></textarea>
-
-                    <label class="flex h-9 cursor-pointer items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 text-sm font-medium text-amber-800 dark:border-amber-900/60 dark:bg-amber-500/10 dark:text-amber-300">
-                        <input type="checkbox" name="is_rush" value="1" class="rounded border-amber-300 text-amber-600">
-                        Rush order
-                    </label>
-
-                    <div class="grid grid-cols-2 gap-1 rounded-md bg-smoke p-1 dark:bg-gray-950">
-                        <label class="flex h-8 cursor-pointer items-center justify-center rounded-sm text-xs font-medium has-[:checked]:bg-white has-[:checked]:text-primary has-[:checked]:shadow-sm dark:has-[:checked]:bg-gray-900">
-                            <input type="radio" name="transaction_type" value="walk_in" checked class="sr-only">
-                            Walk-in / Drop Off
-                        </label>
-                        <label class="flex h-8 cursor-pointer items-center justify-center rounded-sm text-xs font-medium has-[:checked]:bg-orange-100 has-[:checked]:text-orange-700 has-[:checked]:shadow-sm dark:has-[:checked]:bg-orange-500/10 dark:has-[:checked]:text-orange-300">
-                            <input type="radio" name="transaction_type" value="delivery" class="sr-only">
-                            Delivery / Pick-up
-                        </label>
+                    <div x-show="items.length === 0" class="flex flex-col items-center justify-center rounded-lg border border-dashed border-border p-8 text-center dark:border-gray-800">
+                        <span data-lucide="shopping-bag" class="mb-3 h-12 w-12 text-muted/40"></span>
+                        <p class="text-sm text-muted">Your cart is empty</p>
+                        <p class="text-xs text-muted/60">Tap services to add them</p>
                     </div>
                 </div>
 
-            <div class="flex h-12 shrink-0 items-center justify-between border-b border-border px-3 dark:border-gray-800">
-                <div>
-                    <h2 class="text-sm font-semibold">Cart</h2>
-                    <p class="text-[11px] text-muted"><span x-text="items.length"></span> item<span x-show="items.length !== 1">s</span></p>
-                </div>
-                <button type="button" x-show="items.length" @click="items = []" title="Clear cart" aria-label="Clear cart" class="inline-flex h-8 w-8 items-center justify-center rounded-md text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10">
-                    <span data-lucide="trash" class="h-4 w-4"></span>
-                </button>
-            </div>
-
-            <div class="min-h-[8rem] flex-1 space-y-1.5 overflow-y-auto p-2">
-                <template x-for="(item, index) in items" :key="index">
-                    <div class="rounded-md border border-border bg-white p-2 dark:border-gray-800 dark:bg-gray-950">
-                        <input type="hidden" :name="`items[${index}][laundry_service_id]`" :value="item.id">
-                        <input type="hidden" :name="`items[${index}][description]`" :value="item.name">
-
-                        <div class="mb-2 flex items-center justify-between gap-2">
-                            <div class="min-w-0">
-                                <p class="truncate text-sm font-medium" x-text="item.name"></p>
-                                <p class="text-[11px] text-muted">{{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(item.quantity * item.price)"></span></p>
-                            </div>
-                            <button type="button" @click="items.splice(index, 1)" title="Remove item" aria-label="Remove item" class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10">
-                                <span data-lucide="x" class="h-4 w-4"></span>
-                            </button>
+                <!-- Cart Footer - Totals & Action -->
+                <div class="shrink-0 border-t border-border bg-smoke p-4 dark:border-gray-800 dark:bg-gray-950">
+                    <!-- Totals -->
+                    <div class="space-y-1.5">
+                        <div class="flex justify-between text-sm">
+                            <span class="text-muted">Subtotal</span>
+                            <span>{{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(subtotal)" class="font-medium"></span></span>
                         </div>
-
-                        <div class="grid grid-cols-[5.5rem_1fr] gap-1.5">
-                            <div class="flex h-8 overflow-hidden rounded-md border border-border dark:border-gray-800">
-                                <button type="button" @click="item.quantity = Math.max(Number(item.quantity || 0) - 1, 0.01)" class="flex w-7 items-center justify-center hover:bg-smoke dark:hover:bg-gray-900">-</button>
-                                <input type="number" step="0.01" min="0.01" :name="`items[${index}][quantity]`" x-model.number="item.quantity" aria-label="Quantity" class="w-full border-x border-border bg-transparent px-1 text-center text-xs outline-none dark:border-gray-800">
-                                <button type="button" @click="item.quantity = Number(item.quantity || 0) + 1" class="flex w-7 items-center justify-center hover:bg-smoke dark:hover:bg-gray-900">+</button>
-                            </div>
-                            <div class="flex h-8 items-center rounded-md border border-border px-2 dark:border-gray-800">
-                                <span class="mr-1 text-[11px] text-muted">{{ $appSettings?->currency ?? 'PHP' }}</span>
-                                <input type="number" step="0.01" min="0" :name="`items[${index}][unit_price]`" x-model.number="item.price" aria-label="Unit price" class="w-full bg-transparent text-right text-xs outline-none">
+                        <div class="border-t border-border pt-2 dark:border-gray-800">
+                            <div class="flex justify-between text-base font-bold">
+                                <span>Total</span>
+                                <span class="text-primary">{{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(total)"></span></span>
                             </div>
                         </div>
                     </div>
-                </template>
 
-                <div x-show="items.length === 0" class="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted dark:border-gray-800">
-                    Add services from the catalog.
+                    <!-- Save Button -->
+                    <button type="button" @click="showPaymentPanel = true; refreshIcons()" :disabled="items.length === 0 || !selectedCustomerId" class="mt-3 h-10 w-full rounded-lg bg-primary text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <span x-show="items.length === 0">Add items to continue</span>
+                        <span x-show="items.length > 0 && !selectedCustomerId">Select a customer</span>
+                        <span x-show="items.length > 0 && selectedCustomerId" class="flex items-center justify-center gap-2">
+                            <span data-lucide="credit-card" class="h-4 w-4"></span>
+                            Proceed to Payment
+                        </span>
+                    </button>
                 </div>
-            </div>
-
-            <div class="shrink-0 border-t border-border p-3 dark:border-gray-800">
-                <button type="button" @click="showPaymentPanel = true; refreshIcons()" :disabled="items.length === 0 || !selectedCustomerId" class="h-9 w-full rounded-md bg-primary text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">
-                    Save Job Order
-                </button>
-            </div>
             </div>
         </aside>
 
-        <div x-cloak x-show="showPaymentPanel" x-transition class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div @click.outside="showPaymentPanel = false" class="w-full max-w-md rounded-lg bg-white p-5 shadow-2xl dark:bg-gray-900">
+        <!-- Payment Modal -->
+        <div x-cloak x-show="showPaymentPanel" x-transition class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+            <div @click.outside="showPaymentPanel = false" class="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl dark:bg-gray-900">
                 <div class="mb-4 flex items-center justify-between">
-                    <h2 class="inline-flex items-center gap-2 text-lg font-semibold"><span data-lucide="payments" class="h-4 w-4 text-primary"></span>Payment</h2>
-                    <button type="button" @click="showPaymentPanel = false" class="rounded-md p-2 hover:bg-smoke dark:hover:bg-gray-800"><span data-lucide="x" class="h-4 w-4"></span></button>
+                    <h2 class="inline-flex items-center gap-2 text-lg font-semibold">
+                        <span data-lucide="credit-card" class="h-5 w-5 text-primary"></span>
+                        Payment
+                    </h2>
+                    <button type="button" @click="showPaymentPanel = false" class="rounded-lg p-2 hover:bg-smoke dark:hover:bg-gray-800">
+                        <span data-lucide="x" class="h-5 w-5"></span>
+                    </button>
                 </div>
 
-                <div class="space-y-2 text-sm">
-                    <div class="flex justify-between text-xs"><span class="text-muted">Subtotal</span><span>{{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(subtotal)"></span></span></div>
-                    <div class="flex h-9 items-center justify-between gap-3">
+                <div class="space-y-3 text-sm">
+                    <div class="flex justify-between">
+                        <span class="text-muted">Subtotal</span>
+                        <span>{{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(subtotal)"></span></span>
+                    </div>
+                    
+                    <div class="flex items-center justify-between gap-3">
                         <span class="text-muted">Discount</span>
-                        <input name="discount" x-model.number="discount" type="number" min="0" step="0.01" class="h-9 w-28 rounded-md border border-border px-2 text-right text-sm dark:border-gray-800 dark:bg-gray-950">
+                        <input name="discount" x-model.number="discount" type="number" min="0" step="0.01" class="h-9 w-28 rounded-lg border border-border px-3 text-right dark:border-gray-800 dark:bg-gray-950">
                     </div>
-                    <div class="flex justify-between text-xs"><span class="text-muted">VAT</span><span>{{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(tax)"></span></span></div>
-                    <div class="my-2 h-px bg-border dark:bg-gray-800"></div>
-                    <div class="flex justify-between text-base font-semibold"><span>Total</span><span>{{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(total)"></span></span></div>
-                    <div class="flex h-9 items-center justify-between gap-3">
+                    
+                    <div class="border-t border-border py-2 dark:border-gray-800"></div>
+                    
+                    <div class="flex justify-between text-base font-bold">
+                        <span>Total</span>
+                        <span class="text-primary">{{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(total)"></span></span>
+                    </div>
+                    
+                    <div class="flex items-center justify-between gap-3">
                         <span class="text-muted">Paid</span>
-                        <input name="paid_amount" x-model.number="paid" type="number" min="0" step="0.01" class="h-9 w-28 rounded-md border border-border px-2 text-right text-sm dark:border-gray-800 dark:bg-gray-950">
+                        <input name="paid_amount" x-model.number="paid" type="number" min="0" step="0.01" class="h-9 w-28 rounded-lg border border-border px-3 text-right dark:border-gray-800 dark:bg-gray-950">
                     </div>
-                    <div class="flex justify-between text-sm font-medium"><span>Balance</span><span>{{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(balance)"></span></span></div>
-                    <div class="grid grid-cols-[1fr_auto] gap-2 pt-2">
-                        <select name="payment_type" x-model="paymentType" @change="if (paymentType === 'unpaid') paid = 0" class="h-9 min-w-0 rounded-md border border-border bg-white px-2 text-sm dark:border-gray-800 dark:bg-gray-950">
-                            <option value="cash">Cash</option>
-                            <option value="gcash">GCash</option>
-                            <option value="unpaid">Unpaid</option>
-                            <option value="po">PO</option>
-                        </select>
-                        <button type="button" @click="paid = total" title="Pay exact total" aria-label="Pay exact total" class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
-                            <span data-lucide="payments" class="h-4 w-4"></span>
-                        </button>
+                    
+                    <div class="flex justify-between font-semibold">
+                        <span>Balance</span>
+                        <span>{{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(balance)"></span></span>
                     </div>
-                    <input name="payment_reference_no" placeholder="Reference no. for GCash/card" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
-                    <label class="flex items-start gap-2 rounded-md border border-border p-3 text-sm dark:border-gray-800" :class="canSendSms ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'">
+                    
+                    <!-- Payment Type - Radio Card Style -->
+                    <div class="space-y-2 pt-2">
+                        <label class="text-xs font-medium text-muted">Payment Method</label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-border p-2.5 transition hover:border-primary/50 dark:border-gray-800" :class="paymentType === 'unpaid' ? 'border-primary bg-primary/5' : ''">
+                                <input type="radio" name="payment_type" value="unpaid" x-model="paymentType" class="sr-only">
+                                <div class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 border-muted" :class="paymentType === 'unpaid' ? 'border-primary bg-primary' : ''">
+                                    <span x-show="paymentType === 'unpaid'" class="h-2 w-2 rounded-full bg-white"></span>
+                                </div>
+                                <div class="flex flex-col">
+                                    <span class="text-sm font-medium">Unpaid</span>
+                                    <span class="text-[10px] text-muted">Charge to account</span>
+                                </div>
+                            </label>
+
+                            <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-border p-2.5 transition hover:border-primary/50 dark:border-gray-800" :class="paymentType === 'cash' ? 'border-primary bg-primary/5' : ''">
+                                <input type="radio" name="payment_type" value="cash" x-model="paymentType" class="sr-only">
+                                <div class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 border-muted" :class="paymentType === 'cash' ? 'border-primary bg-primary' : ''">
+                                    <span x-show="paymentType === 'cash'" class="h-2 w-2 rounded-full bg-white"></span>
+                                </div>
+                                <div class="flex flex-col">
+                                    <span class="text-sm font-medium">Cash</span>
+                                    <span class="text-[10px] text-muted">Pay with cash</span>
+                                </div>
+                            </label>
+
+                            <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-border p-2.5 transition hover:border-primary/50 dark:border-gray-800" :class="paymentType === 'gcash' ? 'border-primary bg-primary/5' : ''">
+                                <input type="radio" name="payment_type" value="gcash" x-model="paymentType" class="sr-only">
+                                <div class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 border-muted" :class="paymentType === 'gcash' ? 'border-primary bg-primary' : ''">
+                                    <span x-show="paymentType === 'gcash'" class="h-2 w-2 rounded-full bg-white"></span>
+                                </div>
+                                <div class="flex flex-col">
+                                    <span class="text-sm font-medium">GCash</span>
+                                    <span class="text-[10px] text-muted">Digital payment</span>
+                                </div>
+                            </label>
+
+                            <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-border p-2.5 transition hover:border-primary/50 dark:border-gray-800" :class="paymentType === 'po' ? 'border-primary bg-primary/5' : ''">
+                                <input type="radio" name="payment_type" value="po" x-model="paymentType" class="sr-only">
+                                <div class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 border-muted" :class="paymentType === 'po' ? 'border-primary bg-primary' : ''">
+                                    <span x-show="paymentType === 'po'" class="h-2 w-2 rounded-full bg-white"></span>
+                                </div>
+                                <div class="flex flex-col">
+                                    <span class="text-sm font-medium">PO</span>
+                                    <span class="text-[10px] text-muted">Purchase order</span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Reference Number Field (shown for GCash and PO) -->
+                    <div x-show="paymentType === 'gcash' || paymentType === 'po'" x-transition.duration.200ms>
+                        <input name="payment_reference_no" placeholder="Enter reference number..." class="h-9 w-full rounded-lg border border-border bg-white px-3 dark:border-gray-800 dark:bg-gray-950">
+                    </div>
+                    
+                    <!-- SMS Notification -->
+                    <label class="flex items-start gap-2 rounded-lg border border-border p-3 dark:border-gray-800" :class="canSendSms ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'">
                         <input type="checkbox" name="send_sms" value="1" :disabled="!canSendSms" class="mt-0.5 rounded border-border text-primary">
                         <span>
-                            <span class="block font-medium">Send order received SMS</span>
+                            <span class="block text-sm font-medium">Send order received SMS</span>
                             <span class="block text-xs text-muted" x-text="smsAvailabilityMessage"></span>
                         </span>
                     </label>
                 </div>
 
-                <div class="mt-5 grid grid-cols-2 gap-2">
-                    <button type="button" @click="showPaymentPanel = false" class="h-9 rounded-md border border-border text-sm font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">Cancel</button>
-                    <button type="submit" class="h-9 rounded-md bg-primary text-sm font-medium text-white hover:opacity-90">Confirm Save</button>
+                <div class="mt-5 grid grid-cols-2 gap-3">
+                    <button type="button" @click="showPaymentPanel = false" class="h-10 rounded-lg border border-border font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">Cancel</button>
+                    <button type="submit" class="h-10 rounded-lg bg-primary font-semibold text-white hover:opacity-90">Confirm Order</button>
                 </div>
             </div>
         </div>
     </form>
 
-    <div x-cloak x-show="quickCustomerOpen" x-transition class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-        <div @click.outside="quickCustomerOpen = false" class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white p-5 shadow-2xl dark:bg-gray-900">
+    <!-- Quick Add Customer Modal -->
+    <div x-cloak x-show="quickCustomerOpen" x-transition class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+        <div @click.outside="quickCustomerOpen = false" class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-6 shadow-2xl dark:bg-gray-900">
             <div class="mb-4 flex items-center justify-between">
-                <h2 class="inline-flex items-center gap-2 text-lg font-semibold"><span data-lucide="customers" class="h-4 w-4 text-primary"></span>Add Customer</h2>
-                <button type="button" @click="quickCustomerOpen = false" class="rounded-md p-2 hover:bg-smoke dark:hover:bg-gray-800"><span data-lucide="x" class="h-4 w-4"></span></button>
+                <h2 class="inline-flex items-center gap-2 text-lg font-semibold">
+                    <span data-lucide="user-plus" class="h-5 w-5 text-primary"></span>
+                    Add Customer
+                </h2>
+                <button type="button" @click="quickCustomerOpen = false" class="rounded-lg p-2 hover:bg-smoke dark:hover:bg-gray-800">
+                    <span data-lucide="x" class="h-5 w-5"></span>
+                </button>
             </div>
 
             @include('admin.customers.partials.form', [
@@ -318,13 +425,13 @@
 function posPage(branches, processingBranches, services, customers, vatRate, vatEnabled) {
     return {
         branchId: @js((string) $branchId),
-        branches,
-        processingBranches,
+        branches: branches || [],
+        processingBranches: processingBranches || [],
         processingBranchId: '',
-        services,
-        customers,
+        services: services || [],
+        customers: customers || [],
         items: [],
-        paymentType: 'cash',
+        paymentType: 'unpaid',
         discount: 0,
         paid: 0,
         showPaymentPanel: false,
@@ -334,10 +441,12 @@ function posPage(branches, processingBranches, services, customers, vatRate, vat
         selectedCustomerId: @js((string) ($selectedCustomerId ?? '')),
         serviceSearch: '',
         typeFilter: 'all',
+        vatRate: vatRate || 0,
+        vatEnabled: vatEnabled || false,
         serviceTypes: [
-            { value: 'all', label: 'All', icon: 'services' },
-            { value: 'wash', label: 'Wash', icon: 'laundry' },
-            { value: 'dry', label: 'Dry', icon: 'droplets' },
+            { value: 'all', label: 'All', icon: 'grid' },
+            { value: 'wash', label: 'Wash', icon: 'droplets' },
+            { value: 'dry', label: 'Dry', icon: 'wind' },
             { value: 'dry_extend', label: 'Dry Extend', icon: 'timer' },
             { value: 'fabcon', label: 'Fabcon', icon: 'sparkles' },
             { value: 'detergent', label: 'Detergent', icon: 'package' },
@@ -351,6 +460,8 @@ function posPage(branches, processingBranches, services, customers, vatRate, vat
         init() {
             this.setDefaultProcessingBranch();
             this.syncSelectedCustomer();
+            
+            // Watch for branch changes
             this.$watch('branchId', () => {
                 this.items = [];
                 this.discount = 0;
@@ -359,7 +470,7 @@ function posPage(branches, processingBranches, services, customers, vatRate, vat
                 this.setDefaultProcessingBranch();
 
                 if (!this.selectedCustomerId) {
-                    this.$nextTick(() => window.renderLucideIcons());
+                    this.$nextTick(() => this.refreshIcons());
                     return;
                 }
 
@@ -368,9 +479,18 @@ function posPage(branches, processingBranches, services, customers, vatRate, vat
                     this.clearCustomer();
                 }
 
-                this.$nextTick(() => window.renderLucideIcons());
+                this.$nextTick(() => this.refreshIcons());
             });
-            this.$watch('quickCustomerOpen', () => this.refreshIcons());
+            
+            // Watch for payment type changes
+            this.$watch('paymentType', (value) => {
+                if (value === 'unpaid' || value === 'po') {
+                    this.paid = 0;
+                }
+            });
+            
+            // Initial icon render
+            this.$nextTick(() => this.refreshIcons());
         },
         get selectedBranch() {
             return this.branches.find(branch => String(branch.id) === String(this.branchId));
@@ -420,15 +540,15 @@ function posPage(branches, processingBranches, services, customers, vatRate, vat
         },
         selectCustomer(customer) {
             this.selectedCustomerId = customer.id;
-            this.customerSearch = `${customer.name} - ${this.formatBilling(customer.billing_type)}`;
+            this.customerSearch = customer.name;
             this.customerOpen = false;
-            this.$nextTick(() => window.renderLucideIcons());
+            this.$nextTick(() => this.refreshIcons());
         },
         clearCustomer() {
             this.selectedCustomerId = '';
             this.customerSearch = '';
             this.customerOpen = false;
-            this.$nextTick(() => window.renderLucideIcons());
+            this.$nextTick(() => this.refreshIcons());
         },
         syncSelectedCustomer() {
             if (!this.selectedCustomerId) {
@@ -442,23 +562,25 @@ function posPage(branches, processingBranches, services, customers, vatRate, vat
         },
         formatBilling(value) {
             if (value === 'monthly_billing') return 'Legacy Billing';
-
             return String(value || 'regular').replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
         },
         serviceIcon(service) {
             const name = String(service.name || '').toLowerCase();
 
-            if (name.includes('dry') || name.includes('dryer')) return 'droplets';
+            if (name.includes('dry') || name.includes('dryer')) return 'wind';
             if (name.includes('fold') || name.includes('iron') || name.includes('press')) return 'shirt';
-            if (name.includes('wash') || name.includes('laundry')) return 'laundry';
+            if (name.includes('wash') || name.includes('laundry')) return 'droplets';
             if (service.pricing_type === 'kilo') return 'scale';
             if (service.pricing_type === 'piece') return 'shirt';
             if (service.pricing_type === 'custom') return 'sparkles';
-
-            return 'laundry';
+            return 'package';
         },
         refreshIcons() {
-            this.$nextTick(() => window.renderLucideIcons());
+            this.$nextTick(() => {
+                if (window.lucide && typeof window.lucide.createIcons === 'function') {
+                    window.lucide.createIcons();
+                }
+            });
         },
         get availableServices() {
             return this.services.filter(service => String(service.branch_id) === String(this.branchId));
@@ -478,13 +600,23 @@ function posPage(branches, processingBranches, services, customers, vatRate, vat
             } else {
                 this.items.push({ id: service.id, name: service.name, quantity: 1, price: Number(service.price) });
             }
-            this.$nextTick(() => window.renderLucideIcons());
+            this.$nextTick(() => this.refreshIcons());
         },
-        get subtotal() { return this.items.reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.price || 0)), 0); },
-        get tax() { return vatEnabled ? Math.max(this.subtotal - Number(this.discount || 0), 0) * (Number(vatRate) / 100) : 0; },
-        get total() { return Math.max(this.subtotal - Number(this.discount || 0), 0) + this.tax; },
-        get balance() { return Math.max(this.total - Number(this.paid || 0), 0); },
-        money(value) { return Number(value || 0).toFixed(2); }
+        get subtotal() { 
+            return this.items.reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.price || 0)), 0); 
+        },
+        get tax() { 
+            return this.vatEnabled ? Math.max(this.subtotal - Number(this.discount || 0), 0) * (Number(this.vatRate) / 100) : 0; 
+        },
+        get total() { 
+            return Math.max(this.subtotal - Number(this.discount || 0), 0) + this.tax; 
+        },
+        get balance() { 
+            return Math.max(this.total - Number(this.paid || 0), 0); 
+        },
+        money(value) { 
+            return Number(value || 0).toFixed(2); 
+        }
     }
 }
 </script>
