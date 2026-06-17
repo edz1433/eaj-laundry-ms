@@ -339,18 +339,26 @@ class CycleController extends Controller
 
         $validated = $request->validate([
             'cycle_type' => ['required', Rule::in(array_keys(self::CYCLE_TYPES))],
-            'machine_number' => ['nullable', 'integer', 'min:1'],
+            'machine_numbers' => ['nullable', 'array'],
+            'machine_numbers.*' => ['integer', 'min:1'],
             'notes' => ['nullable', 'string', 'max:255'],
         ]);
 
         $processingBranch = $jobOrder->processingBranch ?: $jobOrder->branch;
         $machineCount = (int) ($processingBranch?->machine_count ?? 0);
-        if (in_array($validated['cycle_type'], ['wash', 'dry'], true) && $machineCount > 0 && empty($validated['machine_number'])) {
-            return back()->withErrors(['machine_number' => 'Please choose a machine.'])->withInput();
+        
+        // For wash/dry cycles, require at least one machine
+        if (in_array($validated['cycle_type'], ['wash', 'dry'], true) && $machineCount > 0 && empty($validated['machine_numbers'])) {
+            return back()->withErrors(['machine_numbers' => 'Please select at least one machine.'])->withInput();
         }
 
-        if (! empty($validated['machine_number']) && ($machineCount <= 0 || (int) $validated['machine_number'] > $machineCount)) {
-            return back()->withErrors(['machine_number' => 'Please choose a valid machine.'])->withInput();
+        // Validate machine numbers are within range
+        if (! empty($validated['machine_numbers'])) {
+            foreach ($validated['machine_numbers'] as $machineNumber) {
+                if ($machineCount <= 0 || (int) $machineNumber > $machineCount) {
+                    return back()->withErrors(['machine_numbers' => 'Please choose valid machines.'])->withInput();
+                }
+            }
         }
 
         if (
@@ -362,29 +370,53 @@ class CycleController extends Controller
             ])->withInput();
         }
 
-        if (in_array($validated['cycle_type'], ['wash', 'dry'], true) && ! empty($validated['machine_number'])) {
-            $conflictingCycle = $this->machineConflict($jobOrder, $validated['cycle_type'], (int) $validated['machine_number']);
-
-            if ($conflictingCycle) {
+        // Check for machine conflicts for each selected machine
+        $machineNumbers = $validated['machine_numbers'] ?? [];
+        if (in_array($validated['cycle_type'], ['wash', 'dry'], true) && ! empty($machineNumbers)) {
+            $conflictingMachines = [];
+            foreach ($machineNumbers as $machineNumber) {
+                $conflictingCycle = $this->machineConflict($jobOrder, $validated['cycle_type'], (int) $machineNumber);
+                if ($conflictingCycle) {
+                    $conflictingMachines[] = $machineNumber;
+                }
+            }
+            
+            if (! empty($conflictingMachines)) {
                 $machineLabel = $validated['cycle_type'] === 'wash' ? 'Wash' : 'Dry';
-                $jobOrderNumber = $conflictingCycle->jobOrder?->job_order_number ?? 'another job order';
-
+                $machines = implode(', ', array_map(fn ($m) => "#{$m}", $conflictingMachines));
                 return back()->withErrors([
-                    'machine_number' => "{$machineLabel} #{$validated['machine_number']} is currently used by {$jobOrderNumber}.",
+                    'machine_numbers' => "{$machineLabel} machine(s) {$machines} are currently in use.",
                 ])->withInput();
             }
         }
 
         $cycleNumber = $jobOrder->cycles()->where('cycle_type', $validated['cycle_type'])->max('cycle_number') + 1;
+        $createdCycles = [];
 
-        $cycle = $jobOrder->cycles()->create([
-            'user_id' => $request->user()->id,
-            'cycle_type' => $validated['cycle_type'],
-            'machine_number' => in_array($validated['cycle_type'], ['wash', 'dry'], true) ? ($validated['machine_number'] ?? null) : null,
-            'cycle_number' => $cycleNumber,
-            'started_at' => now(),
-            'notes' => $validated['notes'] ?? null,
-        ]);
+        // Create one cycle record for each selected machine (or one record for non-machine cycles)
+        if (in_array($validated['cycle_type'], ['wash', 'dry'], true) && ! empty($machineNumbers)) {
+            foreach ($machineNumbers as $machineNumber) {
+                $cycle = $jobOrder->cycles()->create([
+                    'user_id' => $request->user()->id,
+                    'cycle_type' => $validated['cycle_type'],
+                    'machine_number' => (int) $machineNumber,
+                    'cycle_number' => $cycleNumber,
+                    'started_at' => now(),
+                    'notes' => $validated['notes'] ?? null,
+                ]);
+                $createdCycles[] = $cycle;
+            }
+        } else {
+            $cycle = $jobOrder->cycles()->create([
+                'user_id' => $request->user()->id,
+                'cycle_type' => $validated['cycle_type'],
+                'machine_number' => null,
+                'cycle_number' => $cycleNumber,
+                'started_at' => now(),
+                'notes' => $validated['notes'] ?? null,
+            ]);
+            $createdCycles[] = $cycle;
+        }
 
         $status = match ($validated['cycle_type']) {
             'wash' => 'washing',
@@ -400,14 +432,15 @@ class CycleController extends Controller
             'released_at' => null,
         ]);
 
-        Activity::log($request, 'cycle_started', $cycle, [
+        $machineStr = ! empty($machineNumbers) ? ' on machine(s) #' . implode(', #', $machineNumbers) : '';
+        Activity::log($request, 'cycle_started', $createdCycles[0] ?? null, [
             'job_order_number' => $jobOrder->job_order_number,
             'cycle_type' => $validated['cycle_type'],
-            'machine_number' => in_array($validated['cycle_type'], ['wash', 'dry'], true) ? ($validated['machine_number'] ?? null) : null,
+            'machine_numbers' => $machineNumbers,
             'cycle_number' => $cycleNumber,
         ], $jobOrder->branch_id);
 
-        return back()->with('success', self::CYCLE_TYPES[$validated['cycle_type']].' cycle started.');
+        return back()->with('success', self::CYCLE_TYPES[$validated['cycle_type']].' cycle started' . $machineStr . '.');
     }
 
     public function endCycle(Request $request, CycleRecord $cycle)
