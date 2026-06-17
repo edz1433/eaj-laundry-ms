@@ -306,7 +306,8 @@
                             @csrf
                             @method('PATCH')
                             <input type="hidden" name="status" value="{{ $status }}">
-                            <button class="h-8 rounded-md px-2 text-xs font-medium {{ $order->status === $status ? 'bg-primary text-white' : 'border border-border hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950' }}">
+                            @php($canChangeStatus = $order->allCyclesDone())
+                            <button {{ ! $canChangeStatus ? 'disabled' : '' }} title="{{ ! $canChangeStatus ? 'All cycles must be marked Done first' : 'Set status to '.$label }}" class="h-8 rounded-md px-2 text-xs font-medium {{ $order->status === $status ? 'bg-primary text-white' : 'border border-border hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950' }} {{ ! $canChangeStatus ? 'opacity-50 cursor-not-allowed' : '' }}">
                                 {{ $label }}
                             </button>
                         </form>

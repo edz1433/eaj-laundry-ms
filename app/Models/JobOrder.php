@@ -22,4 +22,9 @@ class JobOrder extends Model
     public function items() { return $this->hasMany(JobOrderItem::class); }
     public function payments() { return $this->hasMany(Payment::class); }
     public function cycles() { return $this->hasMany(CycleRecord::class); }
+
+    public function allCyclesDone()
+    {
+        return ! $this->cycles()->whereNull('ended_at')->exists();
+    }
 }
