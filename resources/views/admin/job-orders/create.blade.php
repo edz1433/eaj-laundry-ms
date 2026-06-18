@@ -499,9 +499,14 @@ function posPage(branches, processingBranches, services, customers, serviceCateg
             this.$watch('paymentType', (value) => {
                 if (value === 'unpaid' || value === 'po') {
                     this.paid = 0;
+                    return;
+                }
+
+                if (['cash', 'gcash', 'bank'].includes(value) && Number(this.paid) <= 0) {
+                    this.paid = Number(this.total);
                 }
             });
-            
+
             // Initial icon render
             this.$nextTick(() => this.refreshIcons());
         },

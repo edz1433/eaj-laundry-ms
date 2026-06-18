@@ -88,7 +88,13 @@ class CycleController extends Controller
             ->when(
                 in_array($request->status, self::FILTER_STATUSES, true),
                 fn ($q) => $q->where('status', $request->status),
-                fn ($q) => $q->where('status', '!=', 'completed')
+                function ($q) use ($request) {
+                    if ($request->filled('search')) {
+                        return $q->where('status', '!=', 'completed');
+                    }
+
+                    return $q->whereNotIn('status', ['completed', 'ready_for_pickup']);
+                }
             )
             ->when($selectedBranchId, fn ($q) => $q->where(fn ($query) => $query
                 ->where('branch_id', $selectedBranchId)

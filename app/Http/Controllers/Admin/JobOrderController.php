@@ -282,6 +282,10 @@ class JobOrderController extends Controller
                 ? 0
                 : min((float) ($validated['paid_amount'] ?? 0), $total);
 
+            if (in_array($paymentType, ['cash', 'gcash', 'bank'], true) && $paid <= 0) {
+                $paid = $total;
+            }
+
             $order = JobOrder::create([
                 'branch_id' => $validated['branch_id'],
                 'processing_branch_id' => $validated['processing_branch_id'],
