@@ -18,8 +18,8 @@
             <h1 class="text-xl font-semibold tracking-normal">Billing Dashboard</h1>
             <p class="text-sm text-muted">Manage global trial access, branch subscription generation, and payment history.</p>
         </div>
-        <span class="{{ \App\Support\StatusBadge::classes($summary['trial_status']) }}">
-            Trial: {{ ucfirst($summary['trial_status']) }}
+        <span class="{{ \App\Support\StatusBadge::classes($summary['system_status'] ?? $summary['trial_status']) }}">
+            {{ $summary['system_status_label'] ?? 'Trial: '.ucfirst($summary['trial_status']) }}
         </span>
     </div>
 
@@ -251,10 +251,8 @@
 
                         <div x-show="addExpense" x-transition class="mt-3">
                             <label class="mb-1.5 block text-sm font-medium">Paid From</label>
-                            <select name="paid_from" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-900">
-                                <option value="store_cash" @selected(old('paid_from', $record->expense?->paid_from ?? 'store_cash') === 'store_cash')>Store Cash - deduct from Cash Count</option>
-                                <option value="owner" @selected(old('paid_from', $record->expense?->paid_from) === 'owner')>Owner-paid, reimbursement due</option>
-                            </select>
+                            <input type="hidden" name="paid_from" value="store_cash">
+                            <div class="flex h-9 items-center rounded-md border border-border bg-white px-3 text-sm font-medium dark:border-gray-700 dark:bg-gray-900">Store-funded</div>
                         </div>
                     </div>
                     <div class="flex justify-end">

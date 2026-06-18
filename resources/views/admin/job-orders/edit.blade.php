@@ -142,17 +142,19 @@
 
                             <div class="mb-2 flex items-center justify-between gap-2">
                                 <p class="truncate text-sm font-medium" x-text="item.name"></p>
-                                <button type="button" @click="items.splice(index, 1)" title="Remove item" aria-label="Remove item" class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10">
-                                    <span data-lucide="x" class="h-4 w-4"></span>
-                                </button>
                             </div>
 
-                            <div class="grid grid-cols-[5.5rem_1fr] gap-1.5">
-                                <input type="number" step="0.01" min="0.01" :name="`items[${index}][quantity]`" x-model.number="item.quantity" aria-label="Quantity" class="h-8 rounded-md border border-border bg-transparent px-2 text-center text-xs outline-none dark:border-gray-800">
-                                <div class="flex h-8 items-center rounded-md border border-border px-2 dark:border-gray-800">
-                                    <span class="mr-1 text-[11px] text-muted">{{ $appSettings?->currency ?? 'PHP' }}</span>
-                                    <input type="number" step="0.01" min="0" :name="`items[${index}][unit_price]`" x-model.number="item.price" aria-label="Unit price" class="w-full bg-transparent text-right text-xs outline-none">
+                            <div class="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-1.5">
+                                <div class="grid grid-cols-[5.5rem_1fr] gap-1.5">
+                                    <input type="number" step="0.01" min="0.01" :name="`items[${index}][quantity]`" x-model.number="item.quantity" aria-label="Quantity" class="h-8 rounded-md border border-border bg-transparent px-2 text-center text-xs outline-none dark:border-gray-800">
+                                    <div class="flex h-8 items-center rounded-md border border-border px-2 dark:border-gray-800">
+                                        <span class="mr-1 text-[11px] text-muted">{{ $appSettings?->currency ?? 'PHP' }}</span>
+                                        <input type="number" step="0.01" min="0" :name="`items[${index}][unit_price]`" x-model.number="item.price" aria-label="Unit price" class="w-full bg-transparent text-right text-xs outline-none">
+                                    </div>
                                 </div>
+                                <button type="button" @click="items.splice(index, 1)" title="Remove item" aria-label="Remove item" class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                                </button>
                             </div>
                         </div>
                     </template>

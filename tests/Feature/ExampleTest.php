@@ -1058,11 +1058,13 @@ class ExampleTest extends TestCase
             ->assertSee('Beginning comes from the previous Z Reading ending')
             ->assertSeeInOrder(['Daily Operations Summary', 'Cash Count', 'Machine Counter Readings'])
             ->assertSeeInOrder(['Wash 1', 'Wash 5', 'Dry 1', 'Dry 5'])
+            ->assertSee('aria-label="Beginning Wash 1"', false)
+            ->assertSee('disabled', false)
             ->assertSee('5055')
             ->assertSee('5061')
             ->assertSee('7073')
             ->assertSee('7081')
-            ->assertDontSee('Bank');
+            ->assertSee('Expected Bank net balance');
 
         $this
             ->actingAs($admin)
@@ -1115,6 +1117,7 @@ class ExampleTest extends TestCase
                     '200' => 2,
                 ],
                 'actual_gcash_amount' => '310.00',
+                'actual_bank_amount' => '375.00',
             ])
             ->assertRedirect(route('admin.z-readings.index', [
                 'branch_id' => $branch->id,
@@ -1127,10 +1130,10 @@ class ExampleTest extends TestCase
         $this->assertSame('400.00', $reading->actual_cash_amount);
         $this->assertSame('450.00', $reading->expected_gcash_amount);
         $this->assertSame('310.00', $reading->actual_gcash_amount);
-        $this->assertSame('0.00', $reading->expected_bank_amount);
-        $this->assertSame('0.00', $reading->actual_bank_amount);
-        $this->assertSame('875.00', $reading->expected_total_amount);
-        $this->assertSame('710.00', $reading->actual_total_amount);
+        $this->assertSame('375.00', $reading->expected_bank_amount);
+        $this->assertSame('375.00', $reading->actual_bank_amount);
+        $this->assertSame('1250.00', $reading->expected_total_amount);
+        $this->assertSame('1085.00', $reading->actual_total_amount);
         $this->assertSame('-165.00', $reading->over_short_amount);
         $this->assertSame(5055, $reading->machine_counters[1]['wash']['beginning']);
         $this->assertSame(5061, $reading->machine_counters[1]['wash']['ending']);
@@ -1143,8 +1146,8 @@ class ExampleTest extends TestCase
         $this->assertEquals(25.0, $reading->expense_breakdown['money_movements']['cash_out']);
         $this->assertEquals(200.0, $reading->expense_breakdown['accounts_payable']['gcash_funding']);
         $this->assertEquals(50.0, $reading->expense_breakdown['accounts_payable']['gcash_repayments']);
-        $this->assertArrayNotHasKey('bank_funding', $reading->expense_breakdown['accounts_payable']);
-        $this->assertArrayNotHasKey('bank_repayments', $reading->expense_breakdown['accounts_payable']);
+        $this->assertEquals(400.0, $reading->expense_breakdown['accounts_payable']['bank_funding']);
+        $this->assertEquals(75.0, $reading->expense_breakdown['accounts_payable']['bank_repayments']);
 
         $pdfResponse = $this
             ->actingAs($admin)
@@ -1176,6 +1179,62 @@ class ExampleTest extends TestCase
             ->assertHeader('content-type', 'application/pdf');
 
         $this->assertStringContainsString('/MediaBox [0.000 0.000 841.890 595.280]', $consolidatedPdf->getContent());
+    }
+
+    public function test_job_orders_index_paginates_eight_rows_per_page(): void
+    {
+        SystemSetting::query()->create([
+            'business_name' => 'EAJ Laundry',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'primary_color' => '#2E7D32',
+            'is_completed' => true,
+        ]);
+
+        $admin = User::factory()->create(['role' => 'super_admin']);
+        $branch = Branch::query()->create([
+            'name' => 'Page Branch',
+            'code' => 'PAGE',
+            'is_active' => true,
+        ]);
+        $customer = Customer::query()->create([
+            'branch_id' => $branch->id,
+            'name' => 'Paged Customer',
+            'billing_type' => 'regular',
+            'unpaid_limit' => 0,
+            'is_active' => true,
+        ]);
+
+        foreach (range(1, 9) as $index) {
+            $order = JobOrder::query()->create([
+                'branch_id' => $branch->id,
+                'customer_id' => $customer->id,
+                'created_by' => $admin->id,
+                'job_order_number' => 'JO-PAGE-'.str_pad((string) $index, 4, '0', STR_PAD_LEFT),
+                'status' => 'pending',
+                'transaction_type' => 'walk_in',
+                'subtotal' => 100,
+                'discount' => 0,
+                'tax' => 0,
+                'total' => 100,
+                'paid_amount' => 0,
+                'balance' => 100,
+            ]);
+            $order->forceFill([
+                'created_at' => now()->subMinutes(10 - $index),
+                'updated_at' => now()->subMinutes(10 - $index),
+            ])->save();
+        }
+
+        $this->actingAs($admin)
+            ->get(route('admin.job-orders.index'))
+            ->assertOk()
+            ->assertSee('JO-PAGE-0009')
+            ->assertSee('JO-PAGE-0002')
+            ->assertDontSee('JO-PAGE-0001');
     }
 
     private function tinyJpeg(): string

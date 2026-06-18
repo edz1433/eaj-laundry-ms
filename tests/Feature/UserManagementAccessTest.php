@@ -9,6 +9,7 @@ use App\Models\DailyTask;
 use App\Models\DailyTaskCompletion;
 use App\Models\JobOrder;
 use App\Models\LaundryService;
+use App\Models\LaundryServiceCategory;
 use App\Models\SmsLog;
 use App\Models\SystemSetting;
 use App\Models\SystemTrialSetting;
@@ -216,8 +217,50 @@ class UserManagementAccessTest extends TestCase
         $this->assertSame($branch->id, $created->branch_id);
         $this->assertContains('job_orders', $created->access);
         $this->assertContains('cycles', $created->access);
+        $this->assertContains('service_categories', $created->access);
         $this->assertContains('users', $created->access);
         $this->assertNotContains('billing', $created->access);
+    }
+
+    public function test_service_categories_uses_its_own_menu_access_key(): void
+    {
+        $this->completeSystemSettings();
+
+        $branch = Branch::query()->create([
+            'name' => 'Main Branch',
+            'code' => 'MAIN',
+            'is_active' => true,
+        ]);
+
+        LaundryServiceCategory::query()->create([
+            'branch_id' => $branch->id,
+            'name' => 'Wash',
+            'visibility' => 'all',
+            'is_active' => true,
+        ]);
+
+        $categoryUser = User::factory()->create([
+            'role' => 'cashier',
+            'branch_id' => $branch->id,
+            'access' => ['service_categories'],
+        ]);
+
+        $serviceUser = User::factory()->create([
+            'role' => 'cashier',
+            'branch_id' => $branch->id,
+            'access' => ['services'],
+        ]);
+
+        $this
+            ->actingAs($categoryUser)
+            ->get(route('admin.service-categories.index'))
+            ->assertOk()
+            ->assertSee('Service Categories');
+
+        $this
+            ->actingAs($serviceUser)
+            ->get(route('admin.service-categories.index'))
+            ->assertForbidden();
     }
 
     public function test_non_admin_user_creation_allows_no_email_without_creating_employee(): void

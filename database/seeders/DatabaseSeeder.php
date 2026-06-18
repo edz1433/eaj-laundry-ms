@@ -16,9 +16,9 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             UserSeeder::class,
+            LaundryServiceCategorySeeder::class,
             LaundryServiceSeeder::class,
             InventorySeeder::class,
-            ExcelSampleServiceSeeder::class,
             ServiceInventoryUsageSeeder::class,
             BranchSettingSeeder::class,
         ]);

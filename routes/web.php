@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\EmployeeController;
 use App\Http\Controllers\Admin\ExpenseController;
 use App\Http\Controllers\Admin\InventoryController;
 use App\Http\Controllers\Admin\JobOrderController;
+use App\Http\Controllers\Admin\LaundryServiceCategoryController;
 use App\Http\Controllers\Admin\LaundryServiceController;
 use App\Http\Controllers\Admin\PaymentController;
 use App\Http\Controllers\Admin\PettyCashController;
@@ -72,7 +73,13 @@ Route::middleware(['auth', 'settings.completed', 'billing.access'])->group(funct
         });
         Route::resource('users', UserController::class)->only(['index', 'store', 'update', 'destroy'])->middleware('menu.access:users');
         Route::resource('customers', CustomerController::class)->only(['index', 'store', 'update', 'destroy'])->middleware('menu.access:customers');
-        Route::resource('services', LaundryServiceController::class)->only(['index', 'store', 'update', 'destroy'])->middleware('menu.access:services');
+        Route::middleware('menu.access:services')->group(function () {
+            Route::resource('services', LaundryServiceController::class)->only(['index', 'store', 'update', 'destroy']);
+            Route::post('/services/presets', [LaundryServiceController::class, 'storePreset'])->name('services.presets.store');
+            Route::put('/services/presets/{preset}', [LaundryServiceController::class, 'updatePreset'])->name('services.presets.update');
+            Route::delete('/services/presets/{preset}', [LaundryServiceController::class, 'destroyPreset'])->name('services.presets.destroy');
+        });
+        Route::resource('service-categories', LaundryServiceCategoryController::class)->only(['index', 'store', 'update', 'destroy'])->middleware('menu.access:service_categories');
         Route::middleware('menu.access:job_orders')->group(function () {
             Route::get('/job-orders', [JobOrderController::class, 'index'])->name('job-orders.index');
             Route::get('/job-orders/create', [JobOrderController::class, 'create'])->name('job-orders.create');

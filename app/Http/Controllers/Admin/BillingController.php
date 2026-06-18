@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\BranchBillingRecord;
 use App\Models\BranchExpense;
-use App\Models\AccountsPayable;
 use App\Models\SystemSetting;
 use App\Models\SystemTrialSetting;
 use Illuminate\Http\Request;
@@ -44,11 +43,34 @@ class BillingController extends Controller
             ->paginate(15)
             ->withQueryString();
 
+        $activePaidSubscriptions = BranchBillingRecord::query()
+            ->where('status', 'paid')
+            ->where(function ($query) {
+                $query
+                    ->where(function ($query) {
+                        $query
+                            ->whereDate('subscription_start_date', '<=', now()->toDateString())
+                            ->whereDate('subscription_end_date', '>=', now()->toDateString());
+                    })
+                    ->orWhere(function ($query) {
+                        $query
+                            ->whereNull('subscription_start_date')
+                            ->whereNull('subscription_end_date')
+                            ->where('billing_month', (int) now()->month)
+                            ->where('billing_year', (int) now()->year);
+                    });
+            })
+            ->count();
+        $trialStatus = $trial->computedStatus();
+
         $summary = [
             'paid' => BranchBillingRecord::where('status', 'paid')->sum('amount'),
             'unpaid_count' => BranchBillingRecord::whereIn('status', ['unpaid', 'overdue', 'suspended'])->count(),
             'branches' => $branches->count(),
-            'trial_status' => $trial->computedStatus(),
+            'trial_status' => $trialStatus,
+            'system_status' => $activePaidSubscriptions > 0 ? 'subscribed' : $trialStatus,
+            'system_status_label' => $activePaidSubscriptions > 0 ? 'System: Subscribed' : 'Trial: '.ucfirst($trialStatus),
+            'active_paid_subscriptions' => $activePaidSubscriptions,
         ];
         $settings = SystemSetting::current();
 
@@ -174,13 +196,15 @@ class BillingController extends Controller
 
     public function markPaid(Request $request, BranchBillingRecord $billingRecord)
     {
+        $request->merge(['paid_from' => 'store_cash']);
+
         $validated = $request->validate([
             'payment_date' => ['required', 'date'],
             'payment_method' => ['required', 'string', 'max:100'],
             'reference_no' => ['nullable', 'string', 'max:255'],
             'remarks' => ['nullable', 'string'],
             'add_to_expenses' => ['nullable', 'boolean'],
-            'paid_from' => ['nullable', Rule::in(['store_cash', 'owner'])],
+            'paid_from' => ['nullable', Rule::in(['store_cash'])],
         ]);
 
         DB::transaction(function () use ($billingRecord, $validated, $request): void {
@@ -203,32 +227,14 @@ class BillingController extends Controller
                         'amount' => $billingRecord->amount,
                         'expense_date' => $validated['payment_date'],
                         'payment_method' => $validated['payment_method'],
-                        'paid_from' => $validated['paid_from'] ?? 'store_cash',
+                        'paid_from' => 'store_cash',
                         'reference_no' => $validated['reference_no'] ?? null,
                         'remarks' => $validated['remarks'] ?? null,
                         'created_by' => $request->user()->id,
                     ]
                 );
 
-                if (($validated['paid_from'] ?? 'store_cash') === 'owner' && ! $expense->accounts_payable_id) {
-                    $payable = AccountsPayable::query()->create([
-                        'branch_id' => $expense->branch_id,
-                        'created_by' => $request->user()->id,
-                        'payable_number' => 'AP-'.now()->format('Ymd').'-'.str_pad((string) (AccountsPayable::whereDate('created_at', today())->count() + 1), 4, '0', STR_PAD_LEFT),
-                        'creditor_name' => 'Owner',
-                        'source_type' => 'owner_paid_expense',
-                        'source_id' => $expense->id,
-                        'funding_method' => $expense->payment_method ?: 'cash',
-                        'reference_no' => $expense->reference_no,
-                        'description' => "Reimbursement for {$expense->title}",
-                        'original_amount' => $expense->amount,
-                        'paid_amount' => 0,
-                        'balance' => $expense->amount,
-                        'status' => 'unpaid',
-                        'funded_at' => $expense->expense_date,
-                    ]);
-                    $expense->update(['accounts_payable_id' => $payable->id]);
-                } elseif (($validated['paid_from'] ?? 'store_cash') === 'store_cash' && $expense->accounts_payable_id) {
+                if ($expense->accounts_payable_id) {
                     $expense->loadMissing('accountsPayable.payments');
                     abort_if($expense->accountsPayable?->payments->isNotEmpty(), 422, 'This payable already has repayments and cannot be changed to store-funded.');
                     $expense->accountsPayable?->delete();

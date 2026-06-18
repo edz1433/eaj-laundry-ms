@@ -383,11 +383,11 @@ class DashboardController extends Controller
 
         return [
             'title' => 'Expenses Summary',
-            'summary' => "Recorded {$this->money($currency, $total)} in expenses. Store-funded expenses affect the drawer; owner-paid expenses create reimbursement payables.",
+            'summary' => "Recorded {$this->money($currency, $total)} in expenses. New expense records are store-funded and affect the drawer; owner-paid totals are legacy records only.",
             'metrics' => [
                 ['label' => 'Total Expenses', 'value' => $this->money($currency, $total)],
                 ['label' => 'Store Cash', 'value' => $this->money($currency, $storeCash)],
-                ['label' => 'Owner-Paid / Reimbursement Due', 'value' => $this->money($currency, $owner)],
+                ['label' => 'Legacy Owner-Paid Records', 'value' => $this->money($currency, $owner)],
             ],
         ];
     }

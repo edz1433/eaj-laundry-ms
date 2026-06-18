@@ -69,7 +69,7 @@ class AccountsPayableTest extends TestCase
         ]);
     }
 
-    public function test_owner_paid_expense_creates_reimbursement_payable(): void
+    public function test_expense_record_is_forced_to_store_funded_even_when_owner_is_submitted(): void
     {
         [$branch, $manager] = $this->financeUser(['expenses', 'accounts_payable']);
 
@@ -88,14 +88,9 @@ class AccountsPayableTest extends TestCase
         $this->assertDatabaseHas('branch_expenses', [
             'branch_id' => $branch->id,
             'category' => 'supplies',
-            'paid_from' => 'owner',
+            'paid_from' => 'store_cash',
         ]);
-        $this->assertDatabaseHas('accounts_payables', [
-            'branch_id' => $branch->id,
-            'source_type' => 'owner_paid_expense',
-            'original_amount' => 1250,
-            'balance' => 1250,
-        ]);
+        $this->assertDatabaseCount('accounts_payables', 0);
         $this->assertDatabaseCount('money_movements', 0);
     }
 

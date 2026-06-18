@@ -79,7 +79,7 @@
         <table class="w-full text-left text-sm">
             <thead class="border-b border-border bg-smoke text-xs uppercase text-muted dark:border-gray-800 dark:bg-gray-950">
                 <tr>
-                    <th class="px-4 py-3">JO #</th><th class="px-4 py-3">Created</th><th class="px-4 py-3">Customer</th><th class="px-4 py-3">Branch</th><th class="px-4 py-3">Processing</th><th class="px-4 py-3">Total</th><th class="px-4 py-3">Balance</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th>
+                    <th class="px-4 py-3">JO #</th><th class="px-4 py-3">Created</th><th class="px-4 py-3">Customer</th><th class="px-4 py-3">Branch</th><th class="px-4 py-3">Address</th><th class="px-4 py-3">Total</th><th class="px-4 py-3">Balance</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-border dark:divide-gray-800">
@@ -106,14 +106,15 @@
                             @endif
                         </td>
                         <td class="px-4 py-3">
-                            <p>{{ $order->processingBranch?->name ?? $order->branch?->name }}</p>
+                            {{ $order->customer?->address }}
+                            {{-- <p>{{ $order->processingBranch?->name ?? $order->branch?->name }}</p>
                             @if((int) ($order->processing_branch_id ?: $order->branch_id) !== (int) $order->branch_id)
                                 @if($order->production_accepted_at)
                                     <p class="text-xs text-emerald-600">Received {{ $order->production_accepted_at->format('M d, h:i A') }}</p>
                                 @else
                                     <p class="text-xs text-amber-600">Waiting for QR scan</p>
                                 @endif
-                            @endif
+                            @endif --}}
                         </td>
                         <td class="px-4 py-3">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $order->total, 2) }}</td>
                         <td class="px-4 py-3">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $order->balance, 2) }}</td>

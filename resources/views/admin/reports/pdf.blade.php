@@ -107,6 +107,7 @@
             <tr><td>Expected Total</td><td class="right">{{ $currency }} {{ number_format((float) $zReadingSummary->expected_total, 2) }}</td><td>Actual Total</td><td class="right">{{ $currency }} {{ number_format((float) $zReadingSummary->actual_total, 2) }}</td></tr>
             <tr><td>Expected Cash</td><td class="right">{{ $currency }} {{ number_format((float) $zReadingSummary->expected_cash, 2) }}</td><td>Actual Cash</td><td class="right">{{ $currency }} {{ number_format((float) $zReadingSummary->actual_cash, 2) }}</td></tr>
             <tr><td>Expected GCash</td><td class="right">{{ $currency }} {{ number_format((float) $zReadingSummary->expected_gcash, 2) }}</td><td>Actual GCash</td><td class="right">{{ $currency }} {{ number_format((float) $zReadingSummary->actual_gcash, 2) }}</td></tr>
+            <tr><td>Expected Bank</td><td class="right">{{ $currency }} {{ number_format((float) $zReadingSummary->expected_bank, 2) }}</td><td>Actual Bank</td><td class="right">{{ $currency }} {{ number_format((float) $zReadingSummary->actual_bank, 2) }}</td></tr>
             <tr><td>Balance Over / Short</td><td class="right">{{ $currency }} {{ number_format((float) $zReadingSummary->over_short, 2) }}</td><td>Previous Payments</td><td class="right">{{ $currency }} {{ number_format((float) $zPreviousPaymentTotal, 2) }}</td></tr>
         </tbody>
     </table>
@@ -116,8 +117,8 @@
         <tbody>
             @forelse($zReadings as $reading)
                 @php
-                    $rowExpected = (float) $reading->expected_cash_drawer_amount + (float) $reading->expected_gcash_amount;
-                    $rowActual = (float) $reading->actual_cash_amount + (float) $reading->actual_gcash_amount;
+                    $rowExpected = (float) $reading->expected_cash_drawer_amount + (float) $reading->expected_gcash_amount + (float) $reading->expected_bank_amount;
+                    $rowActual = (float) $reading->actual_cash_amount + (float) $reading->actual_gcash_amount + (float) $reading->actual_bank_amount;
                 @endphp
                 <tr><td>{{ $reading->business_date?->format('M d, Y') }}</td><td>{{ $reading->branch?->name }}</td><td>{{ $reading->reading_number }}</td><td class="right">{{ number_format((int) $reading->transaction_count) }}</td><td class="right">{{ $currency }} {{ number_format($rowExpected, 2) }}</td><td class="right">{{ $currency }} {{ number_format($rowActual, 2) }}</td><td class="right">{{ $currency }} {{ number_format($rowActual - $rowExpected, 2) }}</td></tr>
             @empty
@@ -132,7 +133,7 @@
             <tr>
                 <th>Date</th><th>Branch</th><th class="right">Orders</th>
                 @foreach($zCategoryLabels as $label)<th class="right">{{ $label }}</th>@endforeach
-                <th class="right">Amount</th><th class="right">Cash</th><th class="right">GCash</th><th class="right">Unpaid</th>
+                <th class="right">Amount</th><th class="right">Cash</th><th class="right">GCash</th><th class="right">Bank</th><th class="right">Unpaid</th>
             </tr>
         </thead>
         <tbody>
@@ -147,10 +148,11 @@
                     <td class="right">{{ number_format((float) $row->sales_amount, 2) }}</td>
                     <td class="right">{{ number_format((float) $row->cash_amount, 2) }}</td>
                     <td class="right">{{ number_format((float) $row->gcash_amount, 2) }}</td>
+                    <td class="right">{{ number_format((float) $row->bank_amount, 2) }}</td>
                     <td class="right">{{ number_format((float) $row->unpaid_amount, 2) }}</td>
                 </tr>
             @empty
-                <tr><td colspan="{{ count($zCategoryLabels) + 7 }}" class="empty">No daily operations found.</td></tr>
+                <tr><td colspan="{{ count($zCategoryLabels) + 8 }}" class="empty">No daily operations found.</td></tr>
             @endforelse
             @if($zDailyOperations->isNotEmpty())
                 <tr style="font-weight:bold; background:#f3f4f6;">
@@ -161,6 +163,7 @@
                     <td class="right">{{ number_format((float) $zDailyOperations->sum('sales_amount'), 2) }}</td>
                     <td class="right">{{ number_format((float) $zDailyOperations->sum('cash_amount'), 2) }}</td>
                     <td class="right">{{ number_format((float) $zDailyOperations->sum('gcash_amount'), 2) }}</td>
+                    <td class="right">{{ number_format((float) $zDailyOperations->sum('bank_amount'), 2) }}</td>
                     <td class="right">{{ number_format((float) $zDailyOperations->sum('unpaid_amount'), 2) }}</td>
                 </tr>
             @endif
@@ -171,7 +174,7 @@
         <tr>
             <td style="width:50%; vertical-align:top; padding-right:5px;">
                 <table class="report">
-                    <thead><tr><th>Worksheet Column</th><th class="right">Qty</th><th class="right">Amount</th></tr></thead>
+                    <thead><tr><th>Catalog Category</th><th class="right">Qty</th><th class="right">Amount</th></tr></thead>
                     <tbody>
                         @foreach($zCategoryLabels as $category => $label)
                             <tr><td>{{ $label }}</td><td class="right">{{ number_format((float) data_get($zCategoryTotals, $category.'.quantity', 0), 2) }}</td><td class="right">{{ $currency }} {{ number_format((float) data_get($zCategoryTotals, $category.'.total_amount', 0), 2) }}</td></tr>
@@ -397,7 +400,7 @@
     </table>
 
     <h2>Expenses</h2>
-    <p class="muted">Store-funded: {{ $currency }} {{ number_format((float) ($expenseSummary->store_cash_expenses ?? 0), 2) }} | Owner-paid, reimbursement due: {{ $currency }} {{ number_format((float) ($expenseSummary->owner_expenses ?? 0), 2) }}</p>
+    <p class="muted">Store-funded: {{ $currency }} {{ number_format((float) ($expenseSummary->store_cash_expenses ?? 0), 2) }} | Legacy owner-paid records: {{ $currency }} {{ number_format((float) ($expenseSummary->owner_expenses ?? 0), 2) }}</p>
     <table class="report">
         <thead>
             <tr><th>Date</th><th>Branch</th><th>Expense</th><th>Paid From</th><th class="right">Amount</th></tr>
@@ -408,7 +411,7 @@
                     <td>{{ $expense->expense_date?->format('M d, Y') }}</td>
                     <td>{{ $expense->branch?->name }}</td>
                     <td>{{ $expense->title }}<br><span class="muted">{{ \App\Support\StatusBadge::label($expense->category) }}</span></td>
-                    <td>{{ $expense->paid_from === 'owner' ? 'Owner-paid, reimbursement due' : 'Store-funded' }}</td>
+                    <td>{{ $expense->paid_from === 'owner' ? 'Legacy owner-paid' : 'Store-funded' }}</td>
                     <td class="right">{{ $currency }} {{ number_format((float) $expense->amount, 2) }}</td>
                 </tr>
             @empty

@@ -13,9 +13,10 @@ class ServiceCategories
         'fold' => 'Fold',
         'rush' => 'Rush',
         'delivery' => 'Delivery',
-        'small' => 'Small',
-        'big' => 'Big',
-        'other' => 'Other',
+        'small' => 'Small Machine',
+        'big' => 'Big Machine',
+        'other' => 'Extra Services',
+        'special' => 'Special Services',
     ];
 
     public static function keys(): array
@@ -31,10 +32,9 @@ class ServiceCategories
             str_contains($name, 'dry') && (str_contains($name, 'extend') || str_contains($name, 'extra')) => 'dry_extend',
             str_contains($name, 'fabcon'), str_contains($name, 'fabric conditioner') => 'fabcon',
             str_contains($name, 'detergent') => 'detergent',
-            str_contains($name, 'rush'), str_contains($name, 'same day') => 'rush',
             str_contains($name, 'delivery'), str_contains($name, 'pickup') => 'delivery',
-            str_contains($name, 'plastic') && str_contains($name, 'small') => 'small',
-            str_contains($name, 'plastic') && (str_contains($name, 'big') || str_contains($name, 'large')) => 'big',
+            str_contains($name, 'small machine') => 'small',
+            str_contains($name, 'big machine') => 'big',
             str_contains($name, 'wash') => 'wash',
             str_contains($name, 'dry') => 'dry',
             str_contains($name, 'fold') => 'fold',

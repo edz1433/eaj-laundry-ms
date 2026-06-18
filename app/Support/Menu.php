@@ -12,6 +12,7 @@ class Menu
             'cycles' => ['label' => 'Cycle Monitoring', 'route' => 'admin.cycles.index', 'icon' => 'cycles'],
             'customers' => ['label' => 'Customers', 'route' => 'admin.customers.index', 'icon' => 'customers'],
             'services' => ['label' => 'Laundry Services', 'route' => 'admin.services.index', 'icon' => 'services'],
+            'service_categories' => ['label' => 'Service Categories', 'route' => 'admin.service-categories.index', 'icon' => 'tag', 'super_admin' => false],
             'inventory' => ['label' => 'Inventory', 'route' => 'admin.inventory.index', 'icon' => 'inventory'],
             'payments' => ['label' => 'Payments', 'route' => 'admin.payments.index', 'icon' => 'payments'],
             'receivables' => ['label' => 'Receivables', 'route' => 'admin.receivables.index', 'icon' => 'receivables'],

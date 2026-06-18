@@ -41,14 +41,18 @@
     $machineCount = max(1, (int) $reading->branch?->machine_count, (int) $machineCounters->keys()->max(), (int) $machineCycles->max('machine_number'));
     $minimumRows = 30;
     $money = fn ($value) => number_format((float) $value, 2);
-    $columns = [
-        'wash' => 'Wash', 'dry' => 'Dry', 'dry_extend' => 'Dry Extend',
-        'fabcon' => 'Fabcon', 'detergent' => 'Detergent', 'fold' => 'Fold',
-        'rush' => 'Rush', 'delivery' => 'Delivery', 'small' => 'Small', 'big' => 'Big',
-    ];
+    $columns = collect($details['sales_columns'] ?? [])
+        ->filter()
+        ->values();
+    if ($columns->isEmpty()) {
+        $columns = collect(['Small Machine', 'Big Machine', 'Delivery', 'Extra Services', 'Special Items', 'Establishment', 'For Sale Items']);
+    }
     $cashOnHand = (float) $reading->expected_cash_amount
         + (float) data_get($details, 'expense_breakdown.money_movements.cash_in', 0);
     $totalExpenses = (float) $expenseItems->sum('amount');
+    $storeCashExpenses = (float) data_get($details, 'expense_breakdown.store_cash', 0);
+    $storeGcashExpenses = (float) data_get($details, 'expense_breakdown.store_gcash', 0);
+    $storeBankExpenses = (float) data_get($details, 'expense_breakdown.store_bank', 0);
 @endphp
 
 <table style="margin-bottom:3px;">
@@ -78,7 +82,7 @@
             <th style="width:7%;">Address</th>
             <th style="width:4%;">Time</th>
             @foreach($columns as $label)<th>{{ $label }}</th>@endforeach
-            <th>Amount</th><th>Cash</th><th>GCash</th><th>Reference #</th><th>Unpaid</th><th>Remarks</th>
+            <th>Amount</th><th>Cash</th><th>GCash</th><th>Bank</th><th>Reference #</th><th>Unpaid</th><th>Remarks</th>
         </tr>
     </thead>
     <tbody>
@@ -93,12 +97,13 @@
                 <td>{{ $order['customer_name'] ?? '' }}</td>
                 <td>{{ $order['address'] ?? '' }}</td>
                 <td class="center">{{ $order ? \Illuminate\Support\Carbon::parse($order['created_at'])->format('h:i A') : '' }}</td>
-                @foreach(array_keys($columns) as $key)
+                @foreach($columns as $key)
                     <td class="right">{{ ($amount = (float) data_get($order, "service_amounts.{$key}", 0)) > 0 ? $money($amount) : '' }}</td>
                 @endforeach
                 <td class="right">{{ $order ? $money($order['total']) : '' }}</td>
                 <td class="right">{{ ($amount = (float) $payments->where('type', 'cash')->sum('amount')) > 0 ? $money($amount) : '' }}</td>
                 <td class="right">{{ ($amount = (float) $payments->where('type', 'gcash')->sum('amount')) > 0 ? $money($amount) : '' }}</td>
+                <td class="right">{{ ($amount = (float) $payments->where('type', 'bank')->sum('amount')) > 0 ? $money($amount) : '' }}</td>
                 <td>{{ $references }}</td>
                 <td class="right">{{ $order && (float) $order['balance'] > 0 ? $money($order['balance']) : '' }}</td>
                 <td>{{ $order['notes'] ?? '' }}</td>
@@ -106,12 +111,13 @@
         @endfor
         <tr class="total">
             <td colspan="4" class="right">TOTAL</td>
-            @foreach(array_keys($columns) as $key)
+            @foreach($columns as $key)
                 <td class="right">{{ $money($orders->sum(fn ($order) => data_get($order, "service_amounts.{$key}", 0))) }}</td>
             @endforeach
             <td class="right">{{ $money($details['daily_total_sales']) }}</td>
             <td class="right">{{ $money(data_get($details, 'payment_breakdown.current_sales.cash', 0)) }}</td>
             <td class="right">{{ $money(data_get($details, 'payment_breakdown.current_sales.gcash', 0)) }}</td>
+            <td class="right">{{ $money(data_get($details, 'payment_breakdown.current_sales.bank', 0)) }}</td>
             <td></td>
             <td class="right">{{ $money($details['daily_unpaid_amount']) }}</td>
             <td></td>
@@ -124,16 +130,19 @@
         <td class="no-border" style="width:41%; padding-right:5px;">
             <table>
                 <tr><th colspan="7">Establishment / Service Totals</th></tr>
-                <tr><th>Service</th><th>Qty</th><th>Amount</th><th>Service</th><th>Qty</th><th colspan="2">Amount</th></tr>
+                <tr><th>Category</th><th>Service</th><th>Qty</th><th>Amount</th><th>Service</th><th>Qty</th><th>Amount</th></tr>
                 @forelse($serviceTotals->chunk(2) as $row)
                     <tr>
                         @foreach([0, 1] as $position)
                             @php
                                 $service = $row->get($position);
                             @endphp
+                            @if($position === 0)
+                                <td>{{ $service['category_name'] ?? '' }}</td>
+                            @endif
                             <td>{{ $service['service_name'] ?? '' }}</td>
                             <td class="right">{{ isset($service) ? number_format((float) $service['quantity'], 2) : '' }}</td>
-                            <td class="right" colspan="{{ $position === 1 ? 2 : 1 }}">{{ isset($service) ? $money($service['total_amount']) : '' }}</td>
+                            <td class="right">{{ isset($service) ? $money($service['total_amount']) : '' }}</td>
                         @endforeach
                     </tr>
                 @empty
@@ -152,33 +161,39 @@
                 @endforelse
             </table>
             <table style="margin-top:4px;">
-                <tr><td>Cash on Hand</td><td class="right">{{ $money($cashOnHand) }}</td></tr>
-                <tr><td>Expenses</td><td class="right">{{ $money($totalExpenses) }}</td></tr>
-                <tr class="yellow"><td>To Be Withdraw</td><td class="right">{{ $money($reading->expected_cash_drawer_amount) }}</td></tr>
+                <tr><td>Cash Collections + Cash In</td><td class="right">{{ $money($cashOnHand) }}</td></tr>
+                <tr><td>Store Cash Expenses</td><td class="right">{{ $money($storeCashExpenses) }}</td></tr>
+                <tr><td>Cash Withdrawals</td><td class="right">{{ $money(data_get($details, 'expense_breakdown.money_movements.cash_out', 0)) }}</td></tr>
+                <tr class="yellow"><td>Expected Cash Drawer</td><td class="right">{{ $money($reading->expected_cash_drawer_amount) }}</td></tr>
+                <tr><td>Store GCash Expenses</td><td class="right">{{ $money($storeGcashExpenses) }}</td></tr>
+                <tr><td>Store Bank Expenses</td><td class="right">{{ $money($storeBankExpenses) }}</td></tr>
+                <tr class="total"><td>All Recorded Expenses</td><td class="right">{{ $money($totalExpenses) }}</td></tr>
             </table>
         </td>
         <td class="no-border" style="width:34%;">
             <table>
-                <tr><th colspan="6">Previous Payment</th></tr>
-                <tr><th>Date</th><th>Name</th><th>Cash</th><th>GCash</th><th>Reference #</th><th>JO #</th></tr>
+                <tr><th colspan="7">Previous Payment</th></tr>
+                <tr><th>Date</th><th>Name</th><th>Cash</th><th>GCash</th><th>Bank</th><th>Reference #</th><th>JO #</th></tr>
                 @forelse($previousPayments as $payment)
                     <tr>
                         <td>{{ \Illuminate\Support\Carbon::parse($payment['paid_at'])->format('M d') }}</td>
                         <td>{{ $payment['customer_name'] }}</td>
                         <td class="right">{{ $payment['type'] === 'cash' ? $money($payment['amount']) : '' }}</td>
                         <td class="right">{{ $payment['type'] === 'gcash' ? $money($payment['amount']) : '' }}</td>
+                        <td class="right">{{ $payment['type'] === 'bank' ? $money($payment['amount']) : '' }}</td>
                         <td>{{ $payment['reference_no'] }}</td><td>{{ $payment['job_order_number'] }}</td>
                     </tr>
                 @empty
-                    <tr><td colspan="6" class="center">No previous payments</td></tr>
+                    <tr><td colspan="7" class="center">No previous payments</td></tr>
                 @endforelse
                 <tr class="total">
                     <td colspan="2">Net Total</td>
                     <td class="right">{{ $money($previousPayments->where('type', 'cash')->sum('amount')) }}</td>
                     <td class="right">{{ $money($previousPayments->where('type', 'gcash')->sum('amount')) }}</td>
+                    <td class="right">{{ $money($previousPayments->where('type', 'bank')->sum('amount')) }}</td>
                     <td colspan="2"></td>
                 </tr>
-                <tr class="total"><td colspan="4">Overall Total</td><td colspan="2" class="right">{{ $money($previousPayments->sum('amount')) }}</td></tr>
+                <tr class="total"><td colspan="5">Overall Total</td><td colspan="2" class="right">{{ $money($previousPayments->sum('amount')) }}</td></tr>
             </table>
         </td>
     </tr>
@@ -232,7 +247,7 @@
                 <tr><th colspan="6">Detailed Expenses</th></tr>
                 <tr><th>Expense</th><th>Category</th><th>Payment</th><th>Paid From</th><th>Reference / Remarks</th><th>Amount</th></tr>
                 @forelse($expenseItems as $expense)
-                    <tr><td>{{ $expense['title'] }}</td><td>{{ $expense['category'] }}</td><td>{{ strtoupper($expense['payment_method'] ?: 'cash') }}</td><td>{{ $expense['paid_from'] === 'owner' ? 'Owner' : 'Store' }}</td><td>{{ $expense['reference_no'] ?: $expense['remarks'] }}</td><td class="right">{{ $money($expense['amount']) }}</td></tr>
+                    <tr><td>{{ $expense['title'] }}</td><td>{{ $expense['category'] }}</td><td>{{ strtoupper($expense['payment_method'] ?: 'cash') }}</td><td>{{ $expense['paid_from'] === 'owner' ? 'Legacy owner-paid' : 'Store' }}</td><td>{{ $expense['reference_no'] ?: $expense['remarks'] }}</td><td class="right">{{ $money($expense['amount']) }}</td></tr>
                 @empty
                     <tr><td colspan="6" class="center">No expenses</td></tr>
                 @endforelse
@@ -250,7 +265,11 @@
                     <tr><td>{{ $label }}</td><td class="right">{{ $quantity }}</td><td class="right">{{ $money((float) $value * $quantity) }}</td></tr>
                 @endforeach
                 <tr class="total"><td colspan="2">Actual Cash</td><td class="right">{{ $money($reading->actual_cash_amount) }}</td></tr>
+                <tr><td colspan="2">Expected Cash Drawer</td><td class="right">{{ $money($reading->expected_cash_drawer_amount) }}</td></tr>
+                <tr><td colspan="2">Expected GCash</td><td class="right">{{ $money($reading->expected_gcash_amount) }}</td></tr>
                 <tr><td colspan="2">Actual GCash</td><td class="right">{{ $money($reading->actual_gcash_amount) }}</td></tr>
+                <tr><td colspan="2">Expected Bank</td><td class="right">{{ $money($reading->expected_bank_amount) }}</td></tr>
+                <tr><td colspan="2">Actual Bank</td><td class="right">{{ $money($reading->actual_bank_amount) }}</td></tr>
                 <tr class="total"><td colspan="2">Expected Total</td><td class="right">{{ $money($reading->expected_total_amount) }}</td></tr>
                 <tr class="total"><td colspan="2">Actual Total</td><td class="right">{{ $money($reading->actual_total_amount) }}</td></tr>
                 <tr class="yellow"><td colspan="2">Over / Short</td><td class="right">{{ $money($reading->over_short_amount) }}</td></tr>

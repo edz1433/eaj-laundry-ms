@@ -14,11 +14,11 @@
                 <input type="hidden" name="branch_id" value="{{ auth()->user()->branch_id }}">
                 <input value="{{ auth()->user()->branch?->name }}" disabled class="h-9 w-full rounded-md border border-border bg-smoke px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
             @else
-                @php
-                    $formBranch = $branches->firstWhere('id', old('branch_id', $service->branch_id ?: $selectedBranchId));
-                @endphp
-                <input type="hidden" name="branch_id" value="{{ $formBranch?->id }}">
-                <input value="{{ $formBranch?->name }}" disabled class="h-9 w-full rounded-md border border-border bg-smoke px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
+                <select name="branch_id" required class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
+                    @foreach($branches as $branch)
+                        <option value="{{ $branch->id }}" @selected(old('branch_id', $service->branch_id ?: $selectedBranchId) == $branch->id)>{{ $branch->name }}</option>
+                    @endforeach
+                </select>
             @endif
         </div>
 
@@ -32,10 +32,13 @@
         </div>
 
         <div>
-            <label class="mb-1.5 block text-sm font-medium">Z Reading Column</label>
-            <select name="report_category" required class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
-                @foreach($serviceCategories as $category => $label)
-                    <option value="{{ $category }}" @selected(old('report_category', $service->report_category ?: 'other') === $category)>{{ $label }}</option>
+            <label class="mb-1.5 block text-sm font-medium">Category</label>
+            <select name="service_category_id" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
+                <option value="">— No Category —</option>
+                @foreach($serviceCategories as $cat)
+                    <option value="{{ $cat->id }}" @selected(old('service_category_id', $service->service_category_id) == $cat->id)>
+                        {{ $cat->name }}{{ $cat->visibility === 'branch' ? ' (Branch only)' : '' }}
+                    </option>
                 @endforeach
             </select>
         </div>

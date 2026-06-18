@@ -222,6 +222,106 @@ class BillingSystemTest extends TestCase
             ->assertDontSee('Your branch subscription');
     }
 
+    public function test_paid_current_subscription_shows_paid_notice(): void
+    {
+        $this->completeSystemSettings();
+        $this->expiredTrial(graceDays: 0);
+        $this->travelTo(Carbon::parse('2026-06-15'));
+
+        $branch = $this->createBranch('Paid Notice Branch', 'PNOT');
+        $user = User::factory()->create([
+            'role' => 'admin',
+            'branch_id' => $branch->id,
+            'access' => ['dashboard'],
+        ]);
+
+        BranchBillingRecord::create([
+            'branch_id' => $branch->id,
+            'billing_month' => 6,
+            'billing_year' => 2026,
+            'subscription_start_date' => '2026-06-01',
+            'subscription_end_date' => '2026-06-30',
+            'amount' => 1000,
+            'due_date' => '2026-06-05',
+            'status' => 'paid',
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('Billing Paid')
+            ->assertSee('System billing for Jun 01, 2026 - Jun 30, 2026 is already paid.')
+            ->assertSee('Billing Notifications')
+            ->assertSee('Billing paid');
+    }
+
+    public function test_paid_subscription_auto_opens_upcoming_billing_notice_five_days_before_end(): void
+    {
+        $this->completeSystemSettings();
+        $this->expiredTrial(graceDays: 0);
+        $this->travelTo(Carbon::parse('2026-06-25'));
+
+        $branch = $this->createBranch('Upcoming Billing Branch', 'UPB');
+        $user = User::factory()->create([
+            'role' => 'admin',
+            'branch_id' => $branch->id,
+            'access' => ['dashboard'],
+        ]);
+
+        BranchBillingRecord::create([
+            'branch_id' => $branch->id,
+            'billing_month' => 6,
+            'billing_year' => 2026,
+            'subscription_start_date' => '2026-06-01',
+            'subscription_end_date' => '2026-06-30',
+            'amount' => 1000,
+            'due_date' => '2026-06-05',
+            'status' => 'paid',
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('Upcoming Billing')
+            ->assertSee('Next billing is coming up in 5 days.')
+            ->assertSee('Billing Notifications')
+            ->assertSee('autoOpen: true', false);
+    }
+
+    public function test_unpaid_billing_due_within_five_days_appears_in_notification_bell(): void
+    {
+        $this->completeSystemSettings();
+        $this->expiredTrial(graceDays: 0);
+        $this->travelTo(Carbon::parse('2026-06-10'));
+
+        $branch = $this->createBranch('Due Soon Branch', 'DUE');
+        $user = User::factory()->create([
+            'role' => 'admin',
+            'branch_id' => $branch->id,
+            'access' => ['dashboard'],
+        ]);
+
+        BranchBillingRecord::create([
+            'branch_id' => $branch->id,
+            'billing_month' => 6,
+            'billing_year' => 2026,
+            'subscription_start_date' => '2026-06-01',
+            'subscription_end_date' => '2026-06-30',
+            'amount' => 1000,
+            'due_date' => '2026-06-15',
+            'status' => 'unpaid',
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('Billing Notifications')
+            ->assertSee('Due Soon Branch - Billing due')
+            ->assertSee('Jun 01, 2026 - Jun 30, 2026 is unpaid and due on Jun 15, 2026.')
+            ->assertSee('Your branch subscription for Jun 01, 2026 - Jun 30, 2026 is due in 5 days.')
+            ->assertSee('autoOpen: true', false);
+    }
+
     public function test_global_admin_without_branch_does_not_show_branch_expired_warning(): void
     {
         $this->completeSystemSettings();
@@ -347,6 +447,33 @@ class BillingSystemTest extends TestCase
             'subscription_end_date' => '2026-06-30 00:00:00',
             'amount' => 800,
         ]);
+    }
+
+    public function test_billing_dashboard_shows_subscribed_instead_of_expired_trial_when_active_paid_subscription_exists(): void
+    {
+        $this->completeSystemSettings();
+        $this->expiredTrial(graceDays: 0);
+        $this->travelTo(Carbon::parse('2026-06-18'));
+
+        $superAdmin = User::factory()->create(['role' => 'super_admin']);
+        $branch = $this->createBranch('Subscribed Branch', 'SUB');
+
+        BranchBillingRecord::create([
+            'branch_id' => $branch->id,
+            'billing_month' => 6,
+            'billing_year' => 2026,
+            'subscription_start_date' => '2026-06-01',
+            'subscription_end_date' => '2026-06-30',
+            'amount' => 1000,
+            'due_date' => '2026-06-05',
+            'status' => 'paid',
+        ]);
+
+        $this->actingAs($superAdmin)
+            ->get(route('admin.billing.index'))
+            ->assertOk()
+            ->assertSee('System: Subscribed')
+            ->assertDontSee('Trial: Expired');
     }
 
     public function test_marking_paid_creates_one_linked_branch_expense(): void

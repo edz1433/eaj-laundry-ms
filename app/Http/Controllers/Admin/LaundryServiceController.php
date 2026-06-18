@@ -6,8 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\Inventory;
 use App\Models\LaundryService;
+use App\Models\LaundryServiceCategory;
+use App\Models\ServicePreset;
 use App\Support\Activity;
-use App\Support\ServiceCategories;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -45,9 +46,23 @@ class LaundryServiceController extends Controller
             ->where('is_active', true)
             ->orderBy('name')
             ->get(['id', 'name', 'unit', 'quantity']);
-        $serviceCategories = ServiceCategories::LABELS;
+        $presetServices = LaundryService::query()
+            ->where('branch_id', $selectedBranchId)
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'price', 'pricing_type']);
 
-        return view('admin.services.index', compact('services', 'branches', 'selectedBranchId', 'canChooseBranch', 'inventoryItems', 'serviceCategories'));
+        $serviceCategories = LaundryServiceCategory::where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get(['id', 'name', 'visibility', 'branch_id']);
+        $servicePresets = ServicePreset::with(['items.service', 'serviceCategory'])
+            ->where('branch_id', $selectedBranchId)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
+
+        return view('admin.services.index', compact('services', 'branches', 'selectedBranchId', 'canChooseBranch', 'inventoryItems', 'presetServices', 'serviceCategories', 'servicePresets'));
     }
 
     public function store(Request $request)
@@ -104,17 +119,83 @@ class LaundryServiceController extends Controller
         return redirect()->route('admin.services.index')->with('success', 'Service deleted successfully.');
     }
 
+    public function storePreset(Request $request)
+    {
+        $validated = $request->validate($this->presetRules());
+        $validated = $this->normalizeBranch($validated);
+
+        $preset = DB::transaction(function () use ($request, $validated) {
+            $preset = ServicePreset::create([
+                'branch_id' => $validated['branch_id'],
+                'service_category_id' => $validated['service_category_id'] ?? null,
+                'name' => $validated['name'],
+                'sort_order' => $validated['sort_order'] ?? 0,
+                'is_active' => $request->boolean('is_active', true),
+            ]);
+
+            $this->syncPresetItems($preset, $validated['items'] ?? []);
+
+            return $preset;
+        });
+
+        return redirect()->route('admin.services.index', ['branch_id' => $preset->branch_id])->with('success', 'Preset created successfully.');
+    }
+
+    public function updatePreset(Request $request, ServicePreset $preset)
+    {
+        $this->authorizePreset($preset);
+
+        $validated = $request->validate($this->presetRules());
+        $validated = $this->normalizeBranch($validated);
+
+        DB::transaction(function () use ($request, $preset, $validated) {
+            $preset->update([
+                'branch_id' => $validated['branch_id'],
+                'service_category_id' => $validated['service_category_id'] ?? null,
+                'name' => $validated['name'],
+                'sort_order' => $validated['sort_order'] ?? 0,
+                'is_active' => $request->boolean('is_active'),
+            ]);
+
+            $this->syncPresetItems($preset, $validated['items'] ?? []);
+        });
+
+        return redirect()->route('admin.services.index', ['branch_id' => $preset->branch_id])->with('success', 'Preset updated successfully.');
+    }
+
+    public function destroyPreset(ServicePreset $preset)
+    {
+        $this->authorizePreset($preset);
+        $branchId = $preset->branch_id;
+        $preset->delete();
+
+        return redirect()->route('admin.services.index', ['branch_id' => $branchId])->with('success', 'Preset deleted successfully.');
+    }
+
     private function rules(): array
     {
         return [
+            'branch_id'           => ['required', 'exists:branches,id'],
+            'name'                => ['required', 'string', 'max:255'],
+            'service_category_id' => ['nullable', 'exists:laundry_service_categories,id'],
+            'pricing_type'        => ['required', Rule::in(['kilo', 'load', 'piece', 'custom'])],
+            'price'               => ['required', 'numeric', 'min:0'],
+            'is_active'           => ['nullable', 'boolean'],
+            'inventory_usages'    => ['nullable', 'array'],
+            'inventory_usages.*'  => ['nullable', 'numeric', 'min:0', 'max:999999.9999'],
+        ];
+    }
+
+    private function presetRules(): array
+    {
+        return [
             'branch_id' => ['required', 'exists:branches,id'],
+            'service_category_id' => ['nullable', 'exists:laundry_service_categories,id'],
             'name' => ['required', 'string', 'max:255'],
-            'report_category' => ['required', Rule::in(ServiceCategories::keys())],
-            'pricing_type' => ['required', Rule::in(['kilo', 'load', 'piece', 'custom'])],
-            'price' => ['required', 'numeric', 'min:0'],
+            'sort_order' => ['nullable', 'integer', 'min:0', 'max:9999'],
             'is_active' => ['nullable', 'boolean'],
-            'inventory_usages' => ['nullable', 'array'],
-            'inventory_usages.*' => ['nullable', 'numeric', 'min:0', 'max:999999.9999'],
+            'items' => ['required', 'array', 'min:1'],
+            'items.*' => ['nullable', 'numeric', 'min:0', 'max:999999.99'],
         ];
     }
 
@@ -145,6 +226,39 @@ class LaundryServiceController extends Controller
         }
     }
 
+    private function syncPresetItems(ServicePreset $preset, array $items): void
+    {
+        $quantities = collect($items)
+            ->filter(fn ($quantity) => is_numeric($quantity) && (float) $quantity > 0)
+            ->mapWithKeys(fn ($quantity, $serviceId) => [(int) $serviceId => (float) $quantity]);
+
+        if ($quantities->isEmpty()) {
+            throw ValidationException::withMessages([
+                'items' => 'Choose at least one service for this preset.',
+            ]);
+        }
+
+        $validServiceIds = LaundryService::query()
+            ->where('branch_id', $preset->branch_id)
+            ->whereIn('id', $quantities->keys())
+            ->pluck('id');
+
+        if ($validServiceIds->count() !== $quantities->count()) {
+            throw ValidationException::withMessages([
+                'items' => 'Every preset service must belong to the selected branch.',
+            ]);
+        }
+
+        $preset->items()->whereNotIn('laundry_service_id', $validServiceIds)->delete();
+
+        foreach ($validServiceIds as $serviceId) {
+            $preset->items()->updateOrCreate(
+                ['laundry_service_id' => $serviceId],
+                ['quantity' => $quantities->get($serviceId)]
+            );
+        }
+    }
+
     private function normalizeBranch(array $validated): array
     {
         $user = auth()->user();
@@ -171,6 +285,17 @@ class LaundryServiceController extends Controller
         }
 
         abort_unless((int) $service->branch_id === (int) $user->branch_id, 403);
+    }
+
+    private function authorizePreset(ServicePreset $preset): void
+    {
+        $user = auth()->user();
+
+        if ($this->canChooseBranch($user)) {
+            return;
+        }
+
+        abort_unless((int) $preset->branch_id === (int) $user->branch_id, 403);
     }
 
     private function canChooseBranch($user): bool

@@ -5,7 +5,7 @@
 
 @section('content')
 <div
-    x-data="posPage(@js($branches), @js($processingBranches), @js($services), @js($customers), @js((float) ($appSettings?->vat_rate ?? 0)), @js((bool) ($appSettings?->vat_enabled ?? false)))"
+    x-data="posPage(@js($branches), @js($processingBranches), @js($services), @js($customers), @js($serviceCategories), @js($servicePresets), @js((float) ($appSettings?->vat_rate ?? 0)), @js((bool) ($appSettings?->vat_enabled ?? false)))"
     x-init="init()"
 >
     <form
@@ -147,7 +147,7 @@
                     <div class="flex items-center gap-3">
                         <span data-lucide="grid" class="h-4 w-4 text-muted"></span>
                         <h3 class="text-sm font-semibold">Service Catalog</h3>
-                        <span class="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary" x-text="filteredServices.length"></span>
+                        <span class="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary" x-text="filteredCatalogCount"></span>
                     </div>
                     <div class="flex h-9 w-48 items-center gap-2 rounded-md border border-border px-3 dark:border-gray-800">
                         <span data-lucide="search" class="h-4 w-4 text-muted"></span>
@@ -166,7 +166,25 @@
                 </div>
 
                 <!-- Service Grid -->
-                <div class="grid min-h-0 flex-1 content-start gap-2 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3" x-effect="filteredServices.map(service => service.id).join(','); refreshIcons()">
+                <div class="grid min-h-0 flex-1 content-start gap-2 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3" x-effect="[...filteredPresets.map(preset => `p${preset.id}`), ...filteredServices.map(service => `s${service.id}`)].join(','); refreshIcons()">
+                    <template x-for="preset in filteredPresets" :key="`preset-${preset.id}`">
+                        <button type="button" @click="addPreset(preset)" class="group rounded-lg border border-primary/30 bg-primary/5 p-3 text-left transition-all hover:border-primary hover:bg-primary/10 hover:shadow-sm dark:border-primary/40 dark:bg-primary/10">
+                            <div class="flex items-start justify-between gap-2">
+                                <div class="flex min-w-0 items-start gap-2.5">
+                                    <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-white transition group-hover:scale-105">
+                                        <span data-lucide="tag" class="h-5 w-5"></span>
+                                    </span>
+                                    <div class="min-w-0">
+                                        <p class="truncate text-sm font-medium" x-text="preset.name"></p>
+                                        <p class="mt-0.5 truncate text-[10px] text-muted" x-text="presetSummary(preset)"></p>
+                                    </div>
+                                </div>
+                                <span class="shrink-0 rounded-md bg-primary px-2 py-1 text-xs font-bold text-white">
+                                    {{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(presetTotal(preset))"></span>
+                                </span>
+                            </div>
+                        </button>
+                    </template>
                     <template x-for="service in filteredServices" :key="service.id">
                         <button type="button" @click="add(service)" class="group rounded-lg border border-border p-3 text-left transition-all hover:border-primary hover:bg-primary/5 hover:shadow-sm dark:border-gray-800 dark:hover:bg-gray-950">
                             <div class="flex items-start justify-between gap-2">
@@ -185,7 +203,7 @@
                             </div>
                         </button>
                     </template>
-                    <div x-show="filteredServices.length === 0" class="col-span-full rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted dark:border-gray-800">
+                    <div x-show="filteredCatalogCount === 0" class="col-span-full rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted dark:border-gray-800">
                         <span data-lucide="package" class="mx-auto mb-2 block h-8 w-8"></span>
                         No services match your filter.
                     </div>
@@ -223,9 +241,6 @@
                                 <div class="min-w-0 flex-1">
                                     <div class="flex items-start justify-between gap-2">
                                         <p class="truncate text-sm font-medium" x-text="item.name"></p>
-                                        <button type="button" @click="items.splice(index, 1)" title="Remove" class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10">
-                                            <span data-lucide="x" class="h-3.5 w-3.5"></span>
-                                        </button>
                                     </div>
                                     <div class="mt-1 flex items-center gap-3">
                                         <div class="flex h-8 overflow-hidden rounded-md border border-border dark:border-gray-800">
@@ -240,8 +255,11 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div class="shrink-0 text-right">
+                                <div class="flex shrink-0 flex-col items-end gap-2 text-right">
                                     <p class="text-sm font-semibold text-primary">{{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(item.quantity * item.price)"></span></p>
+                                    <button type="button" @click="items.splice(index, 1)" title="Remove" aria-label="Remove item" class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-red-500 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-500/10">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -422,14 +440,16 @@
 </div>
 
 <script>
-function posPage(branches, processingBranches, services, customers, vatRate, vatEnabled) {
+function posPage(branches, processingBranches, services, customers, serviceCategories, servicePresets, vatRate, vatEnabled) {
     return {
         branchId: @js((string) $branchId),
         branches: branches || [],
         processingBranches: processingBranches || [],
         processingBranchId: '',
         services: services || [],
+        servicePresets: servicePresets || [],
         customers: customers || [],
+        serviceCategories: serviceCategories || [],
         items: [],
         paymentType: 'unpaid',
         discount: 0,
@@ -443,20 +463,13 @@ function posPage(branches, processingBranches, services, customers, vatRate, vat
         typeFilter: 'all',
         vatRate: vatRate || 0,
         vatEnabled: vatEnabled || false,
-        serviceTypes: [
-            { value: 'all', label: 'All', icon: 'grid' },
-            { value: 'wash', label: 'Wash', icon: 'droplets' },
-            { value: 'dry', label: 'Dry', icon: 'wind' },
-            { value: 'dry_extend', label: 'Dry Extend', icon: 'timer' },
-            { value: 'fabcon', label: 'Fabcon', icon: 'sparkles' },
-            { value: 'detergent', label: 'Detergent', icon: 'package' },
-            { value: 'fold', label: 'Fold', icon: 'shirt' },
-            { value: 'rush', label: 'Rush', icon: 'zap' },
-            { value: 'delivery', label: 'Delivery', icon: 'truck' },
-            { value: 'small', label: 'Small', icon: 'package' },
-            { value: 'big', label: 'Big', icon: 'package-open' },
-            { value: 'other', label: 'Other', icon: 'more-horizontal' },
-        ],
+        get serviceTypes() {
+            const all = { value: 'all', label: 'All', icon: 'grid' };
+            const cats = this.serviceCategories
+                .filter(c => c.visibility === 'all' || String(c.branch_id) === String(this.branchId))
+                .map(c => ({ value: c.id, label: c.name, icon: 'tag' }));
+            return [all, ...cats];
+        },
         init() {
             this.setDefaultProcessingBranch();
             this.syncSelectedCustomer();
@@ -567,31 +580,54 @@ function posPage(branches, processingBranches, services, customers, vatRate, vat
         serviceIcon(service) {
             const name = String(service.name || '').toLowerCase();
 
-            if (name.includes('dry') || name.includes('dryer')) return 'wind';
-            if (name.includes('fold') || name.includes('iron') || name.includes('press')) return 'shirt';
-            if (name.includes('wash') || name.includes('laundry')) return 'droplets';
-            if (service.pricing_type === 'kilo') return 'scale';
-            if (service.pricing_type === 'piece') return 'shirt';
-            if (service.pricing_type === 'custom') return 'sparkles';
-            return 'package';
+            if (name.includes('full service'))                           return 'star';
+            if (name.includes('delivery'))                               return 'truck';
+            if (name.includes('dry extension'))                          return 'timer';
+            if (name.includes('dry clean'))                              return 'sparkles';
+            if (name.includes('dry') || name.includes('dryer'))         return 'wind';
+            if (name.includes('steam') || name.includes('iron'))        return 'zap';
+            if (name.includes('fold'))                                   return 'shirt';
+            if (name.includes('wash') || name.includes('handwash'))     return 'droplets';
+            if (name.includes('bleach') || name.includes('stain'))      return 'flask-conical';
+            if (name.includes('carpet'))                                 return 'layout-grid';
+            if (name.includes('shoe'))                                   return 'footprints';
+            if (name.includes('spin'))                                   return 'refresh-cw';
+            if (name.includes('detergent') || name.includes('fabcon'))  return 'package';
+            return 'sparkles';
         },
         refreshIcons() {
             this.$nextTick(() => {
-                if (window.lucide && typeof window.lucide.createIcons === 'function') {
-                    window.lucide.createIcons();
+                if (typeof window.renderLucideIcons === 'function') {
+                    window.renderLucideIcons();
                 }
             });
         },
         get availableServices() {
             return this.services.filter(service => String(service.branch_id) === String(this.branchId));
         },
+        get availablePresets() {
+            return this.servicePresets.filter(preset => String(preset.branch_id) === String(this.branchId) && preset.items.length > 0);
+        },
+        get filteredPresets() {
+            const term = this.serviceSearch.toLowerCase().trim();
+            return this.availablePresets.filter(preset => {
+                const matchesType = this.typeFilter === 'all' || String(preset.service_category_id) === String(this.typeFilter);
+                const matchesSearch = !term
+                    || preset.name.toLowerCase().includes(term)
+                    || preset.items.some(item => item.name.toLowerCase().includes(term));
+                return matchesType && matchesSearch;
+            });
+        },
         get filteredServices() {
             const term = this.serviceSearch.toLowerCase().trim();
             return this.availableServices.filter(service => {
-                const matchesType = this.typeFilter === 'all' || service.report_category === this.typeFilter;
+                const matchesType = this.typeFilter === 'all' || String(service.service_category_id) === String(this.typeFilter);
                 const matchesSearch = !term || service.name.toLowerCase().includes(term);
                 return matchesType && matchesSearch;
             });
+        },
+        get filteredCatalogCount() {
+            return this.filteredPresets.length + this.filteredServices.length;
         },
         add(service) {
             const existing = this.items.find(item => item.id === service.id);
@@ -601,6 +637,28 @@ function posPage(branches, processingBranches, services, customers, vatRate, vat
                 this.items.push({ id: service.id, name: service.name, quantity: 1, price: Number(service.price) });
             }
             this.$nextTick(() => this.refreshIcons());
+        },
+        addPreset(preset) {
+            preset.items.forEach(service => {
+                const existing = this.items.find(item => item.id === service.id);
+                if (existing) {
+                    existing.quantity = Number(existing.quantity) + Number(service.quantity || 1);
+                } else {
+                    this.items.push({
+                        id: service.id,
+                        name: service.name,
+                        quantity: Number(service.quantity || 1),
+                        price: Number(service.price),
+                    });
+                }
+            });
+            this.$nextTick(() => this.refreshIcons());
+        },
+        presetTotal(preset) {
+            return preset.items.reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.price || 0)), 0);
+        },
+        presetSummary(preset) {
+            return preset.items.map(item => `${Number(item.quantity || 0).toFixed(2).replace(/\.?0+$/, '')}x ${item.name}`).join(', ');
         },
         get subtotal() { 
             return this.items.reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.price || 0)), 0); 

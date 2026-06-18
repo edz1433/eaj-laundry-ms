@@ -175,8 +175,8 @@ class FinancialReconciliationTest extends TestCase
             ->assertSee('Financial Reconciliation')
             ->assertSee('PHP 120.00')
             ->assertSee('PHP 125.00')
-            ->assertDontSee('Bank')
-            ->assertDontSee('Monthly Billing');
+            ->assertSee('Expected Bank')
+            ->assertSee('Legacy billing');
 
         $this->actingAs($admin)
             ->get(route('admin.z-readings.create', [
@@ -186,7 +186,7 @@ class FinancialReconciliationTest extends TestCase
             ->assertOk()
             ->assertSee('PHP 120.00')
             ->assertSee('PHP 125.00')
-            ->assertDontSee('Bank')
+            ->assertSee('Expected Bank net balance')
             ->assertDontSee('Monthly Billing');
 
         $collectionSummary = FinancialReconciliation::forPeriod($collectionBranch->id, $date, $date);

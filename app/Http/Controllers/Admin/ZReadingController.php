@@ -9,6 +9,7 @@ use App\Models\InventoryMovement;
 use App\Support\FinancialReconciliation;
 use App\Models\JobOrder;
 use App\Models\JobOrderItem;
+use App\Models\LaundryServiceCategory;
 use App\Models\MoneyMovement;
 use App\Models\Payment;
 use App\Models\SystemSetting;
@@ -134,6 +135,7 @@ class ZReadingController extends Controller
             'cash_count' => ['nullable', 'array'],
             'cash_count.*' => ['nullable', 'integer', 'min:0', 'max:100000'],
             'actual_gcash_amount' => ['nullable', 'numeric', 'min:0', 'max:999999999.99'],
+            'actual_bank_amount' => ['nullable', 'numeric', 'min:0', 'max:999999999.99'],
             'machine_counters' => ['nullable', 'array'],
             'machine_counters.*.wash.beginning' => ['nullable', 'integer', 'min:0', 'max:999999999'],
             'machine_counters.*.wash.ending' => ['nullable', 'integer', 'min:0', 'max:999999999'],
@@ -148,6 +150,7 @@ class ZReadingController extends Controller
         $cashCount = $this->normalizedCashCount($validated['cash_count'] ?? []);
         $actualCash = $this->cashCountTotal($cashCount);
         $actualGcash = round((float) ($validated['actual_gcash_amount'] ?? 0), 2);
+        $actualBank = round((float) ($validated['actual_bank_amount'] ?? 0), 2);
         $summary = $this->summary($branchId, $businessDate);
         $machineCount = max(
             1,
@@ -158,10 +161,10 @@ class ZReadingController extends Controller
         $machineCounters = $this->normalizedMachineCounters(
             $validated['machine_counters'] ?? $this->machineCountersForDate($branchId, $businessDate, $machineCount, $summary)
         );
-        $actualTotal = round($actualCash + $actualGcash, 2);
+        $actualTotal = round($actualCash + $actualGcash + $actualBank, 2);
         $overShort = round($actualTotal - (float) $summary['expected_total_amount'], 2);
 
-        $reading = DB::transaction(function () use ($branchId, $businessDate, $cashCount, $machineCounters, $actualCash, $actualGcash, $actualTotal, $overShort, $summary, $user): ZReading {
+        $reading = DB::transaction(function () use ($branchId, $businessDate, $cashCount, $machineCounters, $actualCash, $actualGcash, $actualBank, $actualTotal, $overShort, $summary, $user): ZReading {
             $reading = ZReading::query()
                 ->where('branch_id', $branchId)
                 ->whereDate('business_date', $businessDate)
@@ -188,8 +191,8 @@ class ZReadingController extends Controller
                 'actual_cash_amount' => $actualCash,
                 'expected_gcash_amount' => $summary['expected_gcash_amount'],
                 'actual_gcash_amount' => $actualGcash,
-                'expected_bank_amount' => 0,
-                'actual_bank_amount' => 0,
+                'expected_bank_amount' => $summary['expected_bank_amount'],
+                'actual_bank_amount' => $actualBank,
                 'expected_total_amount' => $summary['expected_total_amount'],
                 'actual_total_amount' => $actualTotal,
                 'over_short_amount' => $overShort,
@@ -215,10 +218,32 @@ class ZReadingController extends Controller
         $this->authorizeReading($request, $zReading);
 
         $zReading->load(['branch', 'preparer']);
+        $details = $this->summary((int) $zReading->branch_id, $zReading->business_date->toDateString());
+        $printReading = $zReading->replicate();
+        $printReading->exists = true;
+        $printReading->setRelation('branch', $zReading->branch);
+        $printReading->setRelation('preparer', $zReading->preparer);
+        $actualTotal = round((float) $zReading->actual_cash_amount + (float) $zReading->actual_gcash_amount + (float) $zReading->actual_bank_amount, 2);
+        $printReading->forceFill([
+            'id' => $zReading->id,
+            'reading_number' => $zReading->reading_number,
+            'expected_cash_amount' => $details['expected_cash_amount'],
+            'cash_expense_amount' => $details['cash_expense_amount'],
+            'expected_cash_drawer_amount' => $details['expected_cash_drawer_amount'],
+            'expected_gcash_amount' => $details['expected_gcash_amount'],
+            'expected_bank_amount' => $details['expected_bank_amount'],
+            'expected_total_amount' => $details['expected_total_amount'],
+            'actual_total_amount' => $actualTotal,
+            'over_short_amount' => round($actualTotal - (float) $details['expected_total_amount'], 2),
+            'transaction_count' => $details['transaction_count'],
+            'first_job_order_number' => $details['first_job_order_number'],
+            'last_job_order_number' => $details['last_job_order_number'],
+        ]);
+
         $pdf = Pdf::loadView('admin.z-readings.pdf', [
             'denominations' => self::DENOMINATIONS,
-            'details' => $this->summary((int) $zReading->branch_id, $zReading->business_date->toDateString()),
-            'reading' => $zReading,
+            'details' => $details,
+            'reading' => $printReading,
             'settings' => SystemSetting::current(),
             'signatories' => $this->signatories((int) $zReading->branch_id),
         ])->setPaper('a4', 'landscape');
@@ -240,7 +265,8 @@ class ZReadingController extends Controller
             ->with([
                 'customer:id,name,address,billing_type',
                 'items:id,job_order_id,laundry_service_id,description,service_category,quantity,unit_price,total',
-                'items.service:id,name,report_category',
+                'items.service:id,name,report_category,service_category_id',
+                'items.service.serviceCategory:id,name',
                 'payments' => fn ($query) => $query
                     ->where('collected_branch_id', $branchId)
                     ->whereDate('paid_at', $businessDate)
@@ -257,7 +283,7 @@ class ZReadingController extends Controller
             ->with(['customer:id,name', 'jobOrder:id,job_order_number,created_at'])
             ->where('collected_branch_id', $branchId)
             ->whereDate('paid_at', $businessDate)
-            ->whereIn('payment_type', ['cash', 'gcash'])
+            ->whereIn('payment_type', ['cash', 'gcash', 'bank'])
             ->orderBy('paid_at')
             ->get();
 
@@ -283,13 +309,17 @@ class ZReadingController extends Controller
         $serviceTotals = JobOrderItem::query()
             ->join('job_orders', 'job_orders.id', '=', 'job_order_items.job_order_id')
             ->leftJoin('laundry_services', 'laundry_services.id', '=', 'job_order_items.laundry_service_id')
+            ->leftJoin('laundry_service_categories', 'laundry_service_categories.id', '=', 'laundry_services.service_category_id')
             ->whereNull('job_orders.deleted_at')
             ->where('job_orders.status', '!=', 'cancelled')
             ->where('job_orders.branch_id', $branchId)
             ->whereDate('job_orders.created_at', $businessDate)
+            ->groupByRaw('COALESCE(laundry_service_categories.name, job_order_items.service_category, laundry_services.report_category, "Uncategorized")')
             ->groupByRaw('COALESCE(laundry_services.name, job_order_items.description)')
+            ->orderByRaw('COALESCE(laundry_service_categories.name, job_order_items.service_category, laundry_services.report_category, "Uncategorized")')
             ->orderByRaw('COALESCE(laundry_services.name, job_order_items.description)')
             ->get([
+                DB::raw('COALESCE(laundry_service_categories.name, job_order_items.service_category, laundry_services.report_category, "Uncategorized") as category_name'),
                 DB::raw('COALESCE(laundry_services.name, job_order_items.description) as service_name'),
                 DB::raw('SUM(job_order_items.quantity) as quantity'),
                 DB::raw('SUM(job_order_items.total) as total_amount'),
@@ -335,11 +365,11 @@ class ZReadingController extends Controller
                 'total' => round((float) $item->total, 2),
             ])->values()->all(),
             'service_amounts' => $order->items
-                ->groupBy(fn ($item) => $item->service_category ?: $item->service?->report_category ?: 'other')
+                ->groupBy(fn ($item) => $this->serviceCategoryLabel($item))
                 ->map(fn ($items) => round((float) $items->sum('total'), 2))
                 ->all(),
             'payments' => $order->payments
-                ->whereIn('payment_type', ['cash', 'gcash'])
+                ->whereIn('payment_type', ['cash', 'gcash', 'bank'])
                 ->map(fn (Payment $payment) => [
                 'type' => $payment->payment_type,
                 'amount' => round((float) $payment->amount, 2),
@@ -352,11 +382,11 @@ class ZReadingController extends Controller
             'cash_expense_amount' => $financial['store_cash_expenses'],
             'expected_cash_drawer_amount' => $financial['expected_cash_drawer'],
             'expected_gcash_amount' => $financial['expected_gcash'],
-            'expected_bank_amount' => 0,
-            'expected_total_amount' => round((float) $financial['expected_cash_drawer'] + (float) $financial['expected_gcash'], 2),
+            'expected_bank_amount' => $financial['expected_bank'],
+            'expected_total_amount' => $financial['expected_total'],
             'payment_breakdown' => [
-                'amounts' => collect($financial['payment_amounts'])->only(['cash', 'gcash', 'unpaid', 'po'])->all(),
-                'counts' => collect($financial['payment_counts'])->only(['cash', 'gcash', 'unpaid', 'po'])->all(),
+                'amounts' => collect($financial['payment_amounts'])->only(['cash', 'gcash', 'bank', 'unpaid', 'po', 'monthly_billing'])->all(),
+                'counts' => collect($financial['payment_counts'])->only(['cash', 'gcash', 'bank', 'unpaid', 'po', 'monthly_billing'])->all(),
                 'current_sales' => $paymentTotals($currentSalesPayments),
                 'previous_payments' => $paymentTotals($previousPayments),
                 'previous_payment_items' => $previousPayments->map(fn (Payment $payment) => [
@@ -375,6 +405,7 @@ class ZReadingController extends Controller
             'expense_breakdown' => [
                 'store_cash' => $financial['store_cash_expenses'],
                 'store_gcash' => $financial['store_gcash_expenses'],
+                'store_bank' => $financial['store_bank_expenses'],
                 'owner' => $financial['owner_paid_expenses'],
                 'items' => $expenses->map(fn (BranchExpense $expense) => [
                     'category' => $expense->category,
@@ -389,6 +420,8 @@ class ZReadingController extends Controller
                 'accounts_payable' => [
                     'gcash_funding' => $financial['gcash_owner_funding'],
                     'gcash_repayments' => $financial['gcash_payable_repayments'],
+                    'bank_funding' => $financial['bank_owner_funding'],
+                    'bank_repayments' => $financial['bank_payable_repayments'],
                 ],
                 'money_movements' => [
                     'cash_in' => $financial['cash_in'],
@@ -411,10 +444,12 @@ class ZReadingController extends Controller
             'previous_payment_total' => round((float) $previousPayments->sum('amount'), 2),
             'job_order_items' => $jobOrderItems,
             'service_totals' => $serviceTotals->map(fn ($row) => [
+                'category_name' => $this->humanCategoryLabel($row->category_name),
                 'service_name' => $row->service_name,
                 'quantity' => round((float) $row->quantity, 2),
                 'total_amount' => round((float) $row->total_amount, 2),
             ])->all(),
+            'sales_columns' => $this->salesColumns($serviceTotals),
             'inventory_usage' => $inventoryUsage->map(fn (InventoryMovement $movement) => [
                 'item_name' => $movement->inventory?->name,
                 'quantity' => round((float) $movement->quantity, 4),
@@ -431,6 +466,51 @@ class ZReadingController extends Controller
             'first_job_order_number' => $jobOrders->first()?->job_order_number,
             'last_job_order_number' => $jobOrders->last()?->job_order_number,
         ];
+    }
+
+    private function salesColumns($serviceTotals): array
+    {
+        $categories = LaundryServiceCategory::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->pluck('name')
+            ->all();
+
+        $used = collect($serviceTotals)
+            ->pluck('category_name')
+            ->map(fn ($value) => $this->humanCategoryLabel($value))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        return collect($categories)
+            ->merge($used)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function serviceCategoryLabel($item): string
+    {
+        return $this->humanCategoryLabel(
+            $item->service?->serviceCategory?->name
+            ?: $item->service_category
+            ?: $item->service?->report_category
+            ?: 'Uncategorized'
+        );
+    }
+
+    private function humanCategoryLabel(?string $value): string
+    {
+        $value = trim((string) $value);
+
+        if ($value === '') {
+            return 'Uncategorized';
+        }
+
+        return str($value)->replace('_', ' ')->title()->toString();
     }
 
     private function normalizedCashCount(array $cashCount): array

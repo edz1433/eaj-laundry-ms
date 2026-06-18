@@ -7,7 +7,9 @@ use App\Models\Customer;
 use App\Models\Inventory;
 use App\Models\JobOrder;
 use App\Models\LaundryService;
+use App\Models\LaundryServiceCategory;
 use App\Models\Payment;
+use App\Models\ServicePreset;
 use App\Models\SystemSetting;
 use App\Models\User;
 use Database\Seeders\InventorySeeder;
@@ -18,6 +20,76 @@ use Tests\TestCase;
 class ServiceInventoryIntegrationTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_admin_can_choose_branch_when_adding_laundry_service(): void
+    {
+        SystemSetting::query()->create([
+            'business_name' => 'Spin Klean Laundry',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'primary_color' => '#2E7D32',
+            'is_completed' => true,
+        ]);
+
+        $admin = User::factory()->create(['role' => 'admin', 'access' => ['services']]);
+        $branchA = Branch::query()->create(['name' => 'Branch A', 'code' => 'A', 'is_active' => true]);
+        $branchB = Branch::query()->create(['name' => 'Branch B', 'code' => 'B', 'is_active' => true]);
+
+        $response = $this
+            ->actingAs($admin)
+            ->get(route('admin.services.index', ['branch_id' => $branchA->id]));
+
+        $response
+            ->assertOk()
+            ->assertSee('<select name="branch_id" required', false)
+            ->assertSee('<option value="'.$branchA->id.'" selected>Branch A</option>', false)
+            ->assertSee('<option value="'.$branchB->id.'" >Branch B</option>', false);
+    }
+
+    public function test_service_preset_can_be_created_and_loaded_in_pos_catalog(): void
+    {
+        SystemSetting::query()->create([
+            'business_name' => 'Spin Klean Laundry',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'primary_color' => '#2E7D32',
+            'is_completed' => true,
+        ]);
+
+        $admin = User::factory()->create(['role' => 'admin', 'access' => ['services', 'job_orders']]);
+        $branch = Branch::query()->create(['name' => 'Branch A', 'code' => 'A', 'is_active' => true]);
+        $category = LaundryServiceCategory::query()->create(['name' => 'Packages', 'visibility' => 'all', 'is_active' => true]);
+        $wash = LaundryService::query()->create(['branch_id' => $branch->id, 'service_category_id' => $category->id, 'name' => 'Wash', 'pricing_type' => 'load', 'price' => 80, 'is_active' => true]);
+        $dry = LaundryService::query()->create(['branch_id' => $branch->id, 'service_category_id' => $category->id, 'name' => 'Dry', 'pricing_type' => 'load', 'price' => 70, 'is_active' => true]);
+
+        $this
+            ->actingAs($admin)
+            ->post(route('admin.services.presets.store'), [
+                'branch_id' => $branch->id,
+                'service_category_id' => $category->id,
+                'name' => 'Wash Dry Set',
+                'sort_order' => 0,
+                'is_active' => 1,
+                'items' => [
+                    $wash->id => 1,
+                    $dry->id => 1,
+                ],
+            ])
+            ->assertRedirect(route('admin.services.index', ['branch_id' => $branch->id]));
+
+        $preset = ServicePreset::query()->where('name', 'Wash Dry Set')->firstOrFail();
+        $this->assertSame($branch->id, $preset->branch_id);
+        $this->assertSame(2, $preset->items()->count());
+
+        $this
+            ->actingAs($admin)
+            ->get(route('admin.job-orders.create', ['branch_id' => $branch->id]))
+            ->assertOk()
+            ->assertSee('Wash Dry Set')
+            ->assertSee('\u0022quantity\u0022:1');
+    }
 
     public function test_service_category_and_inventory_recipe_drive_job_order_snapshots_and_stock(): void
     {
@@ -338,10 +410,10 @@ class ServiceInventoryIntegrationTest extends TestCase
             ]))
             ->assertOk()
             ->assertSee('Daily Operations by Date')
-            ->assertSee('Service Totals by Worksheet Category')
+            ->assertSee('Service Totals by Catalog Category')
             ->assertViewHas('zCategoryTotals', function ($totals) {
-                return (float) $totals->get('wash')->total_amount === 120.0
-                    && (float) $totals->get('dry')->total_amount === 80.0;
+                return (float) $totals->get('Wash')->total_amount === 120.0
+                    && (float) $totals->get('Dry')->total_amount === 80.0;
             })
             ->assertViewHas('zDailyOperations', function ($rows) {
                 return $rows->count() === 2

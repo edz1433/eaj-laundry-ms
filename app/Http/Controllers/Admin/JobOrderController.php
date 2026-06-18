@@ -11,7 +11,9 @@ use App\Models\Inventory;
 use App\Models\InventoryMovement;
 use App\Models\JobOrder;
 use App\Models\LaundryService;
+use App\Models\LaundryServiceCategory;
 use App\Models\Payment;
+use App\Models\ServicePreset;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Support\Activity;
@@ -43,7 +45,7 @@ class JobOrderController extends Controller
                     ->orWhereHas('customer', fn ($q) => $q->where('name', 'like', "%{$search}%")));
             })
             ->latest()
-            ->paginate(15)
+            ->paginate(8)
             ->withQueryString();
 
         return view('admin.job-orders.index', [
@@ -113,7 +115,38 @@ class JobOrderController extends Controller
         $services = LaundryService::where('is_active', true)
             ->when(! in_array($user->role, ['super_admin', 'admin'], true), fn ($q) => $q->where('branch_id', $user->branch_id))
             ->orderBy('name')
-            ->get(['id', 'branch_id', 'name', 'report_category', 'pricing_type', 'price']);
+            ->get(['id', 'branch_id', 'name', 'service_category_id', 'pricing_type', 'price']);
+
+        $serviceCategories = LaundryServiceCategory::where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get(['id', 'name', 'visibility', 'branch_id']);
+        $servicePresets = ServicePreset::with(['items.service:id,branch_id,name,service_category_id,pricing_type,price'])
+            ->where('is_active', true)
+            ->when(! in_array($user->role, ['super_admin', 'admin'], true), fn ($q) => $q->where('branch_id', $user->branch_id))
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get()
+            ->map(fn ($preset) => [
+                'id' => $preset->id,
+                'branch_id' => $preset->branch_id,
+                'service_category_id' => $preset->service_category_id,
+                'name' => $preset->name,
+                'items' => $preset->items
+                    ->filter(fn ($item) => $item->service)
+                    ->map(fn ($item) => [
+                        'id' => $item->service->id,
+                        'branch_id' => $item->service->branch_id,
+                        'service_category_id' => $item->service->service_category_id,
+                        'name' => $item->service->name,
+                        'pricing_type' => $item->service->pricing_type,
+                        'price' => (float) $item->service->price,
+                        'quantity' => (float) $item->quantity,
+                    ])
+                    ->values(),
+            ])
+            ->values();
+
         $selectedCustomerId = '';
         if ($request->filled('customer_id')) {
             $selectedCustomerId = (string) Customer::where('is_active', true)
@@ -122,7 +155,7 @@ class JobOrderController extends Controller
                 ->value('id');
         }
 
-        return view('admin.job-orders.create', compact('branches', 'processingBranches', 'customers', 'services', 'branchId', 'selectedCustomerId'));
+        return view('admin.job-orders.create', compact('branches', 'processingBranches', 'customers', 'services', 'serviceCategories', 'servicePresets', 'branchId', 'selectedCustomerId'));
     }
 
     public function edit(Request $request, JobOrder $jobOrder)

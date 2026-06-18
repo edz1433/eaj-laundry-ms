@@ -114,6 +114,8 @@
                     ['Actual Cash', ($settings->currency ?? 'PHP').' '.number_format((float) $zReadingSummary->actual_cash, 2)],
                     ['Expected GCash', ($settings->currency ?? 'PHP').' '.number_format((float) $zReadingSummary->expected_gcash, 2)],
                     ['Actual GCash', ($settings->currency ?? 'PHP').' '.number_format((float) $zReadingSummary->actual_gcash, 2)],
+                    ['Expected Bank', ($settings->currency ?? 'PHP').' '.number_format((float) $zReadingSummary->expected_bank, 2)],
+                    ['Actual Bank', ($settings->currency ?? 'PHP').' '.number_format((float) $zReadingSummary->actual_bank, 2)],
                     ['Previous Payments', ($settings->currency ?? 'PHP').' '.number_format((float) $zPreviousPaymentTotal, 2)],
                 ] as [$label, $value])
                     <div class="rounded-md bg-smoke p-3 dark:bg-gray-950">
@@ -128,8 +130,8 @@
             <x-slot:head><th class="px-4 py-3">Date</th><th class="px-4 py-3">Branch</th><th class="px-4 py-3">Reading</th><th class="px-4 py-3 text-right">Orders</th><th class="px-4 py-3 text-right">Expected</th><th class="px-4 py-3 text-right">Actual</th><th class="px-4 py-3 text-right">Over / Short</th></x-slot:head>
             @forelse($zReadings as $reading)
                 @php
-                    $rowExpected = (float) $reading->expected_cash_drawer_amount + (float) $reading->expected_gcash_amount;
-                    $rowActual = (float) $reading->actual_cash_amount + (float) $reading->actual_gcash_amount;
+                    $rowExpected = (float) $reading->expected_cash_drawer_amount + (float) $reading->expected_gcash_amount + (float) $reading->expected_bank_amount;
+                    $rowActual = (float) $reading->actual_cash_amount + (float) $reading->actual_gcash_amount + (float) $reading->actual_bank_amount;
                     $rowVariance = $rowActual - $rowExpected;
                 @endphp
                 <tr>
@@ -157,6 +159,7 @@
                 <th class="px-3 py-3 text-right">Amount</th>
                 <th class="px-3 py-3 text-right">Cash</th>
                 <th class="px-3 py-3 text-right">GCash</th>
+                <th class="px-3 py-3 text-right">Bank</th>
                 <th class="px-3 py-3 text-right">Unpaid</th>
             </x-slot:head>
             @forelse($zDailyOperations as $row)
@@ -170,10 +173,11 @@
                     <td class="px-3 py-3 text-right font-semibold">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->sales_amount, 2) }}</td>
                     <td class="px-3 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->cash_amount, 2) }}</td>
                     <td class="px-3 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->gcash_amount, 2) }}</td>
+                    <td class="px-3 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->bank_amount, 2) }}</td>
                     <td class="px-3 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $row->unpaid_amount, 2) }}</td>
                 </tr>
             @empty
-                <tr><td colspan="{{ count($zCategoryLabels) + 7 }}" class="px-4 py-10 text-center text-muted">No daily operations in this period.</td></tr>
+                <tr><td colspan="{{ count($zCategoryLabels) + 8 }}" class="px-4 py-10 text-center text-muted">No daily operations in this period.</td></tr>
             @endforelse
             @if($zDailyOperations->isNotEmpty())
                 <tr class="bg-smoke font-semibold dark:bg-gray-950">
@@ -184,6 +188,7 @@
                     <td class="px-3 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $zDailyOperations->sum('sales_amount'), 2) }}</td>
                     <td class="px-3 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $zDailyOperations->sum('cash_amount'), 2) }}</td>
                     <td class="px-3 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $zDailyOperations->sum('gcash_amount'), 2) }}</td>
+                    <td class="px-3 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $zDailyOperations->sum('bank_amount'), 2) }}</td>
                     <td class="px-3 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $zDailyOperations->sum('unpaid_amount'), 2) }}</td>
                 </tr>
             @endif
@@ -199,7 +204,7 @@
                 @endforelse
             </x-report-table>
 
-            <x-report-table title="Service Totals by Worksheet Category">
+            <x-report-table title="Service Totals by Catalog Category">
                 <x-slot:head><th class="px-4 py-3">Column</th><th class="px-4 py-3 text-right">Qty</th><th class="px-4 py-3 text-right">Amount</th></x-slot:head>
                 @foreach($zCategoryLabels as $category => $label)
                     <tr><td class="px-4 py-3">{{ $label }}</td><td class="px-4 py-3 text-right">{{ number_format((float) data_get($zCategoryTotals, $category.'.quantity', 0), 2) }}</td><td class="px-4 py-3 text-right">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) data_get($zCategoryTotals, $category.'.total_amount', 0), 2) }}</td></tr>
@@ -321,7 +326,7 @@
                 <p class="mt-1 text-lg font-semibold">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) ($expenseSummary->store_cash_expenses ?? 0), 2) }}</p>
             </div>
             <div class="rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                <p class="text-xs text-muted">Owner-Paid, Reimbursement Due</p>
+                <p class="text-xs text-muted">Legacy Owner-Paid Records</p>
                 <p class="mt-1 text-lg font-semibold">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) ($expenseSummary->owner_expenses ?? 0), 2) }}</p>
             </div>
         </div>
@@ -329,7 +334,7 @@
         <x-report-table title="Expenses">
             <x-slot:head><th class="px-4 py-3">Date</th><th class="px-4 py-3">Branch</th><th class="px-4 py-3">Expense</th><th class="px-4 py-3">Paid From</th><th class="px-4 py-3 text-right">Amount</th></x-slot:head>
             @forelse($expenses as $expense)
-                <tr><td class="px-4 py-3">{{ $expense->expense_date?->format('M d, Y') }}</td><td class="px-4 py-3">{{ $expense->branch?->name }}</td><td class="px-4 py-3"><p class="font-medium">{{ $expense->title }}</p><p class="text-xs text-muted">{{ \App\Support\StatusBadge::label($expense->category) }}{{ $expense->payment_method ? ' - '.\App\Support\StatusBadge::label($expense->payment_method) : '' }}</p></td><td class="px-4 py-3">{{ $expense->paid_from === 'owner' ? 'Owner-paid, reimbursement due' : 'Store-funded' }}</td><td class="px-4 py-3 text-right font-medium">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $expense->amount, 2) }}</td></tr>
+                <tr><td class="px-4 py-3">{{ $expense->expense_date?->format('M d, Y') }}</td><td class="px-4 py-3">{{ $expense->branch?->name }}</td><td class="px-4 py-3"><p class="font-medium">{{ $expense->title }}</p><p class="text-xs text-muted">{{ \App\Support\StatusBadge::label($expense->category) }}{{ $expense->payment_method ? ' - '.\App\Support\StatusBadge::label($expense->payment_method) : '' }}</p></td><td class="px-4 py-3">{{ $expense->paid_from === 'owner' ? 'Legacy owner-paid' : 'Store-funded' }}</td><td class="px-4 py-3 text-right font-medium">{{ $settings->currency ?? 'PHP' }} {{ number_format((float) $expense->amount, 2) }}</td></tr>
             @empty
                 <tr><td colspan="5" class="px-4 py-10 text-center text-muted">No expenses found.</td></tr>
             @endforelse

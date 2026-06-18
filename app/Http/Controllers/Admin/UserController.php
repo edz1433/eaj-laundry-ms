@@ -209,6 +209,7 @@ class UserController extends Controller
                 'cycles',
                 'customers',
                 'services',
+                'service_categories',
                 'inventory',
                 'payments',
                 'receivables',
