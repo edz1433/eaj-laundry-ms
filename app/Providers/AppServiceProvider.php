@@ -38,7 +38,20 @@ class AppServiceProvider extends ServiceProvider
                 }
 
                 $businessName = $settings?->business_name ?: config('app.name', 'Laundry System');
-                $businessLogo = PublicUpload::url($settings?->business_logo) ?: asset('logo.png');
+                $uploadedLogo = PublicUpload::url($settings?->business_logo);
+
+                if ($uploadedLogo) {
+                    $businessLogo = $uploadedLogo;
+                } else {
+                    $default = asset('logo.png');
+                    try {
+                        $stamp = file_exists(public_path('logo.png')) ? filemtime(public_path('logo.png')) : time();
+                    } catch (\Throwable $e) {
+                        $stamp = time();
+                    }
+
+                    $businessLogo = $default.'?v='.$stamp;
+                }
 
                 $request->attributes->set('app_shared_view_data', [
                     'appSettings' => $settings,
