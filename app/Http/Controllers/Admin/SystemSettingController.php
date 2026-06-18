@@ -8,6 +8,7 @@ use App\Models\BranchSetting;
 use App\Models\SystemSetting;
 use App\Support\Activity;
 use App\Support\PublicUpload;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -172,6 +173,14 @@ class SystemSettingController extends Controller
             $settings->fill($validated);
             $settings->is_completed = $settings->isComplete();
             $settings->save();
+
+            // Clear view and application cache so updated logo and settings reflect immediately
+            try {
+                Artisan::call('view:clear');
+                Artisan::call('cache:clear');
+            } catch (\Throwable $e) {
+                // Ignore failures here; cache clearing is best-effort
+            }
         }
 
         Activity::log($request, $canManageGlobal ? 'global_settings_updated' : 'branch_settings_updated', $branch, [

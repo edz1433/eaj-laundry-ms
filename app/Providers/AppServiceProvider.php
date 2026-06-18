@@ -42,6 +42,15 @@ class AppServiceProvider extends ServiceProvider
 
                 if ($uploadedLogo) {
                     $businessLogo = $uploadedLogo;
+
+                    // Append settings updated timestamp to force-refresh when settings change
+                    try {
+                        $settingsStamp = $settings?->updated_at?->timestamp ?? time();
+                    } catch (\Throwable $e) {
+                        $settingsStamp = time();
+                    }
+
+                    $businessLogo .= (str_contains($businessLogo, '?') ? '&' : '?').'ts='.$settingsStamp;
                 } else {
                     $default = asset('logo.png');
                     try {
@@ -50,7 +59,13 @@ class AppServiceProvider extends ServiceProvider
                         $stamp = time();
                     }
 
-                    $businessLogo = $default.'?v='.$stamp;
+                    try {
+                        $settingsStamp = $settings?->updated_at?->timestamp ?? time();
+                    } catch (\Throwable $e) {
+                        $settingsStamp = time();
+                    }
+
+                    $businessLogo = $default.'?v='.$stamp.'&ts='.$settingsStamp;
                 }
 
                 $request->attributes->set('app_shared_view_data', [

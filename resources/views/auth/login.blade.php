@@ -61,25 +61,20 @@
             x-data="{ showPassword: false, loading: false, remember: false }"
             class="w-full max-w-md rounded-lg border border-white/70 bg-white/90 p-6 shadow-2xl backdrop-blur-xl dark:border-gray-700/70 dark:bg-gray-900/88"
         >
-            <div class="mb-6">
-                <div class="md:flex md:items-center md:gap-4 text-center md:text-left">
-                    <div class="mx-auto mb-4 md:mb-0 flex h-16 w-16 md:h-20 md:w-20 items-center justify-center rounded-lg border border-border bg-white shadow-sm dark:border-gray-800 dark:bg-gray-950">
-                        <img
-                            src="{{ $appBusinessLogo }}"
-                            alt="{{ $appBusinessName }} logo"
-                            class="h-12 w-12 md:h-16 md:w-16 object-contain"
-                        >
-                    </div>
-
-                    <div>
-                        <div class="mb-3 inline-flex items-center gap-2 rounded-md border border-border bg-smoke px-2.5 py-1 text-xs font-medium text-primary dark:border-gray-800 dark:bg-gray-950">
-                            <span data-lucide="laundry" class="h-3.5 w-3.5"></span>
-                            Laundry operations login
-                        </div>
-                        <h1 class="text-xl font-semibold tracking-normal">{{ $appBusinessName }}</h1>
-                        <p class="mt-1 text-sm text-muted">Fresh loads, clean records, and branch work in one place.</p>
-                    </div>
+            <div class="mb-6 text-center">
+                <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-lg border border-border bg-white shadow-sm dark:border-gray-800 dark:bg-gray-950">
+                    <img
+                        src="{{ $appBusinessLogo }}"
+                        alt="{{ $appBusinessName }} logo"
+                        class="h-12 w-12 object-contain"
+                    >
                 </div>
+                <div class="mb-3 inline-flex items-center gap-2 rounded-md border border-border bg-smoke px-2.5 py-1 text-xs font-medium text-primary dark:border-gray-800 dark:bg-gray-950">
+                    <span data-lucide="laundry" class="h-3.5 w-3.5"></span>
+                    Laundry operations login
+                </div>
+                <h1 class="text-xl font-semibold tracking-normal">{{ $appBusinessName }}</h1>
+                <p class="mt-1 text-sm text-muted">Fresh loads, clean records, and branch work in one place.</p>
             </div>
 
             <form method="POST" action="{{ route('login.submit') }}" class="space-y-4" x-on:submit="loading = true">
