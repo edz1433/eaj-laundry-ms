@@ -700,7 +700,10 @@ class ExampleTest extends TestCase
 
         $this
             ->actingAs($admin)
-            ->get(route('admin.job-orders.index', ['status' => 'completed']))
+            ->get(route('admin.job-orders.index', [
+                'status' => 'completed',
+                'date_range' => '2026-06-15 to 2026-06-15',
+            ]))
             ->assertOk()
             ->assertSee('JO-A-20260606-0001')
             ->assertSee('Jun 15, 2026')
@@ -1179,6 +1182,86 @@ class ExampleTest extends TestCase
             ->assertHeader('content-type', 'application/pdf');
 
         $this->assertStringContainsString('/MediaBox [0.000 0.000 841.890 595.280]', $consolidatedPdf->getContent());
+    }
+
+    public function test_job_orders_index_defaults_to_today_only(): void
+    {
+        SystemSetting::query()->create([
+            'business_name' => 'EAJ Laundry',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'primary_color' => '#2E7D32',
+            'is_completed' => true,
+        ]);
+
+        $admin = User::factory()->create(['role' => 'super_admin']);
+        $branch = Branch::query()->create([
+            'name' => 'Today Branch',
+            'code' => 'TODAY',
+            'is_active' => true,
+        ]);
+        $customer = Customer::query()->create([
+            'branch_id' => $branch->id,
+            'name' => 'Today Customer',
+            'billing_type' => 'regular',
+            'unpaid_limit' => 0,
+            'is_active' => true,
+        ]);
+
+        $todayOrder = JobOrder::query()->create([
+            'branch_id' => $branch->id,
+            'customer_id' => $customer->id,
+            'created_by' => $admin->id,
+            'job_order_number' => 'JO-TODAY-0001',
+            'status' => 'pending',
+            'transaction_type' => 'walk_in',
+            'subtotal' => 100,
+            'discount' => 0,
+            'tax' => 0,
+            'total' => 100,
+            'paid_amount' => 0,
+            'balance' => 100,
+        ]);
+        $todayOrder->forceFill([
+            'created_at' => today()->setTime(9, 0),
+            'updated_at' => today()->setTime(9, 0),
+        ])->save();
+
+        $olderOrder = JobOrder::query()->create([
+            'branch_id' => $branch->id,
+            'customer_id' => $customer->id,
+            'created_by' => $admin->id,
+            'job_order_number' => 'JO-OLDER-0001',
+            'status' => 'pending',
+            'transaction_type' => 'walk_in',
+            'subtotal' => 100,
+            'discount' => 0,
+            'tax' => 0,
+            'total' => 100,
+            'paid_amount' => 0,
+            'balance' => 100,
+        ]);
+        $olderOrder->forceFill([
+            'created_at' => today()->subDay()->setTime(9, 0),
+            'updated_at' => today()->subDay()->setTime(9, 0),
+        ])->save();
+
+        $this->actingAs($admin)
+            ->get(route('admin.job-orders.index'))
+            ->assertOk()
+            ->assertSee('JO-TODAY-0001')
+            ->assertDontSee('JO-OLDER-0001');
+
+        $this->actingAs($admin)
+            ->get(route('admin.job-orders.index', [
+                'date_range' => today()->subDay()->toDateString().' to '.today()->subDay()->toDateString(),
+            ]))
+            ->assertOk()
+            ->assertSee('JO-OLDER-0001')
+            ->assertDontSee('JO-TODAY-0001');
     }
 
     public function test_job_orders_index_paginates_eight_rows_per_page(): void

@@ -681,7 +681,7 @@ class DashboardController extends Controller
             return [$from, $to];
         }
 
-        return [today()->subDays(6)->toDateString(), today()->toDateString()];
+        return [today()->toDateString(), today()->toDateString()];
     }
 
     private function dateRangeValue(Request $request): string

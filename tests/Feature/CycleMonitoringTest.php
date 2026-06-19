@@ -100,7 +100,7 @@ class CycleMonitoringTest extends TestCase
             ->assertOk()
             ->assertSee('value="completed"', false)
             ->assertSee('JO-ACTIVE')
-            ->assertDontSee('JO-COMPLETED');
+            ->assertSee('JO-COMPLETED');
 
         $this->actingAs($admin)
             ->get(route('admin.cycles.index', ['status' => 'completed']))

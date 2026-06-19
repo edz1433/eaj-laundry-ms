@@ -61,7 +61,7 @@
                 <input x-ref="dateRange" x-model="dateRange" name="date_range" type="text" placeholder="Date range" autocomplete="off" class="w-full bg-transparent text-sm outline-none">
             </div>
             <select name="status" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
-                <option value="">All active</option>
+                <option value="">All status</option>
                 @foreach($statusFilters as $status)
                     <option value="{{ $status }}" @selected(request('status') === $status)>{{ $statusLabels[$status] ?? str_replace('_', ' ', ucfirst($status)) }}</option>
                 @endforeach
@@ -243,13 +243,39 @@
                 </div>
                 --}}
 
-                <div class="mb-3 space-y-1">
-                    @foreach($cycleTypes as $type => $label)
-                        @if(in_array($type, ['fold', 'iron'], true))
-                            @if($type === 'fold')
-                                <div class="flex gap-1">
-                            @endif
-                                <form method="POST" action="{{ route('admin.cycles.store', $order) }}" class="flex-1">
+                @if(! in_array($order->status, ['ready_for_pickup', 'completed'], true))
+                    <div class="mb-3 space-y-1">
+                        @foreach($cycleTypes as $type => $label)
+                            @if(in_array($type, ['fold', 'iron'], true))
+                                @if($type === 'fold')
+                                    <div class="flex gap-1">
+                                @endif
+                                    <form method="POST" action="{{ route('admin.cycles.store', $order) }}" class="flex-1">
+                                        @csrf
+                                        <input type="hidden" name="cycle_type" value="{{ $type }}">
+                                        <div class="flex flex-col gap-1.5 rounded-md border border-border bg-white p-1.5 dark:border-gray-800 dark:bg-gray-950">
+                                            @if(in_array($type, ['wash', 'dry'], true) && (int) ($processingBranch?->machine_count ?? 0) > 0)
+                                                <div class="flex flex-wrap gap-1">
+                                                    @for($machine = 1; $machine <= (int) $processingBranch->machine_count; $machine++)
+                                                        @php($usingMachine = data_get($activeMachines, $type.'.'.$machine))
+                                                        <label class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium {{ $usingMachine ? 'bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400 opacity-50 cursor-not-allowed' : 'hover:bg-smoke dark:hover:bg-gray-900 cursor-pointer' }} border border-border dark:border-gray-700">
+                                                            <input type="checkbox" name="machine_numbers[]" value="{{ $machine }}" {{ $usingMachine ? 'disabled' : '' }} class="h-3 w-3 rounded border-border text-primary">
+                                                            <span>#{{ $machine }}</span>
+                                                        </label>
+                                                    @endfor
+                                                </div>
+                                            @endif
+                                            <button type="submit" title="Start {{ $label }}" class="inline-flex h-7 items-center justify-center gap-1 rounded bg-primary px-2 text-[11px] font-medium text-white hover:opacity-90">
+                                                <span data-lucide="plus" class="h-3 w-3"></span>
+                                                {{ $label }}
+                                            </button>
+                                        </div>
+                                    </form>
+                                @if($type === 'iron')
+                                    </div>
+                                @endif
+                            @else
+                                <form method="POST" action="{{ route('admin.cycles.store', $order) }}">
                                     @csrf
                                     <input type="hidden" name="cycle_type" value="{{ $type }}">
                                     <div class="flex flex-col gap-1.5 rounded-md border border-border bg-white p-1.5 dark:border-gray-800 dark:bg-gray-950">
@@ -270,49 +296,25 @@
                                         </button>
                                     </div>
                                 </form>
-                            @if($type === 'iron')
-                                </div>
                             @endif
-                        @else
-                            <form method="POST" action="{{ route('admin.cycles.store', $order) }}">
-                                @csrf
-                                <input type="hidden" name="cycle_type" value="{{ $type }}">
-                                <div class="flex flex-col gap-1.5 rounded-md border border-border bg-white p-1.5 dark:border-gray-800 dark:bg-gray-950">
-                                    @if(in_array($type, ['wash', 'dry'], true) && (int) ($processingBranch?->machine_count ?? 0) > 0)
-                                        <div class="flex flex-wrap gap-1">
-                                            @for($machine = 1; $machine <= (int) $processingBranch->machine_count; $machine++)
-                                                @php($usingMachine = data_get($activeMachines, $type.'.'.$machine))
-                                                <label class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium {{ $usingMachine ? 'bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400 opacity-50 cursor-not-allowed' : 'hover:bg-smoke dark:hover:bg-gray-900 cursor-pointer' }} border border-border dark:border-gray-700">
-                                                    <input type="checkbox" name="machine_numbers[]" value="{{ $machine }}" {{ $usingMachine ? 'disabled' : '' }} class="h-3 w-3 rounded border-border text-primary">
-                                                    <span>#{{ $machine }}</span>
-                                                </label>
-                                            @endfor
-                                        </div>
-                                    @endif
-                                    <button type="submit" title="Start {{ $label }}" class="inline-flex h-7 items-center justify-center gap-1 rounded bg-primary px-2 text-[11px] font-medium text-white hover:opacity-90">
-                                        <span data-lucide="plus" class="h-3 w-3"></span>
-                                        {{ $label }}
-                                    </button>
-                                </div>
-                            </form>
-                        @endif
-                    @endforeach
-                </div>
+                        @endforeach
+                    </div>
 
-                <div class="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border bg-smoke p-2 dark:border-gray-800 dark:bg-gray-950">
-                    <span class="text-xs font-medium text-muted">Production status:</span>
-                    @foreach($completionStatuses as $status => $label)
-                        <form method="POST" action="{{ route('admin.cycles.status', $order) }}">
-                            @csrf
-                            @method('PATCH')
-                            <input type="hidden" name="status" value="{{ $status }}">
-                            @php($canChangeStatus = $order->allCyclesDone())
-                            <button {{ ! $canChangeStatus ? 'disabled' : '' }} title="{{ ! $canChangeStatus ? 'All cycles must be marked Done first' : 'Set status to '.$label }}" class="h-8 rounded-md px-2 text-xs font-medium {{ $order->status === $status ? 'bg-primary text-white' : 'border border-border hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950' }} {{ ! $canChangeStatus ? 'opacity-50 cursor-not-allowed' : '' }}">
-                                {{ $label }}
-                            </button>
-                        </form>
-                    @endforeach
-                </div>
+                    <div class="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border bg-smoke p-2 dark:border-gray-800 dark:bg-gray-950">
+                        <span class="text-xs font-medium text-muted">Production status:</span>
+                        @foreach($completionStatuses as $status => $label)
+                            <form method="POST" action="{{ route('admin.cycles.status', $order) }}">
+                                @csrf
+                                @method('PATCH')
+                                <input type="hidden" name="status" value="{{ $status }}">
+                                @php($canChangeStatus = $order->allCyclesDone())
+                                <button {{ ! $canChangeStatus ? 'disabled' : '' }} title="{{ ! $canChangeStatus ? 'All cycles must be marked Done first' : 'Set status to '.$label }}" class="h-8 rounded-md px-2 text-xs font-medium {{ $order->status === $status ? 'bg-primary text-white' : 'border border-border hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950' }} {{ ! $canChangeStatus ? 'opacity-50 cursor-not-allowed' : '' }}">
+                                    {{ $label }}
+                                </button>
+                            </form>
+                        @endforeach
+                    </div>
+                @endif
 
                 @if($order->status === 'ready_for_pickup')
                     <div class="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border bg-white p-2 dark:border-gray-800 dark:bg-gray-950">

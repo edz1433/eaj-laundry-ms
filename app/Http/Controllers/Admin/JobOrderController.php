@@ -858,10 +858,14 @@ class JobOrderController extends Controller
             ];
         }
 
-        return [
-            $this->parseDate($request->date_from),
-            $this->parseDate($request->date_to),
-        ];
+        $from = $this->parseDate($request->date_from);
+        $to = $this->parseDate($request->date_to);
+
+        if ($from || $to) {
+            return [$from, $to];
+        }
+
+        return [today()->toDateString(), today()->toDateString()];
     }
 
     private function parseDate(?string $date): ?string
