@@ -135,12 +135,13 @@ class CycleController extends Controller
                 'production_accepted_at',
                 'created_at',
             ])
-            ->withCount('cycles')
+            ->withCount([
+                'cycles',
+                'cycles as active_cycles_count' => fn ($query) => $query->whereNull('ended_at'),
+            ])
             ->with([
                 'branch:id,name,machine_count',
                 'processingBranch:id,name,machine_count',
-                'currentBranch:id,name',
-                'releaseBranch:id,name',
                 'customer' => fn ($query) => $query
                     ->select(['id', 'name'])
                     ->withCount('jobOrders'),
@@ -164,12 +165,15 @@ class CycleController extends Controller
             ->paginate(12)
             ->withQueryString();
 
+        $this->hydrateRouteBranches($orders->getCollection());
+
         $machineOverviewBranches = $branches
             ->when($selectedBranchId, fn ($branches) => $branches->where('id', $selectedBranchId))
             ->values();
         $machineOverviewBranchIds = $machineOverviewBranches->pluck('id');
+        $hasMachineOverview = $machineOverviewBranches->sum(fn (Branch $branch) => (int) $branch->machine_count) > 0;
 
-        $activeMachinesByBranch = DB::table('cycle_records')
+        $activeMachinesByBranch = $hasMachineOverview ? DB::table('cycle_records')
             ->join('job_orders', 'job_orders.id', '=', 'cycle_records.job_order_id')
             ->join('customers', 'customers.id', '=', 'job_orders.customer_id')
             ->whereNull('cycle_records.ended_at')
@@ -200,11 +204,11 @@ class CycleController extends Controller
                     ->all())
                 ->all()
             )
-            ->all();
+            ->all() : [];
 
         $activityDateFrom = $dateFrom ?: now()->toDateString();
         $activityDateTo = $dateTo ?: now()->toDateString();
-        $machineActivityByBranch = DB::table('cycle_records')
+        $machineActivityByBranch = $hasMachineOverview ? DB::table('cycle_records')
             ->join('job_orders', 'job_orders.id', '=', 'cycle_records.job_order_id')
             ->whereNull('job_orders.deleted_at')
             ->whereIn('cycle_records.cycle_type', ['wash', 'dry'])
@@ -227,7 +231,7 @@ class CycleController extends Controller
                     'dry' => (int) ($machineRecords->firstWhere('cycle_type', 'dry')?->aggregate ?? 0),
                 ])
                 ->all())
-            ->all();
+            ->all() : [];
 
         return view('admin.cycles.index', [
             'activeMachinesByBranch' => $activeMachinesByBranch,
@@ -336,6 +340,10 @@ class CycleController extends Controller
     {
         $this->authorizeOrder($request, $jobOrder);
 
+        if ($request->filled('machine_number') && ! $request->filled('machine_numbers')) {
+            $request->merge(['machine_numbers' => [(int) $request->input('machine_number')]]);
+        }
+
         $validated = $request->validate([
             'cycle_type' => ['required', Rule::in(array_keys(self::CYCLE_TYPES))],
             'machine_numbers' => ['nullable', 'array'],
@@ -348,14 +356,20 @@ class CycleController extends Controller
         
         // For wash/dry cycles, require at least one machine
         if (in_array($validated['cycle_type'], ['wash', 'dry'], true) && $machineCount > 0 && empty($validated['machine_numbers'])) {
-            return back()->withErrors(['machine_numbers' => 'Please select at least one machine.'])->withInput();
+            return back()->withErrors([
+                'machine_number' => 'Please select at least one machine.',
+                'machine_numbers' => 'Please select at least one machine.',
+            ])->withInput();
         }
 
         // Validate machine numbers are within range
         if (! empty($validated['machine_numbers'])) {
             foreach ($validated['machine_numbers'] as $machineNumber) {
                 if ($machineCount <= 0 || (int) $machineNumber > $machineCount) {
-                    return back()->withErrors(['machine_numbers' => 'Please choose valid machines.'])->withInput();
+                    return back()->withErrors([
+                        'machine_number' => 'Please choose valid machines.',
+                        'machine_numbers' => 'Please choose valid machines.',
+                    ])->withInput();
                 }
             }
         }
@@ -376,14 +390,25 @@ class CycleController extends Controller
             foreach ($machineNumbers as $machineNumber) {
                 $conflictingCycle = $this->machineConflict($jobOrder, $validated['cycle_type'], (int) $machineNumber);
                 if ($conflictingCycle) {
-                    $conflictingMachines[] = $machineNumber;
+                    $conflictingMachines[(int) $machineNumber] = $conflictingCycle;
                 }
             }
             
             if (! empty($conflictingMachines)) {
                 $machineLabel = $validated['cycle_type'] === 'wash' ? 'Wash' : 'Dry';
-                $machines = implode(', ', array_map(fn ($m) => "#{$m}", $conflictingMachines));
+                if (count($conflictingMachines) === 1) {
+                    $machineNumber = array_key_first($conflictingMachines);
+                    $message = "{$machineLabel} #{$machineNumber} is currently used by {$conflictingMachines[$machineNumber]->jobOrder?->job_order_number}.";
+
+                    return back()->withErrors([
+                        'machine_number' => $message,
+                        'machine_numbers' => $message,
+                    ])->withInput();
+                }
+
+                $machines = implode(', ', array_map(fn ($m) => "#{$m}", array_keys($conflictingMachines)));
                 return back()->withErrors([
+                    'machine_number' => "{$machineLabel} machine(s) {$machines} are currently in use.",
                     'machine_numbers' => "{$machineLabel} machine(s) {$machines} are currently in use.",
                 ])->withInput();
             }
@@ -512,6 +537,44 @@ class CycleController extends Controller
                         ->where('branch_id', $jobOrder->processing_branch_id ?: $jobOrder->branch_id)))
                 ->whereNotIn('status', ['completed', 'cancelled']))
             ->first();
+    }
+
+    private function hydrateRouteBranches($orders): void
+    {
+        $branchIds = $orders
+            ->flatMap(fn (JobOrder $order) => collect([$order->current_branch_id, $order->release_branch_id])
+                ->filter()
+                ->reject(fn ($branchId) => in_array((int) $branchId, [
+                    (int) $order->branch_id,
+                    (int) $order->processing_branch_id,
+                ], true)))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $extraBranches = $branchIds->isEmpty()
+            ? collect()
+            : Branch::query()->whereIn('id', $branchIds)->get(['id', 'name', 'machine_count'])->keyBy('id');
+
+        $orders->each(function (JobOrder $order) use ($extraBranches): void {
+            $order->setRelation('currentBranch', $this->routeBranchFor($order, $order->current_branch_id, $extraBranches));
+            $order->setRelation('releaseBranch', $this->routeBranchFor($order, $order->release_branch_id, $extraBranches));
+        });
+    }
+
+    private function routeBranchFor(JobOrder $order, ?int $branchId, $extraBranches): ?Branch
+    {
+        $branchId = $branchId ?: ($order->processing_branch_id ?: $order->branch_id);
+
+        if ((int) $branchId === (int) $order->branch_id) {
+            return $order->branch;
+        }
+
+        if ((int) $branchId === (int) $order->processing_branch_id) {
+            return $order->processingBranch;
+        }
+
+        return $extraBranches->get((int) $branchId);
     }
 
     private function authorizeOrder(Request $request, JobOrder $jobOrder): void

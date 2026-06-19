@@ -11,6 +11,7 @@ use App\Models\DailyTaskCompletion;
 use App\Models\EmployeeAttendanceRecord;
 use App\Models\Inventory;
 use App\Models\JobOrder;
+use App\Models\JobOrderItem;
 use App\Models\MoneyMovement;
 use App\Models\Payment;
 use App\Models\SystemSetting;
@@ -145,6 +146,65 @@ class DashboardController extends Controller
         $statusLabels = array_map(fn ($status) => StatusBadge::label($status), $statuses);
         $statusValues = array_map(fn ($status) => (int) ($statusRows[$status] ?? 0), $statuses);
 
+        $paymentMixRows = (clone $collections)
+            ->selectRaw('payment_type, COALESCE(SUM(amount), 0) as total_amount')
+            ->groupBy('payment_type')
+            ->orderByDesc('total_amount')
+            ->get();
+
+        $topServices = JobOrderItem::query()
+            ->join('job_orders', 'job_orders.id', '=', 'job_order_items.job_order_id')
+            ->leftJoin('laundry_services', 'laundry_services.id', '=', 'job_order_items.laundry_service_id')
+            ->whereNull('job_orders.deleted_at')
+            ->where('job_orders.status', '!=', 'cancelled')
+            ->when($branchId, fn ($query) => $query->where('job_orders.branch_id', $branchId))
+            ->whereDate('job_orders.created_at', '>=', $dateFrom)
+            ->whereDate('job_orders.created_at', '<=', $dateTo)
+            ->groupByRaw('COALESCE(laundry_services.name, job_order_items.description)')
+            ->orderByDesc('total_amount')
+            ->limit(8)
+            ->get([
+                DB::raw('COALESCE(laundry_services.name, job_order_items.description) as label'),
+                DB::raw('COALESCE(SUM(job_order_items.quantity), 0) as quantity'),
+                DB::raw('COALESCE(SUM(job_order_items.total), 0) as total_amount'),
+            ]);
+
+        $topPresets = JobOrderItem::query()
+            ->join('job_orders', 'job_orders.id', '=', 'job_order_items.job_order_id')
+            ->join('service_presets', 'service_presets.id', '=', 'job_order_items.service_preset_id')
+            ->whereNull('job_orders.deleted_at')
+            ->where('job_orders.status', '!=', 'cancelled')
+            ->when($branchId, fn ($query) => $query->where('job_orders.branch_id', $branchId))
+            ->whereDate('job_orders.created_at', '>=', $dateFrom)
+            ->whereDate('job_orders.created_at', '<=', $dateTo)
+            ->groupBy('service_presets.id', 'service_presets.name')
+            ->orderByDesc('total_amount')
+            ->limit(8)
+            ->get([
+                'service_presets.name as label',
+                DB::raw('COUNT(DISTINCT job_orders.id) as orders_count'),
+                DB::raw('COALESCE(SUM(job_order_items.total), 0) as total_amount'),
+            ]);
+
+        $transactionRows = (clone $ordersInRange)
+            ->where('status', '!=', 'cancelled')
+            ->selectRaw('transaction_type, COUNT(*) as total')
+            ->groupBy('transaction_type')
+            ->pluck('total', 'transaction_type');
+
+        $branchSales = Payment::query()
+            ->join('branches', 'payments.branch_id', '=', 'branches.id')
+            ->when($branchId, fn ($query) => $query->where('payments.branch_id', $branchId))
+            ->whereDate('payments.paid_at', '>=', $dateFrom)
+            ->whereDate('payments.paid_at', '<=', $dateTo)
+            ->groupBy('branches.id', 'branches.name')
+            ->orderByDesc('total_amount')
+            ->limit(8)
+            ->get([
+                'branches.name as label',
+                DB::raw('COALESCE(SUM(payments.amount), 0) as total_amount'),
+            ]);
+
         $recentOrders = (clone $orders)
             ->with(['customer', 'branch'])
             ->latest()
@@ -224,7 +284,46 @@ class DashboardController extends Controller
                     'labels' => $statusLabels,
                     'values' => $statusValues,
                 ],
+                'payment_mix' => [
+                    'labels' => $paymentMixRows->map(fn ($row) => StatusBadge::label($row->payment_type))->values(),
+                    'values' => $paymentMixRows->map(fn ($row) => round((float) $row->total_amount, 2))->values(),
+                ],
+                'top_services' => [
+                    'labels' => $topServices->pluck('label')->values(),
+                    'values' => $topServices->map(fn ($row) => round((float) $row->total_amount, 2))->values(),
+                ],
+                'top_presets' => [
+                    'labels' => $topPresets->pluck('label')->values(),
+                    'values' => $topPresets->map(fn ($row) => round((float) $row->total_amount, 2))->values(),
+                ],
+                'transaction_types' => [
+                    'labels' => ['Walk-in / Drop Off', 'Delivery / Pick-up'],
+                    'values' => [(int) ($transactionRows['walk_in'] ?? 0), (int) ($transactionRows['delivery'] ?? 0)],
+                ],
+                'branch_sales' => [
+                    'labels' => $branchSales->pluck('label')->values(),
+                    'values' => $branchSales->map(fn ($row) => round((float) $row->total_amount, 2))->values(),
+                ],
+                'financial_snapshot' => [
+                    'labels' => ['Collections', 'Expenses', 'Receivables', 'Accounts Payable'],
+                    'values' => [
+                        round((float) $financial['physical_collections'], 2),
+                        round((float) $financial['expenses_total'], 2),
+                        round((float) $financial['unpaid_balance'], 2),
+                        round((float) $financial['accounts_payable'], 2),
+                    ],
+                ],
             ],
+            'top_services' => $topServices->map(fn ($row) => [
+                'label' => $row->label,
+                'quantity' => number_format((float) $row->quantity, 2),
+                'amount' => $this->money($currency, (float) $row->total_amount),
+            ])->values(),
+            'top_presets' => $topPresets->map(fn ($row) => [
+                'label' => $row->label,
+                'orders_count' => number_format((int) $row->orders_count),
+                'amount' => $this->money($currency, (float) $row->total_amount),
+            ])->values(),
             'recent_orders' => $recentOrders,
             'trusted_customers' => $trustedCustomers,
         ];
@@ -447,7 +546,7 @@ class DashboardController extends Controller
 
     private function receivablesAssistant(?int $branchId, string $currency): array
     {
-        $query = JobOrder::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->where('balance', '>', 0)->where('status', '!=', 'cancelled');
+        $query = JobOrder::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->where('balance', '>', 0)->where('status', '!=', 'cancelled')->regularReceivable();
         $balance = (float) (clone $query)->sum('balance');
         $count = (clone $query)->count();
 
@@ -463,7 +562,7 @@ class DashboardController extends Controller
 
     private function unpaidOrdersAssistant(?int $branchId, string $currency): array
     {
-        $query = JobOrder::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->where('balance', '>', 0)->where('status', '!=', 'cancelled')->latest();
+        $query = JobOrder::query()->when($branchId, fn ($query) => $query->where('branch_id', $branchId))->where('balance', '>', 0)->where('status', '!=', 'cancelled')->regularReceivable()->latest();
 
         return [
             'title' => 'Unpaid Job Orders',

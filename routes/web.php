@@ -16,14 +16,20 @@ use App\Http\Controllers\Admin\LaundryServiceCategoryController;
 use App\Http\Controllers\Admin\LaundryServiceController;
 use App\Http\Controllers\Admin\PaymentController;
 use App\Http\Controllers\Admin\PettyCashController;
+use App\Http\Controllers\Admin\PoTransactionController;
 use App\Http\Controllers\Admin\ReceivableController;
 use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\SmsLogController;
 use App\Http\Controllers\Admin\SystemSettingController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\ZReadingController;
+use App\Http\Controllers\PublicUploadController;
 use App\Http\Controllers\Auth\LoginController;
 use Illuminate\Support\Facades\Route;
+
+Route::get('/uploads/{path}', [PublicUploadController::class, 'show'])
+    ->where('path', '.*')
+    ->name('uploads.show');
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'showLogin'])->name('login');
@@ -103,6 +109,10 @@ Route::middleware(['auth', 'settings.completed', 'billing.access'])->group(funct
         Route::middleware('menu.access:receivables')->group(function () {
             Route::get('/receivables', [ReceivableController::class, 'index'])->name('receivables.index');
             Route::post('/receivables/job-orders/{jobOrder}/payments', [ReceivableController::class, 'storePayment'])->name('receivables.payments.store');
+        });
+        Route::middleware('menu.access:po_transactions')->group(function () {
+            Route::get('/po-transactions', [PoTransactionController::class, 'index'])->name('po-transactions.index');
+            Route::patch('/po-transactions/{poTransaction}', [PoTransactionController::class, 'update'])->name('po-transactions.update');
         });
         Route::middleware('menu.access:cycles')->group(function () {
             Route::get('/cycles', [CycleController::class, 'index'])->name('cycles.index');

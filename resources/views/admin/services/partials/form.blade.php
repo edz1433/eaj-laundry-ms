@@ -49,6 +49,15 @@
         </div>
 
         <div>
+            <label class="mb-1.5 block text-sm font-medium">Z Reading Column</label>
+            <select name="report_category" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
+                @foreach(\App\Support\ServiceCategories::LABELS as $key => $label)
+                    <option value="{{ $key }}" @selected(old('report_category', $service->report_category ?: \App\Support\ServiceCategories::infer($service->name)) === $key)>{{ $label }}</option>
+                @endforeach
+            </select>
+        </div>
+
+        <div>
             <label class="inline-flex h-9 items-center gap-2 text-sm text-muted">
                 <input type="checkbox" name="is_active" value="1" @checked(old('is_active', $service->is_active)) class="rounded border-border text-primary">
                 Active service

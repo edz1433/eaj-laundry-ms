@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -26,16 +27,17 @@ class PublicUpload
             return null;
         }
 
-        $disk = Storage::disk(self::DISK);
-        $url = $disk->url($path);
-
         try {
-            $timestamp = $disk->lastModified($path);
+            $timestamp = Storage::disk(self::DISK)->lastModified($path);
         } catch (\Throwable $e) {
             $timestamp = time();
         }
 
-        return $url.'?v='.$timestamp;
+        if (Route::has('uploads.show')) {
+            return route('uploads.show', ['path' => $path, 'v' => $timestamp]);
+        }
+
+        return Storage::disk(self::DISK)->url($path).'?v='.$timestamp;
     }
 
     public static function store(UploadedFile $file, string $directory): string

@@ -1,19 +1,36 @@
 @extends('layouts.app')
 
-@section('page_title', in_array(auth()->user()->role, ['branch_manager', 'cashier'], true) ? 'Cashier POS' : 'New Job Order')
+@php
+    $isEditing = isset($jobOrder);
+    $pageTitle = $isEditing ? 'Edit Job Order' : (in_array(auth()->user()->role, ['branch_manager', 'cashier'], true) ? 'Cashier POS' : 'New Job Order');
+    $initialState = [
+        'isEditing' => $isEditing,
+        'initialItems' => $isEditing ? $initialItems : [],
+        'selectedCustomerId' => (string) old('customer_id', $selectedCustomerId ?? ''),
+        'processingBranchId' => (string) old('processing_branch_id', $isEditing ? ($jobOrder->processing_branch_id ?: $jobOrder->branch_id) : ''),
+        'discount' => (float) old('discount', $isEditing ? $jobOrder->discount : 0),
+        'paid' => (float) ($isEditing ? $jobOrder->payments->sum('amount') : old('paid_amount', 0)),
+        'paymentType' => old('payment_type', $isEditing ? 'unpaid' : 'unpaid'),
+    ];
+@endphp
+
+@section('page_title', $pageTitle)
 @section('hide_footer', true)
 
 @section('content')
 <div
-    x-data="posPage(@js($branches), @js($processingBranches), @js($services), @js($customers), @js($serviceCategories), @js($servicePresets), @js((float) ($appSettings?->vat_rate ?? 0)), @js((bool) ($appSettings?->vat_enabled ?? false)))"
+    x-data="posPage(@js($branches), @js($processingBranches), @js($services), @js($customers), @js($serviceCategories), @js($servicePresets), @js((float) ($appSettings?->vat_rate ?? 0)), @js((bool) ($appSettings?->vat_enabled ?? false)), @js($initialState))"
     x-init="init()"
 >
     <form
         method="POST"
-        action="{{ route('admin.job-orders.store') }}"
+        action="{{ $isEditing ? route('admin.job-orders.update', $jobOrder) : route('admin.job-orders.store') }}"
         class="grid gap-4 md:h-[calc(100dvh-6.5rem)] md:grid-cols-[minmax(0,1fr)_18rem] md:overflow-hidden lg:h-[calc(100dvh-7.5rem)] lg:grid-cols-[minmax(0,1fr)_20rem] 2xl:grid-cols-[minmax(0,1fr)_22rem]"
     >
         @csrf
+        @if($isEditing)
+            @method('PUT')
+        @endif
 
         <!-- LEFT SIDE -->
         <section class="min-h-0 min-w-0">
@@ -22,8 +39,8 @@
                 <!-- Left: Title & Orders Link -->
                 <div class="flex items-center gap-4">
                     <div>
-                        <h2 class="text-sm font-semibold text-dark dark:text-white">New Job Order</h2>
-                        <p class="text-[10px] text-muted">Create customer order</p>
+                        <h2 class="text-sm font-semibold text-dark dark:text-white">{{ $isEditing ? $jobOrder->job_order_number : 'New Job Order' }}</h2>
+                        <p class="text-[10px] text-muted">{{ $isEditing ? 'Edit customer order' : 'Create customer order' }}</p>
                     </div>
                     <a href="{{ route('admin.job-orders.index') }}" class="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary/10 px-3 text-xs font-medium text-primary hover:bg-primary/20 dark:bg-primary/20 dark:hover:bg-primary/30">
                         <span data-lucide="list-ordered" class="h-3.5 w-3.5"></span>
@@ -33,7 +50,21 @@
 
                 <!-- Right: Branch Selection - Clean Badge Style -->
                 <div class="ml-auto flex items-center gap-3">
-                    @if(in_array(auth()->user()->role, ['super_admin', 'admin'], true))
+                    @if($isEditing)
+                        <input type="hidden" name="branch_id" value="{{ $branchId }}">
+                        <div class="flex items-center gap-2 rounded-md bg-primary/10 px-3 py-1">
+                            <span data-lucide="store" class="h-3.5 w-3.5 text-primary"></span>
+                            <span class="text-xs font-medium text-primary">{{ $branches->firstWhere('id', (int) $branchId)?->name }}</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span data-lucide="activity" class="h-3.5 w-3.5 text-muted"></span>
+                            <select name="status" class="h-8 rounded-md border-0 bg-smoke px-2 text-xs font-medium dark:bg-gray-800" required>
+                                @foreach($statuses as $status)
+                                    <option value="{{ $status }}" @selected(old('status', $jobOrder->status) === $status)>{{ \App\Support\StatusBadge::label($status) }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    @elseif(in_array(auth()->user()->role, ['super_admin', 'admin'], true))
                         <div class="flex items-center gap-2">
                             <span data-lucide="store" class="h-3.5 w-3.5 text-muted"></span>
                             <select name="branch_id" x-model="branchId" class="h-8 rounded-md border-0 bg-smoke px-2 text-xs font-medium dark:bg-gray-800" required>
@@ -56,13 +87,16 @@
                     @endphp
 
                     @if($canSelectProcessingBranch)
-                        <div class="flex items-center gap-2">
-                            <span data-lucide="git-branch" class="h-3.5 w-3.5 text-muted"></span>
-                            <select name="processing_branch_id" x-model="processingBranchId" class="h-8 rounded-md border-0 bg-smoke px-2 text-xs font-medium dark:bg-gray-800" required>
-                                <template x-for="branch in processingBranches" :key="branch.id">
-                                    <option :value="branch.id" x-text="branch.name"></option>
-                                </template>
-                            </select>
+                        <div class="flex flex-col gap-1">
+                            <span class="text-[10px] font-medium text-muted">Receiving Production Branch</span>
+                            <div class="flex items-center gap-2">
+                                <span data-lucide="git-branch" class="h-3.5 w-3.5 text-muted"></span>
+                                <select name="processing_branch_id" x-model="processingBranchId" class="h-8 rounded-md border-0 bg-smoke px-2 text-xs font-medium dark:bg-gray-800" required>
+                                    <template x-for="branch in processingBranches" :key="branch.id">
+                                        <option :value="branch.id" x-text="branch.name"></option>
+                                    </template>
+                                </select>
+                            </div>
                         </div>
                     @else
                         <input type="hidden" name="processing_branch_id" value="{{ $branchId }}">
@@ -91,7 +125,7 @@
                             class="min-w-0 flex-1 bg-transparent text-sm outline-none"
                             autocomplete="off"
                         >
-                        <button type="button" @click="quickCustomerOpen = true; refreshIcons()" title="Add new customer" class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-primary hover:bg-primary/10">
+                        <button type="button" x-show="!isEditing" @click="quickCustomerOpen = true; refreshIcons()" title="Add new customer" class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-primary hover:bg-primary/10">
                             <span data-lucide="plus" class="h-4 w-4"></span>
                         </button>
                         <button type="button" x-show="selectedCustomerId" @click="clearCustomer()" title="Clear customer" class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md hover:bg-smoke dark:hover:bg-gray-900">
@@ -115,24 +149,24 @@
                 <!-- Notes -->
                 <div>
                     <label class="mb-1 block text-[10px] font-medium text-muted">Notes / Instructions</label>
-                    <textarea name="notes" rows="1" placeholder="Add notes..." class="h-9 w-full rounded-md border border-border bg-white px-3 py-1.5 text-sm shadow-sm dark:border-gray-800 dark:bg-gray-950"></textarea>
+                    <textarea name="notes" rows="1" placeholder="Add notes..." class="h-9 w-full rounded-md border border-border bg-white px-3 py-1.5 text-sm shadow-sm dark:border-gray-800 dark:bg-gray-950">{{ old('notes', $isEditing ? $jobOrder->notes : '') }}</textarea>
                 </div>
 
                 <!-- Options -->
                 <div class="flex items-center gap-3">
                     <label class="flex h-9 cursor-pointer items-center gap-2 mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 text-sm font-medium text-amber-800 dark:border-amber-900/60 dark:bg-amber-500/10 dark:text-amber-300">
-                        <input type="checkbox" name="is_rush" value="1" class="rounded border-amber-300 text-amber-600">
+                        <input type="checkbox" name="is_rush" value="1" @checked(old('is_rush', $isEditing ? $jobOrder->is_rush : false)) class="rounded border-amber-300 text-amber-600">
                         <span data-lucide="zap" class="h-4 w-4"></span>
                         Rush
                     </label>
                     <div class="flex h-9 rounded-md bg-smoke p-0.5 dark:bg-gray-950 mt-3">
                         <label class="flex cursor-pointer items-center gap-1.5 rounded-sm px-3 text-xs font-medium has-[:checked]:bg-white has-[:checked]:text-primary has-[:checked]:shadow-sm dark:has-[:checked]:bg-gray-900">
-                            <input type="radio" name="transaction_type" value="walk_in" checked class="sr-only">
+                            <input type="radio" name="transaction_type" value="walk_in" @checked(old('transaction_type', $isEditing ? $jobOrder->transaction_type : 'walk_in') !== 'delivery') class="sr-only">
                             <span data-lucide="user" class="h-3.5 w-3.5"></span>
                             Walk-in
                         </label>
                         <label class="flex cursor-pointer items-center gap-1.5 rounded-sm px-3 text-xs font-medium has-[:checked]:bg-orange-100 has-[:checked]:text-orange-700 has-[:checked]:shadow-sm dark:has-[:checked]:bg-orange-500/10 dark:has-[:checked]:text-orange-300">
-                            <input type="radio" name="transaction_type" value="delivery" class="sr-only">
+                            <input type="radio" name="transaction_type" value="delivery" @checked(old('transaction_type', $isEditing ? $jobOrder->transaction_type : 'walk_in') === 'delivery') class="sr-only">
                             <span data-lucide="truck" class="h-3.5 w-3.5"></span>
                             Delivery
                         </label>
@@ -294,8 +328,8 @@
                         <span x-show="items.length === 0">Add items to continue</span>
                         <span x-show="items.length > 0 && !selectedCustomerId">Select a customer</span>
                         <span x-show="items.length > 0 && selectedCustomerId" class="flex items-center justify-center gap-2">
-                            <span data-lucide="credit-card" class="h-4 w-4"></span>
-                            Proceed to Payment
+                            <span :data-lucide="isEditing ? 'save' : 'credit-card'" class="h-4 w-4"></span>
+                            <span x-text="isEditing ? 'Review Changes' : 'Proceed to Payment'"></span>
                         </span>
                     </button>
                 </div>
@@ -307,8 +341,8 @@
             <div @click.outside="showPaymentPanel = false" class="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl dark:bg-gray-900">
                 <div class="mb-4 flex items-center justify-between">
                     <h2 class="inline-flex items-center gap-2 text-lg font-semibold">
-                        <span data-lucide="credit-card" class="h-5 w-5 text-primary"></span>
-                        Payment
+                        <span :data-lucide="isEditing ? 'save' : 'credit-card'" class="h-5 w-5 text-primary"></span>
+                        <span x-text="isEditing ? 'Order Summary' : 'Payment'"></span>
                     </h2>
                     <button type="button" @click="showPaymentPanel = false" class="rounded-lg p-2 hover:bg-smoke dark:hover:bg-gray-800">
                         <span data-lucide="x" class="h-5 w-5"></span>
@@ -333,9 +367,13 @@
                         <span class="text-primary">{{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(total)"></span></span>
                     </div>
                     
-                    <div class="flex items-center justify-between gap-3">
+                    <div x-show="!isEditing" class="flex items-center justify-between gap-3">
                         <span class="text-muted">Paid</span>
                         <input name="paid_amount" x-model.number="paid" type="number" min="0" step="0.01" class="h-9 w-28 rounded-lg border border-border px-3 text-right dark:border-gray-800 dark:bg-gray-950">
+                    </div>
+                    <div x-show="isEditing" class="flex justify-between">
+                        <span class="text-muted">Existing payments</span>
+                        <span>{{ $appSettings?->currency ?? 'PHP' }} <span x-text="money(paid)"></span></span>
                     </div>
                     
                     <div class="flex justify-between font-semibold">
@@ -344,7 +382,7 @@
                     </div>
                     
                     <!-- Payment Type - Radio Card Style -->
-                    <div class="space-y-2 pt-2">
+                    <div x-show="!isEditing" class="space-y-2 pt-2">
                         <label class="text-xs font-medium text-muted">Payment Method</label>
                         <div class="grid grid-cols-2 gap-2">
                             <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-border p-2.5 transition hover:border-primary/50 dark:border-gray-800" :class="paymentType === 'unpaid' ? 'border-primary bg-primary/5' : ''">
@@ -394,12 +432,12 @@
                     </div>
 
                     <!-- Reference Number Field (shown for GCash and PO) -->
-                    <div x-show="paymentType === 'gcash' || paymentType === 'po'" x-transition.duration.200ms>
+                    <div x-show="!isEditing && (paymentType === 'gcash' || paymentType === 'po')" x-transition.duration.200ms>
                         <input name="payment_reference_no" placeholder="Enter reference number..." class="h-9 w-full rounded-lg border border-border bg-white px-3 dark:border-gray-800 dark:bg-gray-950">
                     </div>
                     
                     <!-- SMS Notification -->
-                    <label class="flex items-start gap-2 rounded-lg border border-border p-3 dark:border-gray-800" :class="canSendSms ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'">
+                    <label x-show="!isEditing" class="flex items-start gap-2 rounded-lg border border-border p-3 dark:border-gray-800" :class="canSendSms ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'">
                         <input type="checkbox" name="send_sms" value="1" :disabled="!canSendSms" class="mt-0.5 rounded border-border text-primary">
                         <span>
                             <span class="block text-sm font-medium">Send order received SMS</span>
@@ -410,7 +448,7 @@
 
                 <div class="mt-5 grid grid-cols-2 gap-3">
                     <button type="button" @click="showPaymentPanel = false" class="h-10 rounded-lg border border-border font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">Cancel</button>
-                    <button type="submit" class="h-10 rounded-lg bg-primary font-semibold text-white hover:opacity-90">Confirm Order</button>
+                    <button type="submit" class="h-10 rounded-lg bg-primary font-semibold text-white hover:opacity-90" x-text="isEditing ? 'Save Changes' : 'Confirm Order'"></button>
                 </div>
             </div>
         </div>
@@ -441,25 +479,26 @@
 </div>
 
 <script>
-function posPage(branches, processingBranches, services, customers, serviceCategories, servicePresets, vatRate, vatEnabled) {
+function posPage(branches, processingBranches, services, customers, serviceCategories, servicePresets, vatRate, vatEnabled, initialState = {}) {
     return {
+        isEditing: Boolean(initialState.isEditing),
         branchId: @js((string) $branchId),
         branches: branches || [],
         processingBranches: processingBranches || [],
-        processingBranchId: '',
+        processingBranchId: initialState.processingBranchId || '',
         services: services || [],
         servicePresets: servicePresets || [],
         customers: customers || [],
         serviceCategories: serviceCategories || [],
-        items: [],
-        paymentType: 'unpaid',
-        discount: 0,
-        paid: 0,
+        items: initialState.initialItems || [],
+        paymentType: initialState.paymentType || 'unpaid',
+        discount: Number(initialState.discount || 0),
+        paid: Number(initialState.paid || 0),
         showPaymentPanel: false,
         quickCustomerOpen: @js($errors->any() && old('redirect_to') === 'pos'),
         customerOpen: false,
         customerSearch: '',
-        selectedCustomerId: @js((string) ($selectedCustomerId ?? '')),
+        selectedCustomerId: initialState.selectedCustomerId || '',
         serviceSearch: '',
         typeFilter: 'all',
         vatRate: vatRate || 0,
@@ -472,11 +511,17 @@ function posPage(branches, processingBranches, services, customers, serviceCateg
             return [all, ...cats];
         },
         init() {
-            this.setDefaultProcessingBranch();
+            if (!this.processingBranchId) {
+                this.setDefaultProcessingBranch();
+            }
             this.syncSelectedCustomer();
             
             // Watch for branch changes
             this.$watch('branchId', () => {
+                if (this.isEditing) {
+                    return;
+                }
+
                 this.items = [];
                 this.discount = 0;
                 this.paid = 0;
@@ -636,11 +681,11 @@ function posPage(branches, processingBranches, services, customers, serviceCateg
             return this.filteredPresets.length + this.filteredServices.length;
         },
         add(service) {
-            const existing = this.items.find(item => item.id === service.id);
+            const existing = this.items.find(item => item.type !== 'preset' && String(item.id) === String(service.id));
             if (existing) {
                 existing.quantity = Number(existing.quantity) + 1;
             } else {
-                this.items.push({ id: service.id, name: service.name, quantity: 1, price: Number(service.price) });
+                this.items.push({ type: 'service', id: service.id, name: service.name, quantity: 1, price: Number(service.price) });
             }
             this.$nextTick(() => this.refreshIcons());
         },

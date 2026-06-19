@@ -16,8 +16,8 @@ use Illuminate\Validation\ValidationException;
 
 class AccountsPayableController extends Controller
 {
-    private const METHODS = ['cash', 'bank', 'gcash'];
-    private const UI_METHODS = ['cash', 'gcash'];
+    private const METHODS = ['cash', 'bank', 'gcash', 'cheque'];
+    private const UI_METHODS = ['cash', 'gcash', 'cheque'];
 
     public function index(Request $request)
     {

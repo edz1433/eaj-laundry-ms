@@ -307,7 +307,7 @@
                                 @csrf
                                 @method('PATCH')
                                 <input type="hidden" name="status" value="{{ $status }}">
-                                @php($canChangeStatus = $order->allCyclesDone())
+                                @php($canChangeStatus = (int) ($order->active_cycles_count ?? 0) === 0)
                                 <button {{ ! $canChangeStatus ? 'disabled' : '' }} title="{{ ! $canChangeStatus ? 'All cycles must be marked Done first' : 'Set status to '.$label }}" class="h-8 rounded-md px-2 text-xs font-medium {{ $order->status === $status ? 'bg-primary text-white' : 'border border-border hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950' }} {{ ! $canChangeStatus ? 'opacity-50 cursor-not-allowed' : '' }}">
                                     {{ $label }}
                                 </button>
@@ -328,7 +328,7 @@
                                 @csrf
                                 @method('PATCH')
                                 <input type="hidden" name="action" value="release_here">
-                                <button onclick="return confirm('Release this laundry to the customer? This will mark the job order as completed.')" class="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-2.5 text-xs font-medium text-white">
+                                <button type="submit" x-on:click.prevent="Swal.fire({ title: 'Release laundry?', text: 'Release this laundry to the customer? This will mark the job order as completed.', icon: 'warning', showCancelButton: true, confirmButtonColor: '#0f766e', confirmButtonText: 'Release' }).then((result) => { if (result.isConfirmed) $el.closest('form').submit(); })" class="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-2.5 text-xs font-medium text-white">
                                     <span data-lucide="package-check" class="h-3.5 w-3.5"></span>
                                     {{ $releaseActions['release_here'] }}
                                 </button>
@@ -339,7 +339,7 @@
                                 @csrf
                                 @method('PATCH')
                                 <input type="hidden" name="action" value="return_to_dropoff">
-                                <button onclick="return confirm('Return this laundry to the drop-off branch for customer release?')" class="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-900">
+                                <button type="submit" x-on:click.prevent="Swal.fire({ title: 'Return laundry?', text: 'Return this laundry to the drop-off branch for customer release?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#0f766e', confirmButtonText: 'Return' }).then((result) => { if (result.isConfirmed) $el.closest('form').submit(); })" class="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-900">
                                     <span data-lucide="truck" class="h-3.5 w-3.5"></span>
                                     {{ $releaseActions['return_to_dropoff'] }}
                                 </button>

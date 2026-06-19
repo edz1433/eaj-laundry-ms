@@ -76,6 +76,7 @@ class ReportController extends Controller
         $orders = JobOrder::query()
             ->with([
                 'customer:id,name,address,billing_type',
+                'poTransaction:id,job_order_id',
                 'items:id,job_order_id,laundry_service_id,description,service_category,quantity,unit_price,total',
                 'items.service:id,name,report_category,service_category_id',
                 'items.service.serviceCategory:id,name',
@@ -106,6 +107,9 @@ class ReportController extends Controller
         $paymentTotals = fn ($items) => $items->groupBy('payment_type')
             ->map(fn ($group) => round((float) $group->sum('amount'), 2))
             ->all();
+        $regularUnpaidTotal = fn ($items) => round((float) $items
+            ->reject(fn (JobOrder $order) => $order->poTransaction || $order->customer?->billing_type === 'po')
+            ->sum('balance'), 2);
 
         $expenses = BranchExpense::query()
             ->with('creator:id,name')
@@ -223,7 +227,7 @@ class ReportController extends Controller
         $details = [
             'job_order_items' => $orderItems,
             'daily_total_sales' => round((float) $orders->sum('total'), 2),
-            'daily_unpaid_amount' => round((float) $orders->sum('balance'), 2),
+            'daily_unpaid_amount' => $regularUnpaidTotal($orders),
             'payment_breakdown' => [
                 'current_sales' => $paymentTotals($currentPayments),
                 'previous_payment_items' => $previousPayments->map(fn (Payment $payment) => [
@@ -377,6 +381,7 @@ class ReportController extends Controller
             ->with(['branch', 'customer'])
             ->where('balance', '>', 0)
             ->where('status', '!=', 'cancelled')
+            ->regularReceivable()
             ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
             ->latest()
             ->limit(30)
@@ -472,7 +477,7 @@ class ReportController extends Controller
             ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
             ->whereDate('created_at', '>=', $dateFrom)
             ->whereDate('created_at', '<=', $dateTo)
-            ->selectRaw("COUNT(*) as total_orders, SUM(CASE WHEN is_rush = 1 THEN 1 ELSE 0 END) as rush_orders, COALESCE(SUM(total), 0) as order_value, COALESCE(SUM(balance), 0) as unpaid_balance")
+            ->selectRaw("COUNT(*) as total_orders, SUM(CASE WHEN is_rush = 1 THEN 1 ELSE 0 END) as rush_orders, COALESCE(SUM(total), 0) as order_value, COALESCE(SUM(CASE WHEN balance > 0 AND NOT EXISTS (SELECT 1 FROM po_transactions WHERE po_transactions.job_order_id = job_orders.id) AND NOT EXISTS (SELECT 1 FROM customers WHERE customers.id = job_orders.customer_id AND customers.billing_type = 'po') THEN balance ELSE 0 END), 0) as unpaid_balance")
             ->first();
 
         $loyalCustomerCount = Customer::query()
@@ -583,7 +588,8 @@ class ReportController extends Controller
             ->where('job_orders.status', '!=', 'cancelled')
             ->whereDate('job_orders.created_at', '>=', $dateFrom)
             ->whereDate('job_orders.created_at', '<=', $dateTo)
-            ->selectRaw('DATE(job_orders.created_at) as business_date, job_orders.branch_id, branches.name as branch_name, COUNT(*) as order_count, COALESCE(SUM(job_orders.total), 0) as sales_amount, COALESCE(SUM(job_orders.balance), 0) as unpaid_amount')
+            ->leftJoin('po_transactions', 'po_transactions.job_order_id', '=', 'job_orders.id')
+            ->selectRaw("DATE(job_orders.created_at) as business_date, job_orders.branch_id, branches.name as branch_name, COUNT(*) as order_count, COALESCE(SUM(job_orders.total), 0) as sales_amount, COALESCE(SUM(CASE WHEN job_orders.balance > 0 AND po_transactions.id IS NULL AND NOT EXISTS (SELECT 1 FROM customers WHERE customers.id = job_orders.customer_id AND customers.billing_type = 'po') THEN job_orders.balance ELSE 0 END), 0) as unpaid_amount")
             ->groupByRaw('DATE(job_orders.created_at), job_orders.branch_id, branches.name')
             ->orderByRaw('DATE(job_orders.created_at), branches.name')
             ->get()

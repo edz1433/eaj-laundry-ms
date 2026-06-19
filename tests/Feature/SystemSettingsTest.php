@@ -106,8 +106,12 @@ class SystemSettingsTest extends TestCase
         $this->actingAs($admin)
             ->get(route('dashboard'))
             ->assertOk()
-            ->assertSee(Storage::disk('uploads')->url($logoPath), false)
+            ->assertSee(route('uploads.show', ['path' => $logoPath]), false)
             ->assertDontSee(asset('logo.png'), false);
+
+        $this->get(route('uploads.show', ['path' => $logoPath]))
+            ->assertOk()
+            ->assertHeader('content-type', 'image/png');
     }
 
     public function test_branch_settings_no_longer_show_attendance_geofence_fields(): void

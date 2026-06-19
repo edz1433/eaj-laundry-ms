@@ -86,7 +86,94 @@
         </div>
     </div>
 
-    <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+    <div class="grid gap-4 xl:grid-cols-3">
+        <div class="rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div class="mb-4 flex items-center justify-between">
+                <div>
+                    <h2 class="text-base font-semibold">Payment Mix</h2>
+                    <p class="text-sm text-muted">Physical collections by method.</p>
+                </div>
+                <span data-lucide="payments" class="h-4 w-4 text-primary"></span>
+            </div>
+            <div class="h-64">
+                <canvas x-ref="paymentMixChart"></canvas>
+            </div>
+        </div>
+
+        <div class="rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div class="mb-4 flex items-center justify-between">
+                <div>
+                    <h2 class="text-base font-semibold">POS Type Mix</h2>
+                    <p class="text-sm text-muted">Walk-in/drop-off versus delivery orders.</p>
+                </div>
+                <span data-lucide="shopping-bag" class="h-4 w-4 text-primary"></span>
+            </div>
+            <div class="h-64">
+                <canvas x-ref="transactionTypeChart"></canvas>
+            </div>
+        </div>
+
+        <div class="rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div class="mb-4 flex items-center justify-between">
+                <div>
+                    <h2 class="text-base font-semibold">Financial Snapshot</h2>
+                    <p class="text-sm text-muted">Collections, expenses, receivables, and payables.</p>
+                </div>
+                <span data-lucide="scale" class="h-4 w-4 text-primary"></span>
+            </div>
+            <div class="h-64">
+                <canvas x-ref="financialChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid gap-4 xl:grid-cols-2">
+        <div class="rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div class="mb-4 flex items-center justify-between">
+                <div>
+                    <h2 class="text-base font-semibold">Top Selling Services</h2>
+                    <p class="text-sm text-muted">Ranked by service sales amount in the selected range.</p>
+                </div>
+                <span data-lucide="services" class="h-4 w-4 text-primary"></span>
+            </div>
+            <div class="h-72">
+                <canvas x-ref="topServicesChart"></canvas>
+            </div>
+            <div class="mt-3 divide-y divide-border text-sm dark:divide-gray-800">
+                <template x-for="service in data.top_services" :key="service.label">
+                    <div class="flex items-center justify-between gap-3 py-2">
+                        <span class="min-w-0 truncate font-medium" x-text="service.label"></span>
+                        <span class="shrink-0 text-xs text-muted" x-text="`${service.quantity} qty · ${service.amount}`"></span>
+                    </div>
+                </template>
+                <p x-show="data.top_services.length === 0" class="py-6 text-center text-sm text-muted">No service sales in this date range.</p>
+            </div>
+        </div>
+
+        <div class="rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div class="mb-4 flex items-center justify-between">
+                <div>
+                    <h2 class="text-base font-semibold">Top Selling Presets</h2>
+                    <p class="text-sm text-muted">Preset sales from POS preset cart selections.</p>
+                </div>
+                <span data-lucide="tag" class="h-4 w-4 text-primary"></span>
+            </div>
+            <div class="h-72">
+                <canvas x-ref="topPresetsChart"></canvas>
+            </div>
+            <div class="mt-3 divide-y divide-border text-sm dark:divide-gray-800">
+                <template x-for="preset in data.top_presets" :key="preset.label">
+                    <div class="flex items-center justify-between gap-3 py-2">
+                        <span class="min-w-0 truncate font-medium" x-text="preset.label"></span>
+                        <span class="shrink-0 text-xs text-muted" x-text="`${preset.orders_count} order(s) · ${preset.amount}`"></span>
+                    </div>
+                </template>
+                <p x-show="data.top_presets.length === 0" class="py-6 text-center text-sm text-muted">Preset sales will appear for new orders saved from preset cart selections.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
         <div class="overflow-hidden rounded-lg border border-border bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <div class="flex items-center justify-between border-b border-border px-4 py-3 dark:border-gray-800">
                 <div>
@@ -125,22 +212,15 @@
         </div>
 
         <div class="rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <h2 class="text-base font-semibold">Quick Actions</h2>
-            <p class="mb-3 text-sm text-muted">Role-aware shortcuts.</p>
-            <div class="space-y-2">
-                @foreach([
-                    ['label' => 'Create job order', 'route' => 'admin.job-orders.create', 'icon' => 'jobOrders'],
-                    ['label' => 'Payments', 'route' => 'admin.payments.index', 'icon' => 'payments'],
-                    ['label' => 'Receivables', 'route' => 'admin.receivables.index', 'icon' => 'receivables'],
-                    ['label' => 'Inventory', 'route' => 'admin.inventory.index', 'icon' => 'inventory'],
-                ] as $action)
-                    @if(Route::has($action['route']) && auth()->user()->hasMenuAccess(str_contains($action['route'], 'job-orders') ? 'job_orders' : explode('.', $action['route'])[1]))
-                        <a href="{{ route($action['route']) }}" class="flex h-10 items-center gap-2 rounded-md border border-border px-3 text-sm font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950">
-                            <span data-lucide="{{ $action['icon'] }}" class="h-4 w-4 text-primary"></span>
-                            {{ $action['label'] }}
-                        </a>
-                    @endif
-                @endforeach
+            <div class="mb-4 flex items-center justify-between">
+                <div>
+                    <h2 class="text-base font-semibold">Branch Sales</h2>
+                    <p class="text-sm text-muted">Sales owned by branch in the selected range.</p>
+                </div>
+                <span data-lucide="branches" class="h-4 w-4 text-primary"></span>
+            </div>
+            <div class="h-80">
+                <canvas x-ref="branchSalesChart"></canvas>
             </div>
         </div>
     </div>
@@ -194,12 +274,18 @@ function dashboardPage(fetchUrl, initialData, initialDateRange) {
         dateRange: initialDateRange,
         salesChart: null,
         statusChart: null,
+        paymentMixChart: null,
+        transactionTypeChart: null,
+        financialChart: null,
+        topServicesChart: null,
+        topPresetsChart: null,
+        branchSalesChart: null,
         statCards: [
             { key: 'sales', label: 'Sales Owned', icon: 'payments' },
             { key: 'collections', label: 'Physical Collections', icon: 'receipt' },
             { key: 'cash_drawer', label: 'Expected Cash Drawer', icon: 'wallet' },
             { key: 'gcash', label: 'Expected GCash', icon: 'payments' },
-            { key: 'expenses', label: 'Recorded Expenses', icon: 'expenses' },
+            { key: 'expenses', label: 'Recorded Expenses', icon: 'expense' },
             { key: 'accounts_payable', label: 'Accounts Payable', icon: 'receivables' },
             { key: 'receivables', label: 'Unpaid Customer Balance', icon: 'receivables' },
             { key: 'over_short', label: 'Z Reading Over / Short', icon: 'activity' },
@@ -268,6 +354,42 @@ function dashboardPage(fetchUrl, initialData, initialDateRange) {
                 },
                 options: this.chartOptions(grid)
             });
+
+            this.paymentMixChart = new window.Chart(this.$refs.paymentMixChart, {
+                type: 'doughnut',
+                data: this.dataset('payment_mix', this.palette(color)),
+                options: this.pieOptions()
+            });
+
+            this.transactionTypeChart = new window.Chart(this.$refs.transactionTypeChart, {
+                type: 'pie',
+                data: this.dataset('transaction_types', this.palette(color)),
+                options: this.pieOptions()
+            });
+
+            this.financialChart = new window.Chart(this.$refs.financialChart, {
+                type: 'bar',
+                data: this.dataset('financial_snapshot', this.palette(color)),
+                options: this.chartOptions(grid)
+            });
+
+            this.topServicesChart = new window.Chart(this.$refs.topServicesChart, {
+                type: 'bar',
+                data: this.dataset('top_services', this.palette(color)),
+                options: this.horizontalOptions(grid)
+            });
+
+            this.topPresetsChart = new window.Chart(this.$refs.topPresetsChart, {
+                type: 'bar',
+                data: this.dataset('top_presets', this.palette(color)),
+                options: this.horizontalOptions(grid)
+            });
+
+            this.branchSalesChart = new window.Chart(this.$refs.branchSalesChart, {
+                type: 'bar',
+                data: this.dataset('branch_sales', this.palette(color)),
+                options: this.horizontalOptions(grid)
+            });
         },
         updateCharts() {
             if (!this.salesChart || !this.statusChart) return;
@@ -279,6 +401,35 @@ function dashboardPage(fetchUrl, initialData, initialDateRange) {
             this.statusChart.data.labels = this.data.charts.status.labels;
             this.statusChart.data.datasets[0].data = this.data.charts.status.values;
             this.statusChart.update();
+
+            this.updateChart(this.paymentMixChart, 'payment_mix');
+            this.updateChart(this.transactionTypeChart, 'transaction_types');
+            this.updateChart(this.financialChart, 'financial_snapshot');
+            this.updateChart(this.topServicesChart, 'top_services');
+            this.updateChart(this.topPresetsChart, 'top_presets');
+            this.updateChart(this.branchSalesChart, 'branch_sales');
+        },
+        dataset(key, colors) {
+            return {
+                labels: this.data.charts[key].labels,
+                datasets: [{
+                    label: 'Amount',
+                    data: this.data.charts[key].values,
+                    backgroundColor: colors,
+                    borderColor: colors,
+                    borderRadius: 6,
+                }]
+            };
+        },
+        updateChart(chart, key) {
+            if (!chart) return;
+
+            chart.data.labels = this.data.charts[key].labels;
+            chart.data.datasets[0].data = this.data.charts[key].values;
+            chart.update();
+        },
+        palette(primary) {
+            return [primary, '#0ea5e9', '#f59e0b', '#10b981', '#6366f1', '#ef4444', '#14b8a6', '#8b5cf6'];
         },
         chartOptions(grid) {
             return {
@@ -289,6 +440,18 @@ function dashboardPage(fetchUrl, initialData, initialDateRange) {
                     x: { grid: { color: grid }, ticks: { color: '#64748B' } },
                     y: { beginAtZero: true, grid: { color: grid }, ticks: { color: '#64748B', precision: 0 } },
                 }
+            };
+        },
+        horizontalOptions(grid) {
+            const options = this.chartOptions(grid);
+            options.indexAxis = 'y';
+            return options;
+        },
+        pieOptions() {
+            return {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } },
             };
         }
     }

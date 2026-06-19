@@ -222,7 +222,7 @@ class BillingSystemTest extends TestCase
             ->assertDontSee('Your branch subscription');
     }
 
-    public function test_paid_current_subscription_shows_paid_notice(): void
+    public function test_paid_current_subscription_does_not_show_mid_cycle_paid_notice(): void
     {
         $this->completeSystemSettings();
         $this->expiredTrial(graceDays: 0);
@@ -249,10 +249,10 @@ class BillingSystemTest extends TestCase
         $this->actingAs($user)
             ->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('Billing Paid')
-            ->assertSee('System billing for Jun 01, 2026 - Jun 30, 2026 is already paid.')
-            ->assertSee('Billing Notifications')
-            ->assertSee('Billing paid');
+            ->assertDontSee('Billing Paid')
+            ->assertDontSee('System billing for Jun 01, 2026 - Jun 30, 2026 is already paid.')
+            ->assertSee('Subscription Notifications')
+            ->assertDontSee('Billing paid');
     }
 
     public function test_paid_subscription_auto_opens_upcoming_billing_notice_five_days_before_end(): void
@@ -284,7 +284,7 @@ class BillingSystemTest extends TestCase
             ->assertOk()
             ->assertSee('Upcoming Billing')
             ->assertSee('Next billing is coming up in 5 days.')
-            ->assertSee('Billing Notifications')
+            ->assertSee('Subscription Notifications')
             ->assertSee('autoOpen: true', false);
     }
 
@@ -315,7 +315,7 @@ class BillingSystemTest extends TestCase
         $this->actingAs($user)
             ->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('Billing Notifications')
+            ->assertSee('Subscription Notifications')
             ->assertSee('Due Soon Branch - Billing due')
             ->assertSee('Jun 01, 2026 - Jun 30, 2026 is unpaid and due on Jun 15, 2026.')
             ->assertSee('Your branch subscription for Jun 01, 2026 - Jun 30, 2026 is due in 5 days.')

@@ -116,6 +116,7 @@
                     @php($isReadyForPickup = $order->status === 'ready_for_pickup')
                     @php($isReleased = (bool) $order->released_at)
                     @php($isInProcess = in_array($order->status, ['pending', 'washing', 'drying', 'folding'], true))
+                    @php($canRecordPayment = (float) $order->balance > 0 && $order->status !== 'cancelled' && ! $order->poTransaction && $order->customer?->billing_type !== 'po')
                     <tr>
                         <td class="border-l-4 px-4 py-3 font-medium {{ $isReadyForPickup ? 'border-l-teal-500 bg-teal-50/50 dark:bg-teal-500/5' : ($isReleased ? 'border-l-green-500 bg-green-50/50 dark:bg-green-500/5' : ($isInProcess ? 'border-l-blue-500 bg-blue-50/50 dark:bg-blue-500/5' : ($order->status === 'cancelled' ? 'border-l-red-500' : 'border-l-transparent'))) }}">
                             <p>{{ $order->job_order_number }}</p>
@@ -172,7 +173,7 @@
                             <button type="button" @click="paymentOpen = {{ $order->id }}" title="Payment history" aria-label="View payment history" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border hover:bg-smoke dark:border-gray-700 dark:hover:bg-gray-800">
                                 <span data-lucide="payments" class="h-4 w-4"></span>
                             </button>
-                            @if((float) $order->balance > 0)
+                            @if($canRecordPayment)
                                 <button type="button" @click="payOpen = {{ $order->id }}" title="Record payment" aria-label="Record payment" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900/60 dark:text-emerald-300 dark:hover:bg-emerald-500/10">
                                     <span data-lucide="dollar" class="h-4 w-4"></span>
                                 </button>
@@ -184,7 +185,7 @@
                                 <form method="POST" action="{{ route('admin.job-orders.release', $order) }}" class="inline">
                                     @csrf
                                     @method('PATCH')
-                                    <button onclick="return confirm('Release this laundry to the customer? This will mark the job order as completed.')" title="Release here" aria-label="Release job order to customer" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-teal-200 text-teal-700 hover:bg-teal-50 dark:border-teal-900/60 dark:text-teal-300 dark:hover:bg-teal-500/10">
+                                    <button type="submit" x-on:click.prevent="Swal.fire({ title: 'Release laundry?', text: 'Release this laundry to the customer? This will mark the job order as completed.', icon: 'warning', showCancelButton: true, confirmButtonColor: '#0f766e', confirmButtonText: 'Release' }).then((result) => { if (result.isConfirmed) $el.closest('form').submit(); })" title="Release here" aria-label="Release job order to customer" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-teal-200 text-teal-700 hover:bg-teal-50 dark:border-teal-900/60 dark:text-teal-300 dark:hover:bg-teal-500/10">
                                         <span data-lucide="package-check" class="h-4 w-4"></span>
                                     </button>
                                 </form>
@@ -257,7 +258,7 @@
             </div>
         </div>
 
-        @if((float) $order->balance > 0)
+        @if((float) $order->balance > 0 && $order->status !== 'cancelled' && ! $order->poTransaction && $order->customer?->billing_type !== 'po')
             <div x-cloak x-show="payOpen === {{ $order->id }}" x-transition class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
                 <div @click.outside="payOpen = null" class="w-full max-w-md rounded-lg bg-white p-5 shadow-2xl dark:bg-gray-900">
                     <div class="mb-4 flex items-center justify-between">

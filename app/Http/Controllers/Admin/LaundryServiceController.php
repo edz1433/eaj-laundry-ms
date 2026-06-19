@@ -9,6 +9,7 @@ use App\Models\LaundryService;
 use App\Models\LaundryServiceCategory;
 use App\Models\ServicePreset;
 use App\Support\Activity;
+use App\Support\ServiceCategories;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -177,6 +178,7 @@ class LaundryServiceController extends Controller
         return [
             'branch_id'           => ['required', 'exists:branches,id'],
             'name'                => ['required', 'string', 'max:255'],
+            'report_category'     => ['nullable', 'string', Rule::in(ServiceCategories::keys())],
             'service_category_id' => ['nullable', 'exists:laundry_service_categories,id'],
             'pricing_type'        => ['required', Rule::in(['kilo', 'load', 'piece', 'custom'])],
             'price'               => ['required', 'numeric', 'min:0'],

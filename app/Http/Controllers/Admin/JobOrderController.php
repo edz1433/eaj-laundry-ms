@@ -13,6 +13,7 @@ use App\Models\JobOrder;
 use App\Models\LaundryService;
 use App\Models\LaundryServiceCategory;
 use App\Models\Payment;
+use App\Models\PoTransaction;
 use App\Models\ServicePreset;
 use App\Models\SystemSetting;
 use App\Models\User;
@@ -33,7 +34,7 @@ class JobOrderController extends Controller
         $user = $request->user();
         [$dateFrom, $dateTo] = $this->dateRange($request);
 
-        $ordersQuery = JobOrder::with(['branch.setting', 'processingBranch', 'currentBranch', 'releaseBranch', 'customer', 'items', 'payments.receiver', 'payments.collectedBranch'])
+        $ordersQuery = JobOrder::with(['branch.setting', 'processingBranch', 'currentBranch', 'releaseBranch', 'customer', 'items', 'payments.receiver', 'payments.collectedBranch', 'poTransaction'])
             ->when($user->role !== 'super_admin' && $user->role !== 'admin', fn ($q) => $q->where('branch_id', $user->branch_id))
             ->when($dateFrom, fn ($q) => $q->whereDate('created_at', '>=', $dateFrom))
             ->when($dateTo, fn ($q) => $q->whereDate('created_at', '<=', $dateTo))
@@ -197,20 +198,51 @@ class JobOrderController extends Controller
                 ->where('is_active', true)
                 ->orWhereIn('id', $serviceIds))
             ->orderBy('name')
-            ->get(['id', 'branch_id', 'name', 'report_category', 'pricing_type', 'price']);
+            ->get(['id', 'branch_id', 'name', 'service_category_id', 'report_category', 'pricing_type', 'price']);
 
         $branches = Branch::query()
             ->whereKey($branchId)
-            ->get();
+            ->get(['id', 'name', 'code', 'branch_type', 'machine_count']);
 
         $selectedCustomerId = (string) $jobOrder->customer_id;
         $initialItems = $jobOrder->items
             ->map(fn ($item) => [
                 'id' => $item->laundry_service_id,
+                'type' => 'service',
                 'name' => $item->description,
                 'report_category' => $item->service_category,
                 'quantity' => (float) $item->quantity,
                 'price' => (float) $item->unit_price,
+            ])
+            ->values();
+
+        $serviceCategories = LaundryServiceCategory::where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get(['id', 'name', 'visibility', 'branch_id']);
+        $servicePresets = ServicePreset::with(['items.service:id,branch_id,name,service_category_id,pricing_type,price'])
+            ->where('is_active', true)
+            ->where('branch_id', $branchId)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get()
+            ->map(fn ($preset) => [
+                'id' => $preset->id,
+                'branch_id' => $preset->branch_id,
+                'service_category_id' => $preset->service_category_id,
+                'name' => $preset->name,
+                'items' => $preset->items
+                    ->filter(fn ($item) => $item->service)
+                    ->map(fn ($item) => [
+                        'id' => $item->service->id,
+                        'branch_id' => $item->service->branch_id,
+                        'service_category_id' => $item->service->service_category_id,
+                        'name' => $item->service->name,
+                        'pricing_type' => $item->service->pricing_type,
+                        'price' => (float) $item->service->price,
+                        'quantity' => (float) $item->quantity,
+                    ])
+                    ->values(),
             ])
             ->values();
 
@@ -219,11 +251,13 @@ class JobOrderController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'code', 'branch_type', 'machine_count']);
 
-        return view('admin.job-orders.edit', [
+        return view('admin.job-orders.create', [
             'branches' => $branches,
             'processingBranches' => $processingBranches,
             'customers' => $customers,
             'services' => $services,
+            'serviceCategories' => $serviceCategories,
+            'servicePresets' => $servicePresets,
             'branchId' => $branchId,
             'selectedCustomerId' => $selectedCustomerId,
             'jobOrder' => $jobOrder,
@@ -297,7 +331,9 @@ class JobOrderController extends Controller
             $tax = $settings->vat_enabled ? ($taxable * ((float) $settings->vat_rate / 100)) : 0;
             $total = $taxable + $tax;
             $paymentType = $validated['payment_type'] ?? 'cash';
-            $paid = $paymentType === 'unpaid'
+            $customer = Customer::query()->find($validated['customer_id']);
+            $isPoTransaction = $paymentType === 'po' || $customer?->billing_type === 'po';
+            $paid = in_array($paymentType, ['unpaid', 'po'], true) || $isPoTransaction
                 ? 0
                 : min((float) ($validated['paid_amount'] ?? 0), $total);
 
@@ -329,6 +365,7 @@ class JobOrderController extends Controller
                 $service = $selectedServices->get((int) $item['laundry_service_id']);
                 $order->items()->create([
                     'laundry_service_id' => $item['laundry_service_id'],
+                    'service_preset_id' => $item['service_preset_id'] ?? null,
                     'description' => $item['description'],
                     'service_category' => $service->report_category,
                     'quantity' => $item['quantity'],
@@ -343,17 +380,22 @@ class JobOrderController extends Controller
             }
 
             $running = (float) CustomerLedger::where('customer_id', $order->customer_id)->latest()->value('running_balance');
-            CustomerLedger::create([
-                'branch_id' => $order->branch_id,
-                'customer_id' => $order->customer_id,
-                'job_order_id' => $order->id,
-                'entry_type' => 'debit',
-                'amount' => $total,
-                'running_balance' => $running + $total,
-                'description' => "Job order {$order->job_order_number}",
-            ]);
 
-            if ($paid > 0) {
+            if ($isPoTransaction) {
+                $this->syncPoTransaction($order, $validated['payment_reference_no'] ?? null);
+            } else {
+                CustomerLedger::create([
+                    'branch_id' => $order->branch_id,
+                    'customer_id' => $order->customer_id,
+                    'job_order_id' => $order->id,
+                    'entry_type' => 'debit',
+                    'amount' => $total,
+                    'running_balance' => $running + $total,
+                    'description' => "Job order {$order->job_order_number}",
+                ]);
+            }
+
+            if ($paid > 0 && ! $isPoTransaction) {
                 $collectedBranchId = $this->collectedBranchId($request, $order);
                 $payment = Payment::create([
                     'branch_id' => $order->branch_id,
@@ -407,7 +449,8 @@ class JobOrderController extends Controller
             'customer_id' => ['required', 'exists:customers,id'],
             'processing_branch_id' => ['nullable', 'exists:branches,id'],
             'items' => ['required', 'array', 'min:1'],
-            'items.*.laundry_service_id' => ['required', 'exists:laundry_services,id'],
+            'items.*.laundry_service_id' => ['nullable', 'exists:laundry_services,id'],
+            'items.*.service_preset_id' => ['nullable', 'exists:service_presets,id'],
             'items.*.description' => ['required', 'string', 'max:255'],
             'items.*.quantity' => ['required', 'numeric', 'min:0.01'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
@@ -428,6 +471,8 @@ class JobOrderController extends Controller
                 'customer_id' => 'Please choose a customer from this job order branch.',
             ]);
         }
+
+        $validated['items'] = $this->expandPresetCartItems($validated['items'], (int) $jobOrder->branch_id);
 
         $serviceIds = collect($validated['items'])->pluck('laundry_service_id')->unique()->values();
         $selectedServices = LaundryService::query()
@@ -464,6 +509,7 @@ class JobOrderController extends Controller
                 $service = $selectedServices->get((int) $item['laundry_service_id']);
                 $jobOrder->items()->create([
                     'laundry_service_id' => $item['laundry_service_id'],
+                    'service_preset_id' => $item['service_preset_id'] ?? null,
                     'description' => $item['description'],
                     'service_category' => $service->report_category,
                     'quantity' => $item['quantity'],
@@ -536,6 +582,11 @@ class JobOrderController extends Controller
                     'branch_id' => $jobOrder->branch_id,
                     'customer_id' => $jobOrder->customer_id,
                 ]);
+
+            $jobOrder->load(['customer', 'poTransaction']);
+            if ($jobOrder->poTransaction || $jobOrder->customer?->billing_type === 'po') {
+                $this->syncPoTransaction($jobOrder);
+            }
 
             Activity::log($request, 'job_order_updated', $jobOrder, [
                 'job_order_number' => $jobOrder->job_order_number,
@@ -745,6 +796,38 @@ class JobOrderController extends Controller
         return (int) ($request->user()->branch_id ?: $order->branch_id);
     }
 
+    private function syncPoTransaction(JobOrder $order, ?string $poNumber = null): void
+    {
+        $order->loadMissing('customer');
+        $existing = $order->poTransaction;
+        $paidAmount = min((float) ($existing?->paid_amount ?? 0), (float) $order->total);
+        $balance = max((float) $order->total - $paidAmount, 0);
+        $status = $existing?->status ?? 'pending';
+
+        if ($balance <= 0) {
+            $status = 'paid';
+        } elseif ($paidAmount > 0) {
+            $status = 'partially_paid';
+        }
+
+        PoTransaction::query()->updateOrCreate(
+            ['job_order_id' => $order->id],
+            [
+                'branch_id' => $order->branch_id,
+                'customer_id' => $order->customer_id,
+                'company_name' => $order->customer?->name,
+                'po_number' => filled($poNumber) ? $poNumber : ($existing?->po_number ?: 'PO-'.$order->job_order_number),
+                'transaction_date' => $order->created_at?->toDateString() ?: today()->toDateString(),
+                'amount' => $order->total,
+                'paid_amount' => $paidAmount,
+                'balance' => $balance,
+                'status' => $status,
+                'billed_at' => in_array($status, ['billed', 'partially_paid', 'paid'], true) ? ($existing?->billed_at ?: now()) : null,
+                'paid_at' => $status === 'paid' ? ($existing?->paid_at ?: now()) : null,
+            ]
+        );
+    }
+
     private function resolveProcessingBranchId(Branch $originBranch, ?int $processingBranchId, User $user): int
     {
         if (! $user->canManageAllBranches() && $originBranch->isFullService()) {
@@ -947,6 +1030,7 @@ class JobOrderController extends Controller
                     $service = $presetItem->service;
                     $expanded[] = [
                         'laundry_service_id' => $service->id,
+                        'service_preset_id' => $preset->id,
                         'description' => $service->name,
                         'quantity' => (float) $item['quantity'] * (float) $presetItem->quantity,
                         'unit_price' => (float) $service->price,

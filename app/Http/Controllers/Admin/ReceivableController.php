@@ -15,8 +15,8 @@ use Illuminate\Validation\ValidationException;
 
 class ReceivableController extends Controller
 {
-    private const BILLING_TYPES = ['regular', 'po', 'monthly_billing'];
-    private const UI_BILLING_TYPES = ['regular', 'po'];
+    private const BILLING_TYPES = ['regular', 'monthly_billing'];
+    private const UI_BILLING_TYPES = ['regular'];
     private const STATUSES = ['pending', 'washing', 'drying', 'folding', 'ready_for_pickup', 'completed'];
 
     public function index(Request $request)
@@ -33,6 +33,7 @@ class ReceivableController extends Controller
         $baseQuery = JobOrder::query()
             ->with(['branch', 'currentBranch', 'releaseBranch', 'customer'])
             ->where('balance', '>', 0)
+            ->regularReceivable()
             ->when(! $canChooseBranch, fn ($query) => $query->where(fn ($query) => $query
                 ->where('branch_id', $user->branch_id)
                 ->orWhere('current_branch_id', $user->branch_id)
@@ -79,6 +80,13 @@ class ReceivableController extends Controller
         if ((float) $jobOrder->balance <= 0) {
             throw ValidationException::withMessages([
                 'amount' => 'This job order has no remaining balance.',
+            ]);
+        }
+
+        $jobOrder->loadMissing(['customer', 'poTransaction']);
+        if ($jobOrder->poTransaction || $jobOrder->customer?->billing_type === 'po') {
+            throw ValidationException::withMessages([
+                'amount' => 'PO transactions are handled in the PO Transactions module.',
             ]);
         }
 

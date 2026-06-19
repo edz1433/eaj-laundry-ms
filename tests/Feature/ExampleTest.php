@@ -213,8 +213,11 @@ class ExampleTest extends TestCase
             ->withSession(['attendance_employee_id' => $employee->id])
             ->get(route('attendance.kiosk'))
             ->assertOk()
-            ->assertSee(Storage::disk('uploads')->url($logoPath), false)
+            ->assertSee(route('uploads.show', ['path' => $logoPath]), false)
             ->assertDontSee(asset('logo.png'), false);
+
+        $this->get(route('uploads.show', ['path' => $logoPath]))
+            ->assertOk();
     }
 
     public function test_legacy_public_storage_upload_is_copied_to_public_uploads(): void
@@ -223,8 +226,8 @@ class ExampleTest extends TestCase
         Storage::fake('uploads');
         Storage::disk('public')->put('settings/legacy-logo.png', 'legacy-logo');
 
-        $this->assertSame(
-            Storage::disk('uploads')->url('settings/legacy-logo.png'),
+        $this->assertStringStartsWith(
+            route('uploads.show', ['path' => 'settings/legacy-logo.png']),
             PublicUpload::url('settings/legacy-logo.png')
         );
         Storage::disk('uploads')->assertExists('settings/legacy-logo.png');
@@ -735,6 +738,65 @@ class ExampleTest extends TestCase
         $this->assertSame('190.00', $order->total);
         $this->assertSame('190.00', $order->balance);
         $this->assertNull($order->completed_at);
+    }
+
+    public function test_job_order_edit_uses_pos_editor_layout(): void
+    {
+        SystemSetting::query()->create([
+            'business_name' => 'EAJ Laundry',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'primary_color' => '#2E7D32',
+            'is_completed' => true,
+        ]);
+
+        $admin = User::factory()->create(['role' => 'super_admin']);
+        $branch = Branch::query()->create(['name' => 'Main Branch', 'code' => 'MAIN', 'is_active' => true]);
+        $customer = Customer::query()->create([
+            'branch_id' => $branch->id,
+            'name' => 'Edit Customer',
+            'billing_type' => 'regular',
+            'is_active' => true,
+        ]);
+        $service = LaundryService::query()->create([
+            'branch_id' => $branch->id,
+            'name' => 'Wash Dry Fold',
+            'pricing_type' => 'kilo',
+            'price' => 100,
+            'is_active' => true,
+        ]);
+        $order = JobOrder::query()->create([
+            'branch_id' => $branch->id,
+            'processing_branch_id' => $branch->id,
+            'customer_id' => $customer->id,
+            'created_by' => $admin->id,
+            'job_order_number' => 'JO-EDIT-POS-001',
+            'status' => 'pending',
+            'subtotal' => 100,
+            'discount' => 0,
+            'tax' => 0,
+            'total' => 100,
+            'paid_amount' => 0,
+            'balance' => 100,
+        ]);
+        $order->items()->create([
+            'laundry_service_id' => $service->id,
+            'description' => $service->name,
+            'quantity' => 1,
+            'unit_price' => 100,
+            'total' => 100,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.job-orders.edit', $order))
+            ->assertOk()
+            ->assertSee('JO-EDIT-POS-001')
+            ->assertSee('Edit customer order')
+            ->assertSee('Service Catalog')
+            ->assertSee('Cart');
     }
 
     public function test_public_attendance_requires_employee_session(): void
@@ -1588,6 +1650,7 @@ class ExampleTest extends TestCase
         $this->actingAs($cashier)
             ->get(route('admin.job-orders.index'))
             ->assertOk()
+            ->assertSee('In process')
             ->assertSee('Record payment', false);
 
         $this->actingAs($cashier)

@@ -16,6 +16,7 @@ class Customer extends Model
     public function branch() { return $this->belongsTo(Branch::class); }
     public function jobOrders() { return $this->hasMany(JobOrder::class); }
     public function payments() { return $this->hasMany(Payment::class); }
+    public function poTransactions() { return $this->hasMany(PoTransaction::class); }
 
     public function canReceiveSms(): bool
     {

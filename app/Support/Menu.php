@@ -16,6 +16,7 @@ class Menu
             'inventory' => ['label' => 'Inventory', 'route' => 'admin.inventory.index', 'icon' => 'inventory'],
             'payments' => ['label' => 'Payments', 'route' => 'admin.payments.index', 'icon' => 'payments'],
             'receivables' => ['label' => 'Receivables', 'route' => 'admin.receivables.index', 'icon' => 'receivables'],
+            'po_transactions' => ['label' => 'PO Transactions', 'route' => 'admin.po-transactions.index', 'icon' => 'file-text'],
             'expenses' => ['label' => 'Expenses', 'route' => 'admin.expenses.index', 'icon' => 'expense'],
             'accounts_payable' => ['label' => 'Accounts Payable', 'route' => 'admin.accounts-payable.index', 'icon' => 'receivables'],
             'petty_cash' => ['label' => 'Petty Cash', 'route' => 'admin.petty-cash.index', 'icon' => 'wallet'],

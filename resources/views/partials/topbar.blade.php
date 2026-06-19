@@ -22,7 +22,7 @@
                     type="button"
                     @click="open = !open"
                     class="relative flex h-9 w-9 items-center justify-center rounded-md border border-border bg-white transition hover:bg-smoke dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-800"
-                    aria-label="Billing notifications"
+                    aria-label="Subscription notifications"
                 >
                     <span data-lucide="bell" class="h-4 w-4"></span>
                     @if($billingNotices->isNotEmpty())
@@ -38,7 +38,7 @@
                     class="absolute right-0 mt-2 w-80 overflow-hidden rounded-md border border-border bg-white shadow-lg dark:border-gray-800 dark:bg-gray-900"
                 >
                     <div class="flex items-center justify-between border-b border-border px-3 py-2 dark:border-gray-800">
-                        <p class="text-sm font-semibold">Billing Notifications</p>
+                        <p class="text-sm font-semibold">Subscription Notifications</p>
                         @if(Route::has('admin.billing.index') && auth()->user()?->role === 'super_admin')
                             <a href="{{ route('admin.billing.index') }}" class="text-xs font-medium text-primary hover:underline">Open</a>
                         @endif
@@ -50,13 +50,13 @@
                                 <div class="flex gap-2">
                                     <span data-lucide="{{ $noticeType === 'success' ? 'check' : ($noticeType === 'danger' ? 'alertTriangle' : 'bell') }}" class="mt-0.5 h-4 w-4 shrink-0"></span>
                                     <div class="min-w-0">
-                                        <p class="font-medium">{{ $notice['title'] ?? 'Billing notice' }}</p>
+                                        <p class="font-medium">{{ $notice['title'] ?? 'Subscription notice' }}</p>
                                         <p class="mt-0.5 text-xs leading-5 opacity-85">{{ $notice['message'] ?? '' }}</p>
                                     </div>
                                 </div>
                             </div>
                         @empty
-                            <div class="px-3 py-8 text-center text-sm text-muted">No billing notifications.</div>
+                            <div class="px-3 py-8 text-center text-sm text-muted">No subscription notifications.</div>
                         @endforelse
                     </div>
                 </div>

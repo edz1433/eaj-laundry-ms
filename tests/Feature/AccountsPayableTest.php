@@ -94,6 +94,46 @@ class AccountsPayableTest extends TestCase
         $this->assertDatabaseCount('money_movements', 0);
     }
 
+    public function test_accounts_payable_accepts_cheque_repayment_without_cash_movement(): void
+    {
+        [$branch, $manager] = $this->financeUser(['accounts_payable']);
+
+        $payable = AccountsPayable::query()->create([
+            'branch_id' => $branch->id,
+            'created_by' => $manager->id,
+            'payable_number' => 'AP-CHEQUE-001',
+            'creditor_name' => 'Owner',
+            'source_type' => 'owner_funding',
+            'funding_method' => 'gcash',
+            'description' => 'Working capital',
+            'original_amount' => 1500,
+            'paid_amount' => 0,
+            'balance' => 1500,
+            'status' => 'unpaid',
+            'funded_at' => today(),
+        ]);
+
+        $this->actingAs($manager)
+            ->post(route('admin.accounts-payable.payments.store', $payable), [
+                'amount' => 1500,
+                'payment_date' => today()->toDateString(),
+                'payment_method' => 'cheque',
+                'reference_no' => 'CHK-1001',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $payable->refresh();
+        $this->assertSame('paid', $payable->status);
+        $this->assertSame('0.00', $payable->balance);
+        $this->assertDatabaseHas('accounts_payable_payments', [
+            'accounts_payable_id' => $payable->id,
+            'payment_method' => 'cheque',
+            'reference_no' => 'CHK-1001',
+            'amount' => 1500,
+        ]);
+        $this->assertDatabaseCount('money_movements', 0);
+    }
+
     public function test_attendance_page_displays_twelve_hour_times(): void
     {
         [$branch, $manager] = $this->financeUser(['attendance']);

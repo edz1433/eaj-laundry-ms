@@ -213,6 +213,7 @@ class UserController extends Controller
                 'inventory',
                 'payments',
                 'receivables',
+                'po_transactions',
                 'expenses',
                 'accounts_payable',
                 'petty_cash',
@@ -233,6 +234,7 @@ class UserController extends Controller
                 'customers',
                 'payments',
                 'receivables',
+                'po_transactions',
                 'reports',
             ], 'cashier'),
             'staff' => $assignable([
