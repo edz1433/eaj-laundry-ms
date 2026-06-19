@@ -33,9 +33,8 @@ class JobOrderController extends Controller
         $user = $request->user();
         [$dateFrom, $dateTo] = $this->dateRange($request);
 
-        $orders = JobOrder::with(['branch.setting', 'processingBranch', 'currentBranch', 'releaseBranch', 'customer', 'items', 'payments.receiver', 'payments.collectedBranch'])
+        $ordersQuery = JobOrder::with(['branch.setting', 'processingBranch', 'currentBranch', 'releaseBranch', 'customer', 'items', 'payments.receiver', 'payments.collectedBranch'])
             ->when($user->role !== 'super_admin' && $user->role !== 'admin', fn ($q) => $q->where('branch_id', $user->branch_id))
-            ->when(in_array($request->status, self::STATUSES, true), fn ($q) => $q->where('status', $request->status))
             ->when($dateFrom, fn ($q) => $q->whereDate('created_at', '>=', $dateFrom))
             ->when($dateTo, fn ($q) => $q->whereDate('created_at', '<=', $dateTo))
             ->when($request->filled('search'), function ($q) use ($request) {
@@ -43,7 +42,23 @@ class JobOrderController extends Controller
                 $q->where(fn ($query) => $query
                     ->where('job_order_number', 'like', "%{$search}%")
                     ->orWhereHas('customer', fn ($q) => $q->where('name', 'like', "%{$search}%")));
-            })
+            });
+
+        $statusCounts = [
+            'total' => (clone $ordersQuery)->count(),
+            'ready_for_pickup' => (clone $ordersQuery)->where('status', 'ready_for_pickup')->count(),
+            'released' => (clone $ordersQuery)->whereNotNull('released_at')->count(),
+            'active' => (clone $ordersQuery)->whereNotIn('status', ['ready_for_pickup', 'completed', 'cancelled'])->count(),
+            'cancelled' => (clone $ordersQuery)->where('status', 'cancelled')->count(),
+        ];
+
+        $statusFilter = $request->status;
+
+        $orders = $ordersQuery
+            ->when(in_array($statusFilter, self::STATUSES, true), fn ($q) => $q->where('status', $statusFilter))
+            ->when($statusFilter === 'released', fn ($q) => $q->whereNotNull('released_at'))
+            ->when($statusFilter === 'active', fn ($q) => $q->whereNotIn('status', ['ready_for_pickup', 'completed', 'cancelled']))
+            ->orderByRaw("CASE WHEN status = 'ready_for_pickup' THEN 0 WHEN status IN ('pending', 'washing', 'drying', 'folding') THEN 1 WHEN status = 'completed' THEN 2 ELSE 3 END")
             ->latest()
             ->paginate(8)
             ->withQueryString();
@@ -52,6 +67,7 @@ class JobOrderController extends Controller
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
             'orders' => $orders,
+            'statusCounts' => $statusCounts,
             'statuses' => self::STATUSES,
         ]);
     }
@@ -223,7 +239,8 @@ class JobOrderController extends Controller
             'processing_branch_id' => ['nullable', 'exists:branches,id'],
             'customer_id' => ['required', 'exists:customers,id'],
             'items' => ['required', 'array', 'min:1'],
-            'items.*.laundry_service_id' => ['required', 'exists:laundry_services,id'],
+            'items.*.laundry_service_id' => ['nullable', 'exists:laundry_services,id'],
+            'items.*.service_preset_id' => ['nullable', 'exists:service_presets,id'],
             'items.*.description' => ['required', 'string', 'max:255'],
             'items.*.quantity' => ['required', 'numeric', 'min:0.01'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
@@ -255,6 +272,8 @@ class JobOrderController extends Controller
                 'customer_id' => 'Please choose a customer from the selected branch.',
             ]);
         }
+
+        $validated['items'] = $this->expandPresetCartItems($validated['items'], (int) $validated['branch_id']);
 
         $serviceIds = collect($validated['items'])->pluck('laundry_service_id')->unique()->values();
         $selectedServices = LaundryService::query()
@@ -574,6 +593,31 @@ class JobOrderController extends Controller
         return back()->with('success', 'Job order cancelled successfully.');
     }
 
+    public function release(Request $request, JobOrder $jobOrder)
+    {
+        $this->authorizeJobOrderRelease($request, $jobOrder);
+
+        abort_unless($jobOrder->status === 'ready_for_pickup', 422);
+        abort_unless((int) ($jobOrder->release_branch_id ?: $jobOrder->current_branch_id ?: $jobOrder->branch_id) === (int) $request->user()->branch_id || $request->user()->canManageAllBranches(), 403);
+
+        $jobOrder->update([
+            'status' => 'completed',
+            'completed_at' => now(),
+            'released_at' => now(),
+            'release_branch_id' => $jobOrder->release_branch_id ?: ($jobOrder->current_branch_id ?: $request->user()->branch_id),
+        ]);
+
+        Activity::log($request, 'job_order_released', $jobOrder, [
+            'job_order_number' => $jobOrder->job_order_number,
+            'release_branch_id' => $jobOrder->release_branch_id,
+        ], $jobOrder->release_branch_id);
+
+        $jobOrder->loadMissing('customer');
+        SmsNotifier::jobOrderStatus($jobOrder);
+
+        return back()->with('success', 'Laundry released to customer successfully.');
+    }
+
     private function nextJobOrderNumber(int $branchId): string
     {
         $globalPrefix = SystemSetting::current()->job_order_prefix ?: 'JO';
@@ -619,6 +663,20 @@ class JobOrderController extends Controller
     private function authorizeJobOrderReceipt(Request $request, JobOrder $jobOrder): void
     {
         if ($request->user()->isAdmin()) {
+            return;
+        }
+
+        abort_unless(in_array((int) $request->user()->branch_id, [
+            (int) $jobOrder->branch_id,
+            (int) ($jobOrder->processing_branch_id ?: $jobOrder->branch_id),
+            (int) ($jobOrder->current_branch_id ?: $jobOrder->branch_id),
+            (int) ($jobOrder->release_branch_id ?: $jobOrder->branch_id),
+        ], true), 403);
+    }
+
+    private function authorizeJobOrderRelease(Request $request, JobOrder $jobOrder): void
+    {
+        if ($request->user()->canManageAllBranches()) {
             return;
         }
 
@@ -845,6 +903,69 @@ class JobOrderController extends Controller
         }
 
         return $productionInventory;
+    }
+
+    private function expandPresetCartItems(array $items, int $branchId): array
+    {
+        $presetIds = collect($items)
+            ->pluck('service_preset_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        $presets = ServicePreset::query()
+            ->with(['items.service'])
+            ->whereIn('id', $presetIds)
+            ->where('branch_id', $branchId)
+            ->where('is_active', true)
+            ->get()
+            ->keyBy('id');
+
+        $expanded = [];
+
+        foreach ($items as $item) {
+            if (! empty($item['service_preset_id'])) {
+                $preset = $presets->get((int) $item['service_preset_id']);
+
+                if (! $preset) {
+                    throw ValidationException::withMessages([
+                        'items' => 'All presets must belong to the selected branch.',
+                    ]);
+                }
+
+                $presetItems = $preset->items
+                    ->filter(fn ($presetItem) => $presetItem->service && (int) $presetItem->service->branch_id === $branchId);
+
+                if ($presetItems->isEmpty()) {
+                    throw ValidationException::withMessages([
+                        'items' => 'The selected preset has no valid services.',
+                    ]);
+                }
+
+                foreach ($presetItems as $presetItem) {
+                    $service = $presetItem->service;
+                    $expanded[] = [
+                        'laundry_service_id' => $service->id,
+                        'description' => $service->name,
+                        'quantity' => (float) $item['quantity'] * (float) $presetItem->quantity,
+                        'unit_price' => (float) $service->price,
+                    ];
+                }
+
+                continue;
+            }
+
+            if (empty($item['laundry_service_id'])) {
+                throw ValidationException::withMessages([
+                    'items' => 'Each cart item must be a service or preset.',
+                ]);
+            }
+
+            $expanded[] = $item;
+        }
+
+        return $expanded;
     }
 
     private function dateRange(Request $request): array

@@ -25,6 +25,7 @@
         statusOpen: null,
         cancelOpen: null,
         paymentOpen: null,
+        payOpen: null,
         receiptOpen: null,
         dateRange: @js($dateRangeValue),
         init() {
@@ -63,6 +64,8 @@
             <input name="search" value="{{ request('search') }}" placeholder="Search JO or customer..." class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
             <select name="status" class="h-9 rounded-md border border-border bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950">
                 <option value="">All status</option>
+                <option value="active" @selected(request('status') === 'active')>In Process</option>
+                <option value="released" @selected(request('status') === 'released')>Released to Customer</option>
                 @foreach($statuses as $status)
                     <option value="{{ $status }}" @selected(request('status') === $status)>{{ \App\Support\StatusBadge::label($status) }}</option>
                 @endforeach
@@ -75,6 +78,32 @@
         </form>
     </div>
 
+    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <a href="{{ route('admin.job-orders.index', array_merge(request()->except('page'), ['status' => 'ready_for_pickup'])) }}" class="rounded-lg border border-teal-200 bg-teal-50 p-3 text-teal-800 transition hover:border-teal-400 hover:shadow-sm {{ request('status') === 'ready_for_pickup' ? 'ring-2 ring-teal-400' : '' }} dark:border-teal-900/60 dark:bg-teal-500/10 dark:text-teal-300">
+            <p class="text-xs font-medium">Ready for Pickup</p>
+            <p class="mt-1 text-2xl font-semibold">{{ number_format((int) ($statusCounts['ready_for_pickup'] ?? 0)) }}</p>
+        </a>
+        <a href="{{ route('admin.job-orders.index', array_merge(request()->except('page'), ['status' => 'released'])) }}" class="rounded-lg border border-green-200 bg-green-50 p-3 text-green-800 transition hover:border-green-400 hover:shadow-sm dark:border-green-900/60 dark:bg-green-500/10 dark:text-green-300">
+            <p class="text-xs font-medium">Released to Customer</p>
+            <p class="mt-1 text-2xl font-semibold">{{ number_format((int) ($statusCounts['released'] ?? 0)) }}</p>
+        </a>
+        <a href="{{ route('admin.job-orders.index', array_merge(request()->except('page'), ['status' => 'active'])) }}" class="rounded-lg border border-blue-200 bg-blue-50 p-3 text-blue-800 transition hover:border-blue-400 hover:shadow-sm {{ request('status') === 'active' ? 'ring-2 ring-blue-400' : '' }} dark:border-blue-900/60 dark:bg-blue-500/10 dark:text-blue-300">
+            <p class="text-xs font-medium">In Process</p>
+            <p class="mt-1 text-2xl font-semibold">{{ number_format((int) ($statusCounts['active'] ?? 0)) }}</p>
+        </a>
+        <a href="{{ route('admin.job-orders.index', request()->except('page', 'status')) }}" class="rounded-lg border border-border bg-white p-3 transition hover:border-primary/40 hover:shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <p class="text-xs font-medium text-muted">Total in Date Range</p>
+            <p class="mt-1 text-2xl font-semibold">{{ number_format((int) ($statusCounts['total'] ?? 0)) }}</p>
+        </a>
+    </div>
+
+    <div class="flex flex-wrap gap-2 rounded-lg border border-border bg-white p-3 text-xs shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-teal-500"></span>Ready for pickup</span>
+        <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-green-500"></span>Released to customer</span>
+        <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-blue-500"></span>In process</span>
+        <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-red-500"></span>Cancelled</span>
+    </div>
+
     <div class="overflow-hidden rounded-lg border border-border bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <table class="w-full text-left text-sm">
             <thead class="border-b border-border bg-smoke text-xs uppercase text-muted dark:border-gray-800 dark:bg-gray-950">
@@ -84,8 +113,11 @@
             </thead>
             <tbody class="divide-y divide-border dark:divide-gray-800">
                 @forelse($orders as $order)
+                    @php($isReadyForPickup = $order->status === 'ready_for_pickup')
+                    @php($isReleased = (bool) $order->released_at)
+                    @php($isInProcess = in_array($order->status, ['pending', 'washing', 'drying', 'folding'], true))
                     <tr>
-                        <td class="px-4 py-3 font-medium">
+                        <td class="border-l-4 px-4 py-3 font-medium {{ $isReadyForPickup ? 'border-l-teal-500 bg-teal-50/50 dark:bg-teal-500/5' : ($isReleased ? 'border-l-green-500 bg-green-50/50 dark:bg-green-500/5' : ($isInProcess ? 'border-l-blue-500 bg-blue-50/50 dark:bg-blue-500/5' : ($order->status === 'cancelled' ? 'border-l-red-500' : 'border-l-transparent'))) }}">
                             <p>{{ $order->job_order_number }}</p>
                             @if($order->is_rush)
                                 <span class="mt-1 inline-flex rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-800 dark:border-amber-900/60 dark:bg-amber-500/10 dark:text-amber-300">Rush</span>
@@ -118,7 +150,18 @@
                         </td>
                         <td class="px-4 py-3">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $order->total, 2) }}</td>
                         <td class="px-4 py-3">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $order->balance, 2) }}</td>
-                        <td class="px-4 py-3"><span class="{{ \App\Support\StatusBadge::classes($order->status) }}">{{ \App\Support\StatusBadge::label($order->status) }}</span></td>
+                        <td class="px-4 py-3">
+                            <div class="space-y-1.5">
+                                <span class="{{ \App\Support\StatusBadge::classes($order->status) }}">{{ \App\Support\StatusBadge::label($order->status) }}</span>
+                                @if($isReadyForPickup)
+                                    <p class="inline-flex items-center gap-1 text-xs font-medium text-teal-700 dark:text-teal-300"><span class="h-2 w-2 rounded-full bg-teal-500"></span>Awaiting customer pickup</p>
+                                @elseif($isReleased)
+                                    <p class="inline-flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-300"><span class="h-2 w-2 rounded-full bg-green-500"></span>Released {{ $order->released_at->format('M d, h:i A') }}</p>
+                                @elseif($isInProcess)
+                                    <p class="inline-flex items-center gap-1 text-xs font-medium text-blue-700 dark:text-blue-300"><span class="h-2 w-2 rounded-full bg-blue-500"></span>In process</p>
+                                @endif
+                            </div>
+                        </td>
                         <td class="px-4 py-3 text-right">
                             <a href="{{ route('admin.job-orders.show', $order) }}" title="View" aria-label="View job order" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border hover:bg-smoke dark:border-gray-700 dark:hover:bg-gray-800">
                                 <span data-lucide="eye" class="h-4 w-4"></span>
@@ -129,9 +172,23 @@
                             <button type="button" @click="paymentOpen = {{ $order->id }}" title="Payment history" aria-label="View payment history" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border hover:bg-smoke dark:border-gray-700 dark:hover:bg-gray-800">
                                 <span data-lucide="payments" class="h-4 w-4"></span>
                             </button>
+                            @if((float) $order->balance > 0)
+                                <button type="button" @click="payOpen = {{ $order->id }}" title="Record payment" aria-label="Record payment" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900/60 dark:text-emerald-300 dark:hover:bg-emerald-500/10">
+                                    <span data-lucide="dollar" class="h-4 w-4"></span>
+                                </button>
+                            @endif
                             <button type="button" @click="receiptOpen = {{ $order->id }}" title="Receipt" aria-label="Print receipt" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border hover:bg-smoke dark:border-gray-700 dark:hover:bg-gray-800">
                                 <span data-lucide="receipt" class="h-4 w-4"></span>
                             </button>
+                            @if($order->status === 'ready_for_pickup')
+                                <form method="POST" action="{{ route('admin.job-orders.release', $order) }}" class="inline">
+                                    @csrf
+                                    @method('PATCH')
+                                    <button onclick="return confirm('Release this laundry to the customer? This will mark the job order as completed.')" title="Release here" aria-label="Release job order to customer" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-teal-200 text-teal-700 hover:bg-teal-50 dark:border-teal-900/60 dark:text-teal-300 dark:hover:bg-teal-500/10">
+                                        <span data-lucide="package-check" class="h-4 w-4"></span>
+                                    </button>
+                                </form>
+                            @endif
                             @unless(in_array($order->status, ['completed', 'cancelled'], true))
                                 <button type="button" @click="statusOpen = {{ $order->id }}" title="Update status" aria-label="Update status" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border hover:bg-smoke dark:border-gray-700 dark:hover:bg-gray-800">
                                     <span data-lucide="activity" class="h-4 w-4"></span>
@@ -199,6 +256,67 @@
                 </div>
             </div>
         </div>
+
+        @if((float) $order->balance > 0)
+            <div x-cloak x-show="payOpen === {{ $order->id }}" x-transition class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                <div @click.outside="payOpen = null" class="w-full max-w-md rounded-lg bg-white p-5 shadow-2xl dark:bg-gray-900">
+                    <div class="mb-4 flex items-center justify-between">
+                        <div>
+                            <h2 class="inline-flex items-center gap-2 text-lg font-semibold"><span data-lucide="dollar" class="h-4 w-4 text-primary"></span>Record Payment</h2>
+                            <p class="text-sm text-muted">{{ $order->job_order_number }} - {{ $order->customer?->name }}</p>
+                        </div>
+                        <button type="button" @click="payOpen = null" class="rounded-md p-2 hover:bg-smoke dark:hover:bg-gray-800"><span data-lucide="x" class="h-4 w-4"></span></button>
+                    </div>
+
+                    <form method="POST" action="{{ route('admin.job-orders.payments.store', $order) }}" class="space-y-4">
+                        @csrf
+                        <div class="rounded-lg border border-border bg-smoke p-3 text-sm dark:border-gray-800 dark:bg-gray-950">
+                            <div class="flex items-center justify-between">
+                                <span class="text-muted">Remaining balance</span>
+                                <span class="font-semibold">{{ $appSettings?->currency ?? 'PHP' }} {{ number_format((float) $order->balance, 2) }}</span>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="mb-1.5 block text-sm font-medium">Payment Type</label>
+                            <select name="payment_type" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
+                                <option value="cash">Cash</option>
+                                <option value="gcash">GCash</option>
+                                <option value="po">PO</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="mb-1.5 block text-sm font-medium">Amount</label>
+                            <input type="number" step="0.01" min="0.01" max="{{ $order->balance }}" name="amount" value="{{ $order->balance }}" required class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950">
+                        </div>
+
+                        <div>
+                            <label class="mb-1.5 block text-sm font-medium">Reference No.</label>
+                            <input name="reference_no" class="h-9 w-full rounded-md border border-border bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-950" placeholder="GCash/card reference">
+                        </div>
+
+                        <div>
+                            <label class="mb-1.5 block text-sm font-medium">Remarks</label>
+                            <textarea name="remarks" rows="3" class="w-full rounded-md border border-border bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950" placeholder="Optional notes"></textarea>
+                        </div>
+
+                        @if($errors->any())
+                            <div class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                                {{ $errors->first() }}
+                            </div>
+                        @endif
+
+                        <div class="flex justify-end">
+                            <button type="submit" class="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-white hover:opacity-90">
+                                <span data-lucide="payments" class="h-4 w-4"></span>
+                                Save Payment
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        @endif
 
         <div x-cloak x-show="receiptOpen === {{ $order->id }}" x-transition class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
             <div @click.outside="receiptOpen = null" class="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-lg bg-white p-4 shadow-2xl dark:bg-gray-900">

@@ -90,6 +90,8 @@ Route::middleware(['auth', 'settings.completed', 'billing.access'])->group(funct
             Route::get('/job-orders/{jobOrder}', [JobOrderController::class, 'show'])->name('job-orders.show');
             Route::get('/job-orders/{jobOrder}/receipt', [JobOrderController::class, 'receipt'])->name('job-orders.receipt');
             Route::patch('/job-orders/{jobOrder}/status', [JobOrderController::class, 'updateStatus'])->name('job-orders.status');
+            Route::patch('/job-orders/{jobOrder}/release', [JobOrderController::class, 'release'])->name('job-orders.release');
+            Route::post('/job-orders/{jobOrder}/payments', [ReceivableController::class, 'storePayment'])->name('job-orders.payments.store');
             Route::patch('/job-orders/{jobOrder}/cancel', [JobOrderController::class, 'cancel'])->name('job-orders.cancel');
         });
         Route::get('/payments', [PaymentController::class, 'index'])->middleware('menu.access:payments')->name('payments.index');

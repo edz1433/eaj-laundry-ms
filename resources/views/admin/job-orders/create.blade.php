@@ -234,7 +234,7 @@
                 <div class="min-h-[6rem] flex-1 space-y-2 overflow-y-auto p-3">
                     <template x-for="(item, index) in items" :key="index">
                         <div class="rounded-lg border border-border bg-white p-3 transition hover:border-primary/30 dark:border-gray-800 dark:bg-gray-950">
-                            <input type="hidden" :name="`items[${index}][laundry_service_id]`" :value="item.id">
+                            <input type="hidden" :name="item.type === 'preset' ? `items[${index}][service_preset_id]` : `items[${index}][laundry_service_id]`" :value="item.id">
                             <input type="hidden" :name="`items[${index}][description]`" :value="item.name">
 
                             <div class="flex items-start justify-between gap-2">
@@ -242,6 +242,7 @@
                                     <div class="flex items-start justify-between gap-2">
                                         <p class="truncate text-sm font-medium" x-text="item.name"></p>
                                     </div>
+                                    <p x-show="item.type === 'preset'" class="mt-0.5 truncate text-[10px] text-muted" x-text="item.summary"></p>
                                     <div class="mt-1 flex items-center gap-3">
                                         <div class="flex h-8 overflow-hidden rounded-md border border-border dark:border-gray-800">
                                             <button type="button" @click="item.quantity = Math.max(Number(item.quantity || 0) - 1, 0.01)" class="flex w-8 items-center justify-center hover:bg-smoke dark:hover:bg-gray-900 text-sm">−</button>
@@ -644,19 +645,19 @@ function posPage(branches, processingBranches, services, customers, serviceCateg
             this.$nextTick(() => this.refreshIcons());
         },
         addPreset(preset) {
-            preset.items.forEach(service => {
-                const existing = this.items.find(item => item.id === service.id);
-                if (existing) {
-                    existing.quantity = Number(existing.quantity) + Number(service.quantity || 1);
-                } else {
-                    this.items.push({
-                        id: service.id,
-                        name: service.name,
-                        quantity: Number(service.quantity || 1),
-                        price: Number(service.price),
-                    });
-                }
-            });
+            const existing = this.items.find(item => item.type === 'preset' && String(item.id) === String(preset.id));
+            if (existing) {
+                existing.quantity = Number(existing.quantity || 0) + 1;
+            } else {
+                this.items.push({
+                    type: 'preset',
+                    id: preset.id,
+                    name: preset.name,
+                    summary: this.presetSummary(preset),
+                    quantity: 1,
+                    price: this.presetTotal(preset),
+                });
+            }
             this.$nextTick(() => this.refreshIcons());
         },
         presetTotal(preset) {

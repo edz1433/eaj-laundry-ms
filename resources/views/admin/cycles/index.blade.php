@@ -328,7 +328,7 @@
                                 @csrf
                                 @method('PATCH')
                                 <input type="hidden" name="action" value="release_here">
-                                <button class="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-2.5 text-xs font-medium text-white">
+                                <button onclick="return confirm('Release this laundry to the customer? This will mark the job order as completed.')" class="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-2.5 text-xs font-medium text-white">
                                     <span data-lucide="package-check" class="h-3.5 w-3.5"></span>
                                     {{ $releaseActions['release_here'] }}
                                 </button>
@@ -339,7 +339,7 @@
                                 @csrf
                                 @method('PATCH')
                                 <input type="hidden" name="action" value="return_to_dropoff">
-                                <button class="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-900">
+                                <button onclick="return confirm('Return this laundry to the drop-off branch for customer release?')" class="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-900">
                                     <span data-lucide="truck" class="h-3.5 w-3.5"></span>
                                     {{ $releaseActions['return_to_dropoff'] }}
                                 </button>

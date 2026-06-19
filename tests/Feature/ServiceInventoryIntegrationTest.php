@@ -91,6 +91,75 @@ class ServiceInventoryIntegrationTest extends TestCase
             ->assertSee('\u0022quantity\u0022:1');
     }
 
+    public function test_pos_preset_cart_line_expands_to_service_sales_when_order_is_saved(): void
+    {
+        SystemSetting::query()->create([
+            'business_name' => 'Spin Klean Laundry',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'primary_color' => '#2E7D32',
+            'is_completed' => true,
+        ]);
+
+        $admin = User::factory()->create(['role' => 'admin', 'access' => ['job_orders']]);
+        $branch = Branch::query()->create(['name' => 'Branch A', 'code' => 'A', 'branch_type' => 'full_service', 'is_active' => true]);
+        $customer = Customer::query()->create([
+            'branch_id' => $branch->id,
+            'name' => 'Preset Customer',
+            'billing_type' => 'regular',
+            'unpaid_limit' => 0,
+            'is_active' => true,
+        ]);
+        $category = LaundryServiceCategory::query()->create(['name' => 'Packages', 'visibility' => 'all', 'is_active' => true]);
+        $wash = LaundryService::query()->create(['branch_id' => $branch->id, 'service_category_id' => $category->id, 'name' => 'Wash', 'pricing_type' => 'load', 'price' => 80, 'is_active' => true]);
+        $dry = LaundryService::query()->create(['branch_id' => $branch->id, 'service_category_id' => $category->id, 'name' => 'Dry', 'pricing_type' => 'load', 'price' => 70, 'is_active' => true]);
+        $fold = LaundryService::query()->create(['branch_id' => $branch->id, 'service_category_id' => $category->id, 'name' => 'Fold', 'pricing_type' => 'load', 'price' => 30, 'is_active' => true]);
+        $preset = ServicePreset::query()->create([
+            'branch_id' => $branch->id,
+            'service_category_id' => $category->id,
+            'name' => 'Wash Dry Set',
+            'sort_order' => 0,
+            'is_active' => true,
+        ]);
+        $preset->items()->create(['laundry_service_id' => $wash->id, 'quantity' => 1]);
+        $preset->items()->create(['laundry_service_id' => $dry->id, 'quantity' => 1]);
+
+        $this->actingAs($admin)
+            ->post(route('admin.job-orders.store'), [
+                'branch_id' => $branch->id,
+                'processing_branch_id' => $branch->id,
+                'customer_id' => $customer->id,
+                'items' => [
+                    [
+                        'service_preset_id' => $preset->id,
+                        'description' => $preset->name,
+                        'quantity' => 1,
+                        'unit_price' => 150,
+                    ],
+                    [
+                        'laundry_service_id' => $fold->id,
+                        'description' => $fold->name,
+                        'quantity' => 1,
+                        'unit_price' => 30,
+                    ],
+                ],
+                'discount' => 0,
+                'paid_amount' => 0,
+                'payment_type' => 'unpaid',
+                'transaction_type' => 'walk_in',
+            ])
+            ->assertRedirect(route('admin.job-orders.index'));
+
+        $order = JobOrder::query()->with('items')->firstOrFail();
+
+        $items = $order->items->sortBy('description')->values();
+
+        $this->assertSame('180.00', $order->subtotal);
+        $this->assertSame(['Dry', 'Fold', 'Wash'], $items->pluck('description')->all());
+        $this->assertSame(['70.00', '30.00', '80.00'], $items->pluck('unit_price')->all());
+    }
+
     public function test_service_category_and_inventory_recipe_drive_job_order_snapshots_and_stock(): void
     {
         SystemSetting::query()->create([

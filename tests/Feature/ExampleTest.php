@@ -1184,6 +1184,133 @@ class ExampleTest extends TestCase
         $this->assertStringContainsString('/MediaBox [0.000 0.000 841.890 595.280]', $consolidatedPdf->getContent());
     }
 
+    public function test_payments_index_defaults_to_today_only(): void
+    {
+        SystemSetting::query()->create([
+            'business_name' => 'EAJ Laundry',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'primary_color' => '#2E7D32',
+            'is_completed' => true,
+        ]);
+
+        $admin = User::factory()->create(['role' => 'super_admin']);
+        $branch = Branch::query()->create(['name' => 'Payments Branch', 'code' => 'PAY', 'is_active' => true]);
+        $customer = Customer::query()->create([
+            'branch_id' => $branch->id,
+            'name' => 'Payments Customer',
+            'billing_type' => 'regular',
+            'unpaid_limit' => 0,
+            'is_active' => true,
+        ]);
+        $order = JobOrder::query()->create([
+            'branch_id' => $branch->id,
+            'customer_id' => $customer->id,
+            'created_by' => $admin->id,
+            'job_order_number' => 'JO-PAYMENT-FILTER',
+            'status' => 'completed',
+            'transaction_type' => 'walk_in',
+            'subtotal' => 200,
+            'discount' => 0,
+            'tax' => 0,
+            'total' => 200,
+            'paid_amount' => 200,
+            'balance' => 0,
+        ]);
+
+        Payment::query()->create([
+            'branch_id' => $branch->id,
+            'job_order_id' => $order->id,
+            'customer_id' => $customer->id,
+            'received_by' => $admin->id,
+            'payment_number' => 'PAY-TODAY-ONLY',
+            'payment_type' => 'cash',
+            'amount' => 100,
+            'paid_at' => today()->setTime(10, 0),
+        ]);
+        Payment::query()->create([
+            'branch_id' => $branch->id,
+            'job_order_id' => $order->id,
+            'customer_id' => $customer->id,
+            'received_by' => $admin->id,
+            'payment_number' => 'PAY-OLDER-HIDDEN',
+            'payment_type' => 'cash',
+            'amount' => 100,
+            'paid_at' => today()->subDay()->setTime(10, 0),
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.payments.index'))
+            ->assertOk()
+            ->assertSee('PAY-TODAY-ONLY')
+            ->assertDontSee('PAY-OLDER-HIDDEN');
+
+        $this->actingAs($admin)
+            ->get(route('admin.payments.index', [
+                'date_range' => today()->subDay()->toDateString().' to '.today()->subDay()->toDateString(),
+            ]))
+            ->assertOk()
+            ->assertSee('PAY-OLDER-HIDDEN')
+            ->assertDontSee('PAY-TODAY-ONLY');
+    }
+
+    public function test_expenses_index_defaults_to_today_only(): void
+    {
+        SystemSetting::query()->create([
+            'business_name' => 'EAJ Laundry',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'primary_color' => '#2E7D32',
+            'is_completed' => true,
+        ]);
+
+        $admin = User::factory()->create(['role' => 'super_admin']);
+        $branch = Branch::query()->create(['name' => 'Expenses Branch', 'code' => 'EXP', 'is_active' => true]);
+
+        BranchExpense::query()->create([
+            'branch_id' => $branch->id,
+            'category' => 'supplies',
+            'expense_type' => 'supplies',
+            'title' => 'Today Supplies',
+            'amount' => 100,
+            'expense_date' => today()->toDateString(),
+            'payment_method' => 'cash',
+            'paid_from' => 'store_cash',
+            'created_by' => $admin->id,
+        ]);
+        BranchExpense::query()->create([
+            'branch_id' => $branch->id,
+            'category' => 'supplies',
+            'expense_type' => 'supplies',
+            'title' => 'Older Supplies',
+            'amount' => 100,
+            'expense_date' => today()->subDay()->toDateString(),
+            'payment_method' => 'cash',
+            'paid_from' => 'store_cash',
+            'created_by' => $admin->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.expenses.index'))
+            ->assertOk()
+            ->assertSee('Today Supplies')
+            ->assertDontSee('Older Supplies');
+
+        $this->actingAs($admin)
+            ->get(route('admin.expenses.index', [
+                'date_range' => today()->subDay()->toDateString().' to '.today()->subDay()->toDateString(),
+            ]))
+            ->assertOk()
+            ->assertSee('Older Supplies')
+            ->assertDontSee('Today Supplies');
+    }
+
     public function test_job_orders_index_defaults_to_today_only(): void
     {
         SystemSetting::query()->create([
@@ -1262,6 +1389,223 @@ class ExampleTest extends TestCase
             ->assertOk()
             ->assertSee('JO-OLDER-0001')
             ->assertDontSee('JO-TODAY-0001');
+    }
+
+    public function test_job_orders_index_prioritizes_ready_orders_and_can_release_them(): void
+    {
+        SystemSetting::query()->create([
+            'business_name' => 'EAJ Laundry',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'primary_color' => '#2E7D32',
+            'is_completed' => true,
+        ]);
+
+        $admin = User::factory()->create(['role' => 'super_admin']);
+        $branch = Branch::query()->create([
+            'name' => 'Release Branch',
+            'code' => 'REL',
+            'is_active' => true,
+        ]);
+        $customer = Customer::query()->create([
+            'branch_id' => $branch->id,
+            'name' => 'Release Customer',
+            'billing_type' => 'regular',
+            'unpaid_limit' => 0,
+            'is_active' => true,
+        ]);
+
+        $completedOrder = JobOrder::query()->create([
+            'branch_id' => $branch->id,
+            'current_branch_id' => $branch->id,
+            'release_branch_id' => $branch->id,
+            'customer_id' => $customer->id,
+            'created_by' => $admin->id,
+            'job_order_number' => 'JO-COMPLETED-FIRST',
+            'status' => 'completed',
+            'transaction_type' => 'walk_in',
+            'subtotal' => 100,
+            'discount' => 0,
+            'tax' => 0,
+            'total' => 100,
+            'paid_amount' => 100,
+            'balance' => 0,
+            'completed_at' => now(),
+            'released_at' => now(),
+        ]);
+        $completedOrder->forceFill(['created_at' => now()->addMinute(), 'updated_at' => now()->addMinute()])->save();
+
+        $readyOrder = JobOrder::query()->create([
+            'branch_id' => $branch->id,
+            'current_branch_id' => $branch->id,
+            'release_branch_id' => $branch->id,
+            'customer_id' => $customer->id,
+            'created_by' => $admin->id,
+            'job_order_number' => 'JO-READY-FIRST',
+            'status' => 'ready_for_pickup',
+            'transaction_type' => 'walk_in',
+            'subtotal' => 100,
+            'discount' => 0,
+            'tax' => 0,
+            'total' => 100,
+            'paid_amount' => 100,
+            'balance' => 0,
+        ]);
+        $readyOrder->forceFill(['created_at' => now(), 'updated_at' => now()])->save();
+
+        $this->actingAs($admin)
+            ->get(route('admin.job-orders.index'))
+            ->assertOk()
+            ->assertSeeInOrder(['JO-READY-FIRST', 'JO-COMPLETED-FIRST'])
+            ->assertSee('Release job order to customer', false)
+            ->assertSee('Ready for Pickup');
+
+        $this->actingAs($admin)
+            ->patch(route('admin.job-orders.release', $readyOrder))
+            ->assertRedirect();
+
+        $readyOrder->refresh();
+
+        $this->assertSame('completed', $readyOrder->status);
+        $this->assertNotNull($readyOrder->released_at);
+    }
+
+    public function test_job_orders_summary_cards_filter_by_status(): void
+    {
+        SystemSetting::query()->create([
+            'business_name' => 'EAJ Laundry',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'primary_color' => '#2E7D32',
+            'is_completed' => true,
+        ]);
+
+        $admin = User::factory()->create(['role' => 'super_admin']);
+        $branch = Branch::query()->create(['name' => 'Filter Branch', 'code' => 'FLT', 'is_active' => true]);
+        $customer = Customer::query()->create([
+            'branch_id' => $branch->id,
+            'name' => 'Filter Customer',
+            'billing_type' => 'regular',
+            'unpaid_limit' => 0,
+            'is_active' => true,
+        ]);
+
+        foreach ([
+            ['number' => 'JO-FILTER-READY', 'status' => 'ready_for_pickup', 'released_at' => null],
+            ['number' => 'JO-FILTER-RELEASED', 'status' => 'completed', 'released_at' => now()],
+            ['number' => 'JO-FILTER-ACTIVE', 'status' => 'washing', 'released_at' => null],
+        ] as $data) {
+            JobOrder::query()->create([
+                'branch_id' => $branch->id,
+                'current_branch_id' => $branch->id,
+                'release_branch_id' => $branch->id,
+                'customer_id' => $customer->id,
+                'created_by' => $admin->id,
+                'job_order_number' => $data['number'],
+                'status' => $data['status'],
+                'transaction_type' => 'walk_in',
+                'subtotal' => 100,
+                'discount' => 0,
+                'tax' => 0,
+                'total' => 100,
+                'paid_amount' => 0,
+                'balance' => 100,
+                'released_at' => $data['released_at'],
+            ]);
+        }
+
+        $this->actingAs($admin)
+            ->get(route('admin.job-orders.index', ['status' => 'ready_for_pickup']))
+            ->assertOk()
+            ->assertSee('JO-FILTER-READY')
+            ->assertDontSee('JO-FILTER-RELEASED')
+            ->assertDontSee('JO-FILTER-ACTIVE');
+
+        $this->actingAs($admin)
+            ->get(route('admin.job-orders.index', ['status' => 'released']))
+            ->assertOk()
+            ->assertSee('JO-FILTER-RELEASED')
+            ->assertDontSee('JO-FILTER-READY')
+            ->assertDontSee('JO-FILTER-ACTIVE');
+
+        $this->actingAs($admin)
+            ->get(route('admin.job-orders.index', ['status' => 'active']))
+            ->assertOk()
+            ->assertSee('JO-FILTER-ACTIVE')
+            ->assertDontSee('JO-FILTER-READY')
+            ->assertDontSee('JO-FILTER-RELEASED');
+    }
+
+    public function test_job_orders_module_can_record_payment_for_order_balance(): void
+    {
+        SystemSetting::query()->create([
+            'business_name' => 'EAJ Laundry',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'primary_color' => '#2E7D32',
+            'is_completed' => true,
+        ]);
+
+        $branch = Branch::query()->create(['name' => 'Payment Branch', 'code' => 'PAY', 'is_active' => true]);
+        $cashier = User::factory()->create([
+            'role' => 'cashier',
+            'branch_id' => $branch->id,
+            'access' => ['job_orders'],
+        ]);
+        $customer = Customer::query()->create([
+            'branch_id' => $branch->id,
+            'name' => 'Payment Customer',
+            'billing_type' => 'regular',
+            'unpaid_limit' => 0,
+            'is_active' => true,
+        ]);
+        $order = JobOrder::query()->create([
+            'branch_id' => $branch->id,
+            'current_branch_id' => $branch->id,
+            'release_branch_id' => $branch->id,
+            'customer_id' => $customer->id,
+            'created_by' => $cashier->id,
+            'job_order_number' => 'JO-PAYMENT-001',
+            'status' => 'ready_for_pickup',
+            'transaction_type' => 'walk_in',
+            'subtotal' => 500,
+            'discount' => 0,
+            'tax' => 0,
+            'total' => 500,
+            'paid_amount' => 100,
+            'balance' => 400,
+        ]);
+
+        $this->actingAs($cashier)
+            ->get(route('admin.job-orders.index'))
+            ->assertOk()
+            ->assertSee('Record payment', false);
+
+        $this->actingAs($cashier)
+            ->post(route('admin.job-orders.payments.store', $order), [
+                'payment_type' => 'cash',
+                'amount' => 150,
+                'reference_no' => 'CASH-001',
+                'remarks' => 'Counter payment',
+            ])
+            ->assertRedirect();
+
+        $order->refresh();
+        $payment = Payment::query()->where('job_order_id', $order->id)->firstOrFail();
+
+        $this->assertSame('250.00', $order->balance);
+        $this->assertSame('250.00', $order->paid_amount);
+        $this->assertSame('cash', $payment->payment_type);
+        $this->assertSame('CASH-001', $payment->reference_no);
     }
 
     public function test_job_orders_index_paginates_eight_rows_per_page(): void
