@@ -644,6 +644,52 @@ class JobOrderController extends Controller
         return back()->with('success', 'Job order cancelled successfully.');
     }
 
+    public function destroy(Request $request, JobOrder $jobOrder)
+    {
+        abort_unless($request->user()?->role === 'super_admin', 403);
+
+        DB::transaction(function () use ($request, $jobOrder) {
+            $jobOrder->loadMissing(['items', 'payments', 'poTransaction', 'cycles']);
+
+            $paymentIds = $jobOrder->payments->pluck('id')->all();
+            $snapshot = [
+                'job_order_number' => $jobOrder->job_order_number,
+                'customer_id' => $jobOrder->customer_id,
+                'branch_id' => $jobOrder->branch_id,
+                'status' => $jobOrder->status,
+                'total' => (float) $jobOrder->total,
+                'paid_amount' => (float) $jobOrder->paid_amount,
+                'balance' => (float) $jobOrder->balance,
+                'items_count' => $jobOrder->items->count(),
+                'payments_count' => $jobOrder->payments->count(),
+                'cycles_count' => $jobOrder->cycles->count(),
+                'had_po_transaction' => (bool) $jobOrder->poTransaction,
+            ];
+
+            $this->restoreInventoryForOrder($jobOrder, $request->user()?->id);
+            $this->deleteInventoryMovementsForOrder($jobOrder);
+
+            CustomerLedger::query()
+                ->where('job_order_id', $jobOrder->id)
+                ->orWhereIn('payment_id', $paymentIds)
+                ->delete();
+
+            $jobOrder->poTransaction()?->delete();
+            $jobOrder->payments()->delete();
+            $jobOrder->cycles()->delete();
+            $jobOrder->items()->delete();
+            $jobOrder->delete();
+
+            $this->recalculateCustomerLedger((int) $jobOrder->customer_id);
+
+            Activity::log($request, 'job_order_deleted', $jobOrder, $snapshot, $jobOrder->branch_id);
+        });
+
+        return redirect()
+            ->route('admin.job-orders.index')
+            ->with('success', 'Job order deleted successfully. A deletion log was recorded.');
+    }
+
     public function release(Request $request, JobOrder $jobOrder)
     {
         $this->authorizeJobOrderRelease($request, $jobOrder);
@@ -953,6 +999,34 @@ class JobOrderController extends Controller
             ]);
             $inventory->update(['quantity' => (float) $inventory->quantity + $quantity]);
         }
+    }
+
+    private function deleteInventoryMovementsForOrder(JobOrder $order): void
+    {
+        InventoryMovement::query()
+            ->whereIn('remarks', [
+                "Auto deducted for {$order->job_order_number}",
+                "Auto restored for {$order->job_order_number}",
+            ])
+            ->delete();
+    }
+
+    private function recalculateCustomerLedger(int $customerId): void
+    {
+        $runningBalance = 0.0;
+
+        CustomerLedger::query()
+            ->where('customer_id', $customerId)
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get()
+            ->each(function (CustomerLedger $ledger) use (&$runningBalance): void {
+                $amount = (float) $ledger->amount;
+                $runningBalance += $ledger->entry_type === 'credit' ? -$amount : $amount;
+                $runningBalance = max($runningBalance, 0);
+
+                $ledger->update(['running_balance' => $runningBalance]);
+            });
     }
 
     private function productionInventoryForUsage(JobOrder $order, $usage): Inventory

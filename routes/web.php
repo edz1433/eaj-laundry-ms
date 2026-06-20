@@ -99,6 +99,7 @@ Route::middleware(['auth', 'settings.completed', 'billing.access'])->group(funct
             Route::patch('/job-orders/{jobOrder}/release', [JobOrderController::class, 'release'])->name('job-orders.release');
             Route::post('/job-orders/{jobOrder}/payments', [ReceivableController::class, 'storePayment'])->name('job-orders.payments.store');
             Route::patch('/job-orders/{jobOrder}/cancel', [JobOrderController::class, 'cancel'])->name('job-orders.cancel');
+            Route::delete('/job-orders/{jobOrder}', [JobOrderController::class, 'destroy'])->name('job-orders.destroy');
         });
         Route::get('/payments', [PaymentController::class, 'index'])->middleware('menu.access:payments')->name('payments.index');
         Route::middleware('menu.access:inventory')->group(function () {
