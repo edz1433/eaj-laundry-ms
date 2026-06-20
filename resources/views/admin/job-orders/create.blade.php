@@ -259,7 +259,7 @@
                             </div>
                         </div>
                         <button type="button" x-show="items.length" @click="items = []" title="Clear cart" class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10">
-                            <span data-lucide="trash-2" class="h-4 w-4"></span>
+                            <span data-lucide="trash" class="h-4 w-4"></span>
                         </button>
                     </div>
                 </div>

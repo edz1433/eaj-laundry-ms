@@ -203,7 +203,7 @@
                                     @csrf
                                     @method('DELETE')
                                     <button type="submit" x-on:click.prevent="Swal.fire({ title: 'Delete job order?', text: 'This will delete the connected payments, ledger entries, PO transaction, items, and cycle records. A deletion log will be saved.', icon: 'warning', showCancelButton: true, confirmButtonColor: '#dc2626', confirmButtonText: 'Delete' }).then((result) => { if (result.isConfirmed) $el.closest('form').submit(); })" title="Delete" aria-label="Delete job order" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-500/10">
-                                        <span data-lucide="trash-2" class="h-4 w-4"></span>
+                                        <span data-lucide="trash" class="h-4 w-4"></span>
                                     </button>
                                 </form>
                             @endif
