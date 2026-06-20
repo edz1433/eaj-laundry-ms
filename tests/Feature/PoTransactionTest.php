@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\JobOrder;
 use App\Models\LaundryService;
 use App\Models\PoTransaction;
+use App\Models\PoTransactionPayment;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Support\FinancialReconciliation;
@@ -118,7 +119,9 @@ class PoTransactionTest extends TestCase
         $this->actingAs($user)
             ->patch(route('admin.po-transactions.update', $po), [
                 'status' => 'billed',
+                'payment_method' => 'cheque',
                 'paid_amount' => 500,
+                'reference_no' => 'CHK-001',
             ])
             ->assertRedirect();
 
@@ -127,6 +130,12 @@ class PoTransactionTest extends TestCase
         $this->assertSame(500.0, (float) $po->paid_amount);
         $this->assertSame(0.0, (float) $po->balance);
         $this->assertDatabaseMissing('payments', ['job_order_id' => $order->id]);
+        $this->assertDatabaseHas('po_transaction_payments', [
+            'po_transaction_id' => $po->id,
+            'payment_method' => 'cheque',
+            'reference_no' => 'CHK-001',
+            'amount' => 500,
+        ]);
     }
 
     public function test_po_transactions_index_defaults_to_today_only_and_can_filter_date_range(): void
@@ -221,6 +230,70 @@ class PoTransactionTest extends TestCase
         $this->assertSame(650.0, (float) $po->balance);
         $this->assertNotNull($po->billed_at);
         $this->assertNull($po->paid_at);
+        $this->assertDatabaseMissing('po_transaction_payments', ['po_transaction_id' => $po->id]);
+    }
+
+    public function test_po_payments_are_incremental_trackable_and_cannot_exceed_remaining_balance(): void
+    {
+        $this->settings();
+
+        $user = User::factory()->create(['role' => 'super_admin']);
+        $branch = Branch::query()->create(['name' => 'Main Branch', 'code' => 'MAIN', 'is_active' => true]);
+        $customer = Customer::query()->create([
+            'branch_id' => $branch->id,
+            'name' => 'Corporate Customer',
+            'billing_type' => 'po',
+            'is_active' => true,
+        ]);
+        $order = $this->poOrder($branch, $customer, $user, 'JO-PO-PARTIAL', 1000);
+        $po = PoTransaction::query()->create([
+            'branch_id' => $branch->id,
+            'customer_id' => $customer->id,
+            'job_order_id' => $order->id,
+            'company_name' => $customer->name,
+            'po_number' => 'PO-PARTIAL',
+            'transaction_date' => today()->toDateString(),
+            'amount' => 1000,
+            'balance' => 1000,
+            'status' => 'billed',
+            'billed_at' => now(),
+        ]);
+
+        $this->actingAs($user)
+            ->patch(route('admin.po-transactions.update', $po), [
+                'status' => 'billed',
+                'payment_method' => 'bank',
+                'paid_amount' => 400,
+                'reference_no' => 'BANK-001',
+            ])
+            ->assertRedirect();
+
+        $po->refresh();
+        $this->assertSame('partially_paid', $po->status);
+        $this->assertSame(400.0, (float) $po->paid_amount);
+        $this->assertSame(600.0, (float) $po->balance);
+
+        $this->actingAs($user)
+            ->patch(route('admin.po-transactions.update', $po), [
+                'status' => 'partially_paid',
+                'payment_method' => 'cash',
+                'paid_amount' => 700,
+            ])
+            ->assertSessionHasErrors('paid_amount');
+
+        $po->refresh();
+        $this->assertSame(400.0, (float) $po->paid_amount);
+        $this->assertSame(600.0, (float) $po->balance);
+        $this->assertSame(1, PoTransactionPayment::query()->where('po_transaction_id', $po->id)->count());
+
+        $this->actingAs($user)
+            ->get(route('admin.po-transactions.index'))
+            ->assertOk()
+            ->assertSee('PO Payment History')
+            ->assertSee('BANK-001')
+            ->assertSee('PHP 1,000.00')
+            ->assertSee('PHP 400.00')
+            ->assertSee('PHP 600.00');
     }
 
     public function test_po_job_order_cannot_be_paid_through_regular_payment_route(): void
