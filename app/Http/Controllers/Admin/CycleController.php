@@ -53,6 +53,7 @@ class CycleController extends Controller
         $selectedCustomerId = $request->integer('customer_id') ?: null;
         $customerBranchId = $selectedBranchId;
         [$dateFrom, $dateTo] = $this->dateRange($request);
+        $selectedStatus = in_array($request->status, self::FILTER_STATUSES, true) ? $request->status : null;
         $statusLabels = [
             'pending' => 'Pending',
             'washing' => 'Washing',
@@ -67,7 +68,7 @@ class CycleController extends Controller
             ->when($customerBranchId, fn ($query) => $query->where(fn ($query) => $query
                 ->where('branch_id', $customerBranchId)
                 ->orWhereHas('jobOrders', fn ($query) => $query
-                    ->whereNotIn('status', ['completed', 'cancelled'])
+                    ->when($selectedStatus, fn ($query) => $query->where('status', $selectedStatus), fn ($query) => $query->whereNotIn('status', ['ready_for_pickup', 'completed', 'cancelled']))
                     ->where(fn ($query) => $query
                         ->where(fn ($query) => $query
                             ->where('processing_branch_id', $customerBranchId)
@@ -85,10 +86,7 @@ class CycleController extends Controller
 
         $ordersQuery = JobOrder::query()
             ->where('status', '!=', 'cancelled')
-            ->when(
-                in_array($request->status, self::FILTER_STATUSES, true),
-                fn ($q) => $q->where('status', $request->status)
-            )
+            ->when($selectedStatus, fn ($q) => $q->where('status', $selectedStatus), fn ($q) => $q->whereNotIn('status', ['ready_for_pickup', 'completed']))
             ->when($selectedBranchId, fn ($q) => $q->where(fn ($query) => $query
                 ->where('branch_id', $selectedBranchId)
                 ->orWhere(fn ($query) => $query

@@ -89,7 +89,6 @@ class CycleMonitoringTest extends TestCase
             'access' => ['cycles'],
         ]);
         $order = $this->createJobOrder($branch, $customer, 'JO-CYCLE-ONLY');
-        $order->update(['status' => 'ready_for_pickup']);
 
         $this->actingAs($admin)
             ->get(route('admin.cycles.index'))
@@ -103,7 +102,7 @@ class CycleMonitoringTest extends TestCase
             ->assertDontSee(route('admin.cycles.release', $order), false);
     }
 
-    public function test_cycle_monitoring_can_filter_completed_orders(): void
+    public function test_cycle_monitoring_defaults_to_in_progress_but_can_filter_ready_and_completed_orders(): void
     {
         $this->completeSystemSettings();
         $this->activeTrial();
@@ -115,6 +114,8 @@ class CycleMonitoringTest extends TestCase
             'access' => ['cycles'],
         ]);
         $this->createJobOrder($branch, $customer, 'JO-ACTIVE');
+        $readyOrder = $this->createJobOrder($branch, $customer, 'JO-READY');
+        $readyOrder->update(['status' => 'ready_for_pickup']);
         $completedOrder = $this->createJobOrder($branch, $customer, 'JO-COMPLETED');
         $completedOrder->update([
             'status' => 'completed',
@@ -124,16 +125,27 @@ class CycleMonitoringTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.cycles.index'))
             ->assertOk()
+            ->assertSee('value="ready_for_pickup"', false)
             ->assertSee('value="completed"', false)
             ->assertSee('JO-ACTIVE')
-            ->assertSee('JO-COMPLETED');
+            ->assertDontSee('JO-READY')
+            ->assertDontSee('JO-COMPLETED');
+
+        $this->actingAs($admin)
+            ->get(route('admin.cycles.index', ['status' => 'ready_for_pickup']))
+            ->assertOk()
+            ->assertSee('value="ready_for_pickup" selected', false)
+            ->assertSee('JO-READY')
+            ->assertDontSee('JO-ACTIVE')
+            ->assertDontSee('JO-COMPLETED');
 
         $this->actingAs($admin)
             ->get(route('admin.cycles.index', ['status' => 'completed']))
             ->assertOk()
             ->assertSee('value="completed" selected', false)
             ->assertSee('JO-COMPLETED')
-            ->assertDontSee('JO-ACTIVE');
+            ->assertDontSee('JO-ACTIVE')
+            ->assertDontSee('JO-READY');
     }
 
     public function test_cycle_monitoring_filters_by_branch_customer_and_date_for_admin(): void
