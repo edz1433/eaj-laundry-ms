@@ -4,7 +4,7 @@
 
 @section('content')
 @php($activeBranch = $branches->firstWhere('id', $selectedBranchId))
-<div x-data="{ createOpen: false, presetOpen: false, editOpen: null, editPresetOpen: null }" class="space-y-4">
+<div x-data="{ createOpen: false, presetOpen: false, editOpen: null, editPresetOpen: @js((int) request('edit_preset') ?: null) }" class="space-y-4">
     <div class="flex flex-col gap-3 rounded-lg border border-border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:flex-row sm:items-center sm:justify-between">
         <div>
             <div class="mb-2 inline-flex items-center gap-1.5 rounded-md border border-border bg-smoke px-2.5 py-1 text-xs font-medium text-muted dark:border-gray-800 dark:bg-gray-900">

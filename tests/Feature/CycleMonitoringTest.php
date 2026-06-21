@@ -77,6 +77,32 @@ class CycleMonitoringTest extends TestCase
             ], false);
     }
 
+    public function test_cycle_monitoring_page_does_not_show_release_or_completion_actions(): void
+    {
+        $this->completeSystemSettings();
+        $this->activeTrial();
+
+        $branch = $this->createBranch();
+        $customer = $this->createCustomer($branch);
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'access' => ['cycles'],
+        ]);
+        $order = $this->createJobOrder($branch, $customer, 'JO-CYCLE-ONLY');
+        $order->update(['status' => 'ready_for_pickup']);
+
+        $this->actingAs($admin)
+            ->get(route('admin.cycles.index'))
+            ->assertOk()
+            ->assertSee('JO-CYCLE-ONLY')
+            ->assertDontSee('Production status:')
+            ->assertDontSee('Customer release:')
+            ->assertDontSee('Release Here')
+            ->assertDontSee('Return to Drop-off')
+            ->assertDontSee(route('admin.cycles.status', $order), false)
+            ->assertDontSee(route('admin.cycles.release', $order), false);
+    }
+
     public function test_cycle_monitoring_can_filter_completed_orders(): void
     {
         $this->completeSystemSettings();
@@ -146,6 +172,41 @@ class CycleMonitoringTest extends TestCase
             ->assertSee('JO-CYCLE-MATCH')
             ->assertDontSee('JO-CYCLE-HIDDEN')
             ->assertDontSee('JO-CYCLE-OLD');
+    }
+
+    public function test_cycle_monitoring_defaults_to_today_only_and_can_filter_other_dates(): void
+    {
+        $this->completeSystemSettings();
+        $this->activeTrial();
+
+        $branch = $this->createBranch();
+        $customer = $this->createCustomer($branch);
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'branch_id' => $branch->id,
+            'access' => ['cycles'],
+        ]);
+
+        $todayOrder = $this->createJobOrder($branch, $customer, 'JO-CYCLE-TODAY');
+        $oldOrder = $this->createJobOrder($branch, $customer, 'JO-CYCLE-YESTERDAY');
+        $todayOrder->forceFill(['created_at' => today()->setTime(9, 0)])->save();
+        $oldOrder->forceFill(['created_at' => today()->subDay()->setTime(9, 0)])->save();
+
+        $this->actingAs($admin)
+            ->get(route('admin.cycles.index', ['branch_id' => $branch->id]))
+            ->assertOk()
+            ->assertSee('JO-CYCLE-TODAY')
+            ->assertDontSee('JO-CYCLE-YESTERDAY')
+            ->assertSee(today()->toDateString().' to '.today()->toDateString());
+
+        $this->actingAs($admin)
+            ->get(route('admin.cycles.index', [
+                'branch_id' => $branch->id,
+                'date_range' => today()->subDay()->toDateString().' to '.today()->subDay()->toDateString(),
+            ]))
+            ->assertOk()
+            ->assertSee('JO-CYCLE-YESTERDAY')
+            ->assertDontSee('JO-CYCLE-TODAY');
     }
 
     public function test_previous_date_order_can_still_be_processed_from_filtered_cycle_page(): void

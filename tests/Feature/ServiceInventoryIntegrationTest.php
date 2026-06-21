@@ -91,6 +91,66 @@ class ServiceInventoryIntegrationTest extends TestCase
             ->assertSee('\u0022quantity\u0022:1');
     }
 
+    public function test_service_preset_edit_url_opens_catalog_and_post_fallback_updates_preset(): void
+    {
+        SystemSetting::query()->create([
+            'business_name' => 'Spin Klean Laundry',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'primary_color' => '#2E7D32',
+            'is_completed' => true,
+        ]);
+
+        $admin = User::factory()->create(['role' => 'admin', 'access' => ['services']]);
+        $branch = Branch::query()->create(['name' => 'Branch A', 'code' => 'A', 'is_active' => true]);
+        $category = LaundryServiceCategory::query()->create(['name' => 'Packages', 'visibility' => 'all', 'is_active' => true]);
+        $wash = LaundryService::query()->create(['branch_id' => $branch->id, 'service_category_id' => $category->id, 'name' => 'Wash', 'pricing_type' => 'load', 'price' => 80, 'is_active' => true]);
+        $dry = LaundryService::query()->create(['branch_id' => $branch->id, 'service_category_id' => $category->id, 'name' => 'Dry', 'pricing_type' => 'load', 'price' => 70, 'is_active' => true]);
+        $fold = LaundryService::query()->create(['branch_id' => $branch->id, 'service_category_id' => $category->id, 'name' => 'Fold', 'pricing_type' => 'piece', 'price' => 30, 'is_active' => true]);
+        $preset = ServicePreset::query()->create([
+            'branch_id' => $branch->id,
+            'service_category_id' => $category->id,
+            'name' => 'Old Bundle',
+            'sort_order' => 0,
+            'is_active' => true,
+        ]);
+        $preset->items()->create(['laundry_service_id' => $wash->id, 'quantity' => 1]);
+
+        $this
+            ->actingAs($admin)
+            ->get(route('admin.services.presets.show', $preset))
+            ->assertRedirect(route('admin.services.index', [
+                'branch_id' => $branch->id,
+                'edit_preset' => $preset->id,
+            ]));
+
+        $this
+            ->actingAs($admin)
+            ->post(route('admin.services.presets.update.post', $preset), [
+                'branch_id' => $branch->id,
+                'service_category_id' => $category->id,
+                'name' => 'Updated Bundle',
+                'sort_order' => 2,
+                'is_active' => 1,
+                'items' => [
+                    $dry->id => 2,
+                    $fold->id => 1,
+                ],
+            ])
+            ->assertRedirect(route('admin.services.index', ['branch_id' => $branch->id]));
+
+        $preset->refresh()->load('items');
+
+        $this->assertSame('Updated Bundle', $preset->name);
+        $this->assertSame(2, $preset->sort_order);
+        $this->assertSame([$dry->id, $fold->id], $preset->items->pluck('laundry_service_id')->sort()->values()->all());
+        $this->assertDatabaseMissing('service_preset_items', [
+            'service_preset_id' => $preset->id,
+            'laundry_service_id' => $wash->id,
+        ]);
+    }
+
     public function test_pos_preset_cart_line_expands_to_service_sales_when_order_is_saved(): void
     {
         SystemSetting::query()->create([

@@ -82,7 +82,9 @@ Route::middleware(['auth', 'settings.completed', 'billing.access'])->group(funct
         Route::middleware('menu.access:services')->group(function () {
             Route::resource('services', LaundryServiceController::class)->only(['index', 'store', 'update', 'destroy']);
             Route::post('/services/presets', [LaundryServiceController::class, 'storePreset'])->name('services.presets.store');
+            Route::get('/services/presets/{preset}', [LaundryServiceController::class, 'showPreset'])->name('services.presets.show');
             Route::put('/services/presets/{preset}', [LaundryServiceController::class, 'updatePreset'])->name('services.presets.update');
+            Route::post('/services/presets/{preset}', [LaundryServiceController::class, 'updatePreset'])->name('services.presets.update.post');
             Route::delete('/services/presets/{preset}', [LaundryServiceController::class, 'destroyPreset'])->name('services.presets.destroy');
         });
         Route::resource('service-categories', LaundryServiceCategoryController::class)->only(['index', 'store', 'update', 'destroy'])->middleware('menu.access:service_categories');

@@ -89,6 +89,63 @@ textarea {
     background: rgba(17, 24, 39, 0.78);
 }
 
+.app-sidebar {
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 82%, #020617 18%) 0%, color-mix(in srgb, var(--color-primary) 48%, #020617 52%) 100%);
+    border-color: color-mix(in srgb, var(--color-primary) 38%, #020617 62%);
+    color: color-mix(in srgb, #ffffff 92%, var(--color-primary) 8%);
+}
+
+.dark .app-sidebar {
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 58%, #020617 42%) 0%, color-mix(in srgb, var(--color-primary) 28%, #020617 72%) 100%);
+    border-color: color-mix(in srgb, var(--color-primary) 28%, #020617 72%);
+}
+
+.app-sidebar-header,
+.app-sidebar-branch {
+    border-color: color-mix(in srgb, var(--color-primary) 36%, rgba(255, 255, 255, 0.18));
+}
+
+.app-sidebar-logo {
+    background: color-mix(in srgb, var(--color-primary) 54%, #020617 46%);
+    border-color: color-mix(in srgb, var(--color-primary) 40%, rgba(255, 255, 255, 0.38));
+}
+
+.app-sidebar-subtle {
+    color: color-mix(in srgb, #ffffff 72%, var(--color-primary) 28%);
+}
+
+.app-sidebar-close {
+    color: color-mix(in srgb, #ffffff 84%, var(--color-primary) 16%);
+}
+
+.app-sidebar-close:hover,
+.app-sidebar-menu-link:hover {
+    background: color-mix(in srgb, var(--color-primary) 54%, #020617 46%);
+    color: #ffffff;
+}
+
+.app-sidebar-branch-card {
+    background: color-mix(in srgb, var(--color-primary) 46%, #020617 54%);
+    border-color: color-mix(in srgb, var(--color-primary) 36%, rgba(255, 255, 255, 0.2));
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--color-primary) 16%, transparent);
+}
+
+.app-sidebar-section {
+    color: color-mix(in srgb, #ffffff 60%, var(--color-primary) 40%);
+}
+
+.app-sidebar-menu-link {
+    color: color-mix(in srgb, #ffffff 86%, var(--color-primary) 14%);
+}
+
+.app-sidebar-menu-link-active {
+    background: color-mix(in srgb, var(--color-primary) 74%, #ffffff 26%);
+    color: #ffffff;
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--color-primary) 22%, transparent);
+}
+
 .laundry-login-wash {
     background:
         radial-gradient(circle at calc(18% + (var(--bubble-x) * 2%)) calc(18% + (var(--bubble-y) * 2%)), color-mix(in srgb, var(--color-primary) 22%, transparent), transparent 28%),

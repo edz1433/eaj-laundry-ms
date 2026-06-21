@@ -390,7 +390,7 @@
     <x-report-table title="Activity Logs" x-show="tab === 'activity'">
         <x-slot:head><th class="px-4 py-3">Action</th><th class="px-4 py-3">User</th><th class="px-4 py-3">Branch</th><th class="px-4 py-3">Details</th><th class="px-4 py-3">Date</th></x-slot:head>
         @forelse($activityLogs as $log)
-            <tr><td class="px-4 py-3 font-medium">{{ str_replace('_', ' ', ucfirst($log->action)) }}</td><td class="px-4 py-3">{{ $log->user?->name ?? 'System' }}</td><td class="px-4 py-3">{{ $log->branch?->name ?? 'N/A' }}</td><td class="px-4 py-3 text-muted">{{ collect($log->properties ?? [])->map(fn($value, $key) => $key.': '.$value)->implode(' | ') ?: 'N/A' }}</td><td class="px-4 py-3">{{ $log->created_at->format('M d, Y h:i A') }}</td></tr>
+            <tr><td class="px-4 py-3 font-medium">{{ str_replace('_', ' ', ucfirst($log->action)) }}</td><td class="px-4 py-3">{{ $log->user?->name ?? 'System' }}</td><td class="px-4 py-3">{{ $log->branch?->name ?? 'N/A' }}</td><td class="px-4 py-3 text-muted">{{ collect($log->properties ?? [])->map(fn($value, $key) => $key.': '.(is_scalar($value) || $value === null ? $value : json_encode($value)))->implode(' | ') ?: 'N/A' }}</td><td class="px-4 py-3">{{ $log->created_at->format('M d, Y h:i A') }}</td></tr>
         @empty
             <tr><td colspan="5" class="px-4 py-10 text-center text-muted">No activity logs found.</td></tr>
         @endforelse

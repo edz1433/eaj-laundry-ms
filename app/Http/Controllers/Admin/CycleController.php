@@ -618,10 +618,14 @@ class CycleController extends Controller
             ];
         }
 
-        return [
-            $this->parseDate($request->date_from),
-            $this->parseDate($request->date_to ?: $request->date),
-        ];
+        $from = $this->parseDate($request->date_from);
+        $to = $this->parseDate($request->date_to ?: $request->date);
+
+        if ($from || $to) {
+            return [$from, $to];
+        }
+
+        return [today()->toDateString(), today()->toDateString()];
     }
 
     private function parseDate(?string $date): ?string

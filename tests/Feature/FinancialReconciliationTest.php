@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AccountsPayable;
 use App\Models\AccountsPayablePayment;
+use App\Models\ActivityLog;
 use App\Models\Branch;
 use App\Models\BranchExpense;
 use App\Models\Customer;
@@ -20,6 +21,45 @@ use Tests\TestCase;
 class FinancialReconciliationTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_reports_activity_logs_render_nested_properties(): void
+    {
+        SystemSetting::query()->create([
+            'business_name' => 'EAJ Laundry',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'primary_color' => '#2E7D32',
+            'is_completed' => true,
+        ]);
+
+        $admin = User::factory()->create(['role' => 'super_admin']);
+        $branch = Branch::query()->create(['name' => 'Main Branch', 'code' => 'MAIN', 'is_active' => true]);
+        ActivityLog::query()->create([
+            'user_id' => $admin->id,
+            'branch_id' => $branch->id,
+            'action' => 'job_order_deleted',
+            'properties' => [
+                'job_order_number' => 'JO-ARRAY-001',
+                'payments' => [
+                    ['type' => 'cash', 'amount' => 100],
+                ],
+            ],
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.reports.index', [
+                'date_range' => today()->toDateString().' to '.today()->toDateString(),
+            ]))
+            ->assertOk()
+            ->assertSee('Activity Logs')
+            ->assertSee('JO-ARRAY-001')
+            ->assertSee('&quot;type&quot;:&quot;cash&quot;', false);
+    }
 
     public function test_all_financial_modules_share_the_authoritative_reconciliation(): void
     {

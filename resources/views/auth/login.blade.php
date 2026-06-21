@@ -73,7 +73,7 @@
                     <span data-lucide="laundry" class="h-3.5 w-3.5"></span>
                     Laundry operations login
                 </div>
-                <h1 class="text-xl font-semibold tracking-normal">{{ $appBusinessName }}</h1>
+                <!-- <h1 class="text-xl font-semibold tracking-normal">{{ $appBusinessName }}</h1> -->
                 <p class="mt-1 text-sm text-muted">Fresh loads, clean records, and branch work in one place.</p>
             </div>
 

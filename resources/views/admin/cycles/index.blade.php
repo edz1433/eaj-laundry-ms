@@ -300,52 +300,6 @@
                         @endforeach
                     </div>
 
-                    <div class="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border bg-smoke p-2 dark:border-gray-800 dark:bg-gray-950">
-                        <span class="text-xs font-medium text-muted">Production status:</span>
-                        @foreach($completionStatuses as $status => $label)
-                            <form method="POST" action="{{ route('admin.cycles.status', $order) }}">
-                                @csrf
-                                @method('PATCH')
-                                <input type="hidden" name="status" value="{{ $status }}">
-                                @php($canChangeStatus = (int) ($order->active_cycles_count ?? 0) === 0)
-                                <button {{ ! $canChangeStatus ? 'disabled' : '' }} title="{{ ! $canChangeStatus ? 'All cycles must be marked Done first' : 'Set status to '.$label }}" class="h-8 rounded-md px-2 text-xs font-medium {{ $order->status === $status ? 'bg-primary text-white' : 'border border-border hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-950' }} {{ ! $canChangeStatus ? 'opacity-50 cursor-not-allowed' : '' }}">
-                                    {{ $label }}
-                                </button>
-                            </form>
-                        @endforeach
-                    </div>
-                @endif
-
-                @if($order->status === 'ready_for_pickup')
-                    <div class="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border bg-white p-2 dark:border-gray-800 dark:bg-gray-950">
-                        <span class="text-xs font-medium text-muted">Customer release:</span>
-                        <a href="{{ route('admin.cycles.receipt', $order) }}" target="_blank" class="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-900">
-                            <span data-lucide="receipt" class="h-3.5 w-3.5"></span>
-                            Print Receipt
-                        </a>
-                        @if($canReleaseHere)
-                            <form method="POST" action="{{ route('admin.cycles.release', $order) }}">
-                                @csrf
-                                @method('PATCH')
-                                <input type="hidden" name="action" value="release_here">
-                                <button type="submit" x-on:click.prevent="Swal.fire({ title: 'Release laundry?', text: 'Release this laundry to the customer? This will mark the job order as completed.', icon: 'warning', showCancelButton: true, confirmButtonColor: '#0f766e', confirmButtonText: 'Release' }).then((result) => { if (result.isConfirmed) $el.closest('form').submit(); })" class="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-2.5 text-xs font-medium text-white">
-                                    <span data-lucide="package-check" class="h-3.5 w-3.5"></span>
-                                    {{ $releaseActions['release_here'] }}
-                                </button>
-                            </form>
-                        @endif
-                        @if($canReturnToDropoff)
-                            <form method="POST" action="{{ route('admin.cycles.release', $order) }}">
-                                @csrf
-                                @method('PATCH')
-                                <input type="hidden" name="action" value="return_to_dropoff">
-                                <button type="submit" x-on:click.prevent="Swal.fire({ title: 'Return laundry?', text: 'Return this laundry to the drop-off branch for customer release?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#0f766e', confirmButtonText: 'Return' }).then((result) => { if (result.isConfirmed) $el.closest('form').submit(); })" class="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium hover:bg-smoke dark:border-gray-800 dark:hover:bg-gray-900">
-                                    <span data-lucide="truck" class="h-3.5 w-3.5"></span>
-                                    {{ $releaseActions['return_to_dropoff'] }}
-                                </button>
-                            </form>
-                        @endif
-                    </div>
                 @endif
 
                 <div class="border-t border-border pt-3 dark:border-gray-800">

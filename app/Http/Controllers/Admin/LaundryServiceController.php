@@ -142,6 +142,16 @@ class LaundryServiceController extends Controller
         return redirect()->route('admin.services.index', ['branch_id' => $preset->branch_id])->with('success', 'Preset created successfully.');
     }
 
+    public function showPreset(ServicePreset $preset)
+    {
+        $this->authorizePreset($preset);
+
+        return redirect()->route('admin.services.index', [
+            'branch_id' => $preset->branch_id,
+            'edit_preset' => $preset->id,
+        ]);
+    }
+
     public function updatePreset(Request $request, ServicePreset $preset)
     {
         $this->authorizePreset($preset);
