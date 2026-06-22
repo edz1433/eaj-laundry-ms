@@ -300,6 +300,20 @@
                         @endforeach
                     </div>
 
+                    <form method="POST" action="{{ route('admin.cycles.status', $order) }}" x-data>
+                        @csrf
+                        @method('PATCH')
+                        <input type="hidden" name="status" value="ready_for_pickup">
+                        <button
+                            type="submit"
+                            x-on:click.prevent="Swal.fire({ title: 'Laundry ready for pickup?', text: 'This will finish production and notify the customer that the laundry is ready.', icon: 'question', showCancelButton: true, confirmButtonColor: '#0f766e', confirmButtonText: 'Mark as Ready' }).then((result) => { if (result.isConfirmed) $el.closest('form').submit(); })"
+                            class="mb-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-teal-600 px-3 text-sm font-semibold text-white hover:bg-teal-700"
+                        >
+                            <span data-lucide="package-check" class="h-4 w-4"></span>
+                            Ready for Pickup
+                        </button>
+                    </form>
+
                 @endif
 
                 <div class="border-t border-border pt-3 dark:border-gray-800">

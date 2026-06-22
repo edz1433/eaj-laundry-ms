@@ -77,7 +77,7 @@ class CycleMonitoringTest extends TestCase
             ], false);
     }
 
-    public function test_cycle_monitoring_page_does_not_show_release_or_completion_actions(): void
+    public function test_cycle_monitoring_page_shows_ready_for_pickup_but_not_release_actions(): void
     {
         $this->completeSystemSettings();
         $this->activeTrial();
@@ -98,7 +98,8 @@ class CycleMonitoringTest extends TestCase
             ->assertDontSee('Customer release:')
             ->assertDontSee('Release Here')
             ->assertDontSee('Return to Drop-off')
-            ->assertDontSee(route('admin.cycles.status', $order), false)
+            ->assertSee('Ready for Pickup')
+            ->assertSee(route('admin.cycles.status', $order), false)
             ->assertDontSee(route('admin.cycles.release', $order), false);
     }
 
