@@ -27,7 +27,7 @@ use Illuminate\Validation\ValidationException;
 
 class JobOrderController extends Controller
 {
-    private const STATUSES = ['pending', 'washing', 'drying', 'folding', 'ready_for_pickup', 'completed', 'cancelled'];
+    private const STATUSES = ['pending', 'washing', 'drying', 'folding', 'ready_for_pickup', 'ready_for_delivery', 'completed', 'cancelled'];
 
     public function index(Request $request)
     {
@@ -48,8 +48,9 @@ class JobOrderController extends Controller
         $statusCounts = [
             'total' => (clone $ordersQuery)->count(),
             'ready_for_pickup' => (clone $ordersQuery)->where('status', 'ready_for_pickup')->count(),
+            'ready_for_delivery' => (clone $ordersQuery)->where('status', 'ready_for_delivery')->count(),
             'released' => (clone $ordersQuery)->whereNotNull('released_at')->count(),
-            'active' => (clone $ordersQuery)->whereNotIn('status', ['ready_for_pickup', 'completed', 'cancelled'])->count(),
+            'active' => (clone $ordersQuery)->whereNotIn('status', ['ready_for_pickup', 'ready_for_delivery', 'completed', 'cancelled'])->count(),
             'cancelled' => (clone $ordersQuery)->where('status', 'cancelled')->count(),
         ];
 
@@ -58,8 +59,8 @@ class JobOrderController extends Controller
         $orders = $ordersQuery
             ->when(in_array($statusFilter, self::STATUSES, true), fn ($q) => $q->where('status', $statusFilter))
             ->when($statusFilter === 'released', fn ($q) => $q->whereNotNull('released_at'))
-            ->when($statusFilter === 'active', fn ($q) => $q->whereNotIn('status', ['ready_for_pickup', 'completed', 'cancelled']))
-            ->orderByRaw("CASE WHEN status = 'ready_for_pickup' THEN 0 WHEN status IN ('pending', 'washing', 'drying', 'folding') THEN 1 WHEN status = 'completed' THEN 2 ELSE 3 END")
+            ->when($statusFilter === 'active', fn ($q) => $q->whereNotIn('status', ['ready_for_pickup', 'ready_for_delivery', 'completed', 'cancelled']))
+            ->orderByRaw("CASE WHEN status IN ('ready_for_pickup', 'ready_for_delivery') THEN 0 WHEN status IN ('pending', 'washing', 'drying', 'folding') THEN 1 WHEN status = 'completed' THEN 2 ELSE 3 END")
             ->latest()
             ->paginate(8)
             ->withQueryString();
@@ -607,7 +608,7 @@ class JobOrderController extends Controller
         abort_if(in_array($jobOrder->status, ['completed', 'cancelled'], true), 422, 'Completed or cancelled job orders cannot be changed.');
 
         $validated = $request->validate([
-            'status' => ['required', Rule::in(['pending', 'washing', 'drying', 'folding', 'ready_for_pickup', 'completed'])],
+            'status' => ['required', Rule::in(['pending', 'washing', 'drying', 'folding', 'ready_for_pickup', 'ready_for_delivery', 'completed'])],
         ]);
 
         $jobOrder->update([
@@ -694,7 +695,7 @@ class JobOrderController extends Controller
     {
         $this->authorizeJobOrderRelease($request, $jobOrder);
 
-        abort_unless($jobOrder->status === 'ready_for_pickup', 422);
+        abort_unless(in_array($jobOrder->status, ['ready_for_pickup', 'ready_for_delivery'], true), 422);
         abort_unless((int) ($jobOrder->release_branch_id ?: $jobOrder->current_branch_id ?: $jobOrder->branch_id) === (int) $request->user()->branch_id || $request->user()->canManageAllBranches(), 403);
 
         $jobOrder->update([

@@ -117,6 +117,7 @@ class DashboardController extends Controller
         $ordersCount = (clone $ordersInRange)->count();
         $openOrders = (clone $orders)->whereNotIn('status', ['completed', 'cancelled'])->count();
         $readyForPickup = (clone $orders)->where('status', 'ready_for_pickup')->count();
+        $readyForDelivery = (clone $orders)->where('status', 'ready_for_delivery')->count();
         $receivables = $financial['unpaid_balance'];
         $lowStock = Inventory::query()
             ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
@@ -142,7 +143,7 @@ class DashboardController extends Controller
             ->groupBy('status')
             ->pluck('total', 'status');
 
-        $statuses = ['pending', 'washing', 'drying', 'folding', 'ready_for_pickup', 'completed', 'cancelled'];
+        $statuses = ['pending', 'washing', 'drying', 'folding', 'ready_for_pickup', 'ready_for_delivery', 'completed', 'cancelled'];
         $statusLabels = array_map(fn ($status) => StatusBadge::label($status), $statuses);
         $statusValues = array_map(fn ($status) => (int) ($statusRows[$status] ?? 0), $statuses);
 
@@ -270,6 +271,7 @@ class DashboardController extends Controller
                 'orders' => number_format($ordersCount),
                 'open_orders' => number_format($openOrders),
                 'ready_for_pickup' => number_format($readyForPickup),
+                'ready_for_delivery' => number_format($readyForDelivery),
                 'receivables' => $this->money($currency, $receivables),
                 'low_stock' => number_format($lowStock),
                 'accounts_payable' => $this->money($currency, $accountsPayable),
@@ -604,11 +606,11 @@ class DashboardController extends Controller
                 ->where('branch_id', $branchId)
                 ->orWhere('release_branch_id', $branchId)
                 ->orWhere('current_branch_id', $branchId)))
-            ->where('status', 'ready_for_pickup')
+            ->whereIn('status', ['ready_for_pickup', 'ready_for_delivery'])
             ->count();
 
         return [
-            'title' => 'Ready for Pickup',
+            'title' => 'Ready for Pickup or Delivery',
             'summary' => "{$count} job order(s) are ready and should be released or followed up.",
             'metrics' => [['label' => 'Ready Orders', 'value' => number_format($count)]],
         ];

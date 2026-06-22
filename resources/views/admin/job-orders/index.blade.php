@@ -78,10 +78,14 @@
         </form>
     </div>
 
-    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <a href="{{ route('admin.job-orders.index', array_merge(request()->except('page'), ['status' => 'ready_for_pickup'])) }}" class="rounded-lg border border-teal-200 bg-teal-50 p-3 text-teal-800 transition hover:border-teal-400 hover:shadow-sm {{ request('status') === 'ready_for_pickup' ? 'ring-2 ring-teal-400' : '' }} dark:border-teal-900/60 dark:bg-teal-500/10 dark:text-teal-300">
             <p class="text-xs font-medium">Ready for Pickup</p>
             <p class="mt-1 text-2xl font-semibold">{{ number_format((int) ($statusCounts['ready_for_pickup'] ?? 0)) }}</p>
+        </a>
+        <a href="{{ route('admin.job-orders.index', array_merge(request()->except('page'), ['status' => 'ready_for_delivery'])) }}" class="rounded-lg border border-orange-200 bg-orange-50 p-3 text-orange-800 transition hover:border-orange-400 hover:shadow-sm {{ request('status') === 'ready_for_delivery' ? 'ring-2 ring-orange-400' : '' }} dark:border-orange-900/60 dark:bg-orange-500/10 dark:text-orange-300">
+            <p class="text-xs font-medium">Ready for Delivery</p>
+            <p class="mt-1 text-2xl font-semibold">{{ number_format((int) ($statusCounts['ready_for_delivery'] ?? 0)) }}</p>
         </a>
         <a href="{{ route('admin.job-orders.index', array_merge(request()->except('page'), ['status' => 'released'])) }}" class="rounded-lg border border-green-200 bg-green-50 p-3 text-green-800 transition hover:border-green-400 hover:shadow-sm dark:border-green-900/60 dark:bg-green-500/10 dark:text-green-300">
             <p class="text-xs font-medium">Released to Customer</p>
@@ -99,6 +103,7 @@
 
     <div class="flex flex-wrap gap-2 rounded-lg border border-border bg-white p-3 text-xs shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-teal-500"></span>Ready for pickup</span>
+        <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-orange-500"></span>Ready for delivery</span>
         <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-green-500"></span>Released to customer</span>
         <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-blue-500"></span>In process</span>
         <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-red-500"></span>Cancelled</span>
@@ -114,11 +119,13 @@
             <tbody class="divide-y divide-border dark:divide-gray-800">
                 @forelse($orders as $order)
                     @php($isReadyForPickup = $order->status === 'ready_for_pickup')
+                    @php($isReadyForDelivery = $order->status === 'ready_for_delivery')
+                    @php($isReady = $isReadyForPickup || $isReadyForDelivery)
                     @php($isReleased = (bool) $order->released_at)
                     @php($isInProcess = in_array($order->status, ['pending', 'washing', 'drying', 'folding'], true))
                     @php($canRecordPayment = (float) $order->balance > 0 && $order->status !== 'cancelled' && ! $order->poTransaction && $order->customer?->billing_type !== 'po')
                     <tr>
-                        <td class="border-l-4 px-4 py-3 font-medium {{ $isReadyForPickup ? 'border-l-teal-500 bg-teal-50/50 dark:bg-teal-500/5' : ($isReleased ? 'border-l-green-500 bg-green-50/50 dark:bg-green-500/5' : ($isInProcess ? 'border-l-blue-500 bg-blue-50/50 dark:bg-blue-500/5' : ($order->status === 'cancelled' ? 'border-l-red-500' : 'border-l-transparent'))) }}">
+                        <td class="border-l-4 px-4 py-3 font-medium {{ $isReadyForPickup ? 'border-l-teal-500 bg-teal-50/50 dark:bg-teal-500/5' : ($isReadyForDelivery ? 'border-l-orange-500 bg-orange-50/50 dark:bg-orange-500/5' : ($isReleased ? 'border-l-green-500 bg-green-50/50 dark:bg-green-500/5' : ($isInProcess ? 'border-l-blue-500 bg-blue-50/50 dark:bg-blue-500/5' : ($order->status === 'cancelled' ? 'border-l-red-500' : 'border-l-transparent')))) }}">
                             <p>{{ $order->job_order_number }}</p>
                             @if($order->is_rush)
                                 <span class="mt-1 inline-flex rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-800 dark:border-amber-900/60 dark:bg-amber-500/10 dark:text-amber-300">Rush</span>
@@ -156,6 +163,8 @@
                                 <span class="{{ \App\Support\StatusBadge::classes($order->status) }}">{{ \App\Support\StatusBadge::label($order->status) }}</span>
                                 @if($isReadyForPickup)
                                     <p class="inline-flex items-center gap-1 text-xs font-medium text-teal-700 dark:text-teal-300"><span class="h-2 w-2 rounded-full bg-teal-500"></span>Awaiting customer pickup</p>
+                                @elseif($isReadyForDelivery)
+                                    <p class="inline-flex items-center gap-1 text-xs font-medium text-orange-700 dark:text-orange-300"><span class="h-2 w-2 rounded-full bg-orange-500"></span>Awaiting delivery</p>
                                 @elseif($isReleased)
                                     <p class="inline-flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-300"><span class="h-2 w-2 rounded-full bg-green-500"></span>Released {{ $order->released_at->format('M d, h:i A') }}</p>
                                 @elseif($isInProcess)
@@ -181,11 +190,11 @@
                             <button type="button" @click="receiptOpen = {{ $order->id }}" title="Receipt" aria-label="Print receipt" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border hover:bg-smoke dark:border-gray-700 dark:hover:bg-gray-800">
                                 <span data-lucide="receipt" class="h-4 w-4"></span>
                             </button>
-                            @if($order->status === 'ready_for_pickup')
+                            @if($isReady)
                                 <form method="POST" action="{{ route('admin.job-orders.release', $order) }}" class="inline">
                                     @csrf
                                     @method('PATCH')
-                                    <button type="submit" x-on:click.prevent="Swal.fire({ title: 'Release laundry?', text: 'Release this laundry to the customer? This will mark the job order as completed.', icon: 'warning', showCancelButton: true, confirmButtonColor: '#0f766e', confirmButtonText: 'Release' }).then((result) => { if (result.isConfirmed) $el.closest('form').submit(); })" title="Release here" aria-label="Release job order to customer" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-teal-200 text-teal-700 hover:bg-teal-50 dark:border-teal-900/60 dark:text-teal-300 dark:hover:bg-teal-500/10">
+                                    <button type="submit" x-on:click.prevent="Swal.fire({ title: 'Complete laundry?', text: 'Confirm that this laundry was picked up or sent for delivery. This will mark the job order as completed.', icon: 'warning', showCancelButton: true, confirmButtonColor: '#0f766e', confirmButtonText: 'Complete' }).then((result) => { if (result.isConfirmed) $el.closest('form').submit(); })" title="Complete order" aria-label="Complete ready job order" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-teal-200 text-teal-700 hover:bg-teal-50 dark:border-teal-900/60 dark:text-teal-300 dark:hover:bg-teal-500/10">
                                         <span data-lucide="package-check" class="h-4 w-4"></span>
                                     </button>
                                 </form>

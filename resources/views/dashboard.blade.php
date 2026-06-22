@@ -292,6 +292,7 @@ function dashboardPage(fetchUrl, initialData, initialDateRange) {
             { key: 'orders', label: 'Orders in Period', icon: 'jobOrders' },
             { key: 'open_orders', label: 'Open Orders', icon: 'activity' },
             { key: 'ready_for_pickup', label: 'Ready for Pickup', icon: 'laundry' },
+            { key: 'ready_for_delivery', label: 'Ready for Delivery', icon: 'truck' },
         ],
         init() {
             this.$nextTick(() => {

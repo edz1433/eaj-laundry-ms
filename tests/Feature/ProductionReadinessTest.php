@@ -28,6 +28,7 @@ class ProductionReadinessTest extends TestCase
             'drying',
             'folding',
             'ready_for_pickup',
+            'ready_for_delivery',
             'completed',
             'cancelled',
             'unpaid',
@@ -47,6 +48,7 @@ class ProductionReadinessTest extends TestCase
         $this->assertStringContainsString('cyan', $classes['drying']);
         $this->assertStringContainsString('purple', $classes['folding']);
         $this->assertStringContainsString('teal', $classes['ready_for_pickup']);
+        $this->assertStringContainsString('orange', $classes['ready_for_delivery']);
         $this->assertStringContainsString('green', $classes['completed']);
         $this->assertStringContainsString('red', $classes['cancelled']);
         $this->assertStringContainsString('orange', $classes['unpaid']);

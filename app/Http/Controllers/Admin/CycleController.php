@@ -18,7 +18,7 @@ class CycleController extends Controller
 {
     private const CYCLE_HISTORY_LIMIT = 5;
 
-    private const FILTER_STATUSES = ['pending', 'washing', 'drying', 'folding', 'ready_for_pickup', 'completed'];
+    private const FILTER_STATUSES = ['pending', 'washing', 'drying', 'folding', 'ready_for_pickup', 'ready_for_delivery', 'completed'];
 
     private const CYCLE_TYPES = [
         'wash' => 'Washing',
@@ -29,6 +29,7 @@ class CycleController extends Controller
 
     private const COMPLETION_STATUSES = [
         'ready_for_pickup' => 'Ready for Pickup',
+        'ready_for_delivery' => 'Ready for Delivery',
         'completed' => 'Completed',
     ];
 
@@ -60,6 +61,7 @@ class CycleController extends Controller
             'drying' => 'Drying',
             'folding' => 'Folding / Ironing',
             'ready_for_pickup' => 'Ready for Pickup',
+            'ready_for_delivery' => 'Ready for Delivery',
             'completed' => 'Completed',
         ];
 
@@ -68,7 +70,7 @@ class CycleController extends Controller
             ->when($customerBranchId, fn ($query) => $query->where(fn ($query) => $query
                 ->where('branch_id', $customerBranchId)
                 ->orWhereHas('jobOrders', fn ($query) => $query
-                    ->when($selectedStatus, fn ($query) => $query->where('status', $selectedStatus), fn ($query) => $query->whereNotIn('status', ['ready_for_pickup', 'completed', 'cancelled']))
+                    ->when($selectedStatus, fn ($query) => $query->where('status', $selectedStatus), fn ($query) => $query->whereNotIn('status', ['ready_for_pickup', 'ready_for_delivery', 'completed', 'cancelled']))
                     ->where(fn ($query) => $query
                         ->where(fn ($query) => $query
                             ->where('processing_branch_id', $customerBranchId)
@@ -86,7 +88,7 @@ class CycleController extends Controller
 
         $ordersQuery = JobOrder::query()
             ->where('status', '!=', 'cancelled')
-            ->when($selectedStatus, fn ($q) => $q->where('status', $selectedStatus), fn ($q) => $q->whereNotIn('status', ['ready_for_pickup', 'completed']))
+            ->when($selectedStatus, fn ($q) => $q->where('status', $selectedStatus), fn ($q) => $q->whereNotIn('status', ['ready_for_pickup', 'ready_for_delivery', 'completed']))
             ->when($selectedBranchId, fn ($q) => $q->where(fn ($query) => $query
                 ->where('branch_id', $selectedBranchId)
                 ->orWhere(fn ($query) => $query
@@ -129,6 +131,7 @@ class CycleController extends Controller
                 'customer_id',
                 'job_order_number',
                 'status',
+                'transaction_type',
                 'is_rush',
                 'production_accepted_at',
                 'created_at',
@@ -285,7 +288,7 @@ class CycleController extends Controller
     public function releaseAction(Request $request, JobOrder $jobOrder)
     {
         $this->authorizeReleaseAction($request, $jobOrder);
-        abort_unless($jobOrder->status === 'ready_for_pickup', 422);
+        abort_unless(in_array($jobOrder->status, ['ready_for_pickup', 'ready_for_delivery'], true), 422);
 
         $validated = $request->validate([
             'action' => ['required', Rule::in(array_keys(self::RELEASE_ACTIONS))],
@@ -297,7 +300,7 @@ class CycleController extends Controller
             abort_unless((int) $processingBranchId !== (int) $jobOrder->branch_id, 422);
 
             $jobOrder->update([
-                'status' => 'ready_for_pickup',
+                'status' => $jobOrder->transaction_type === 'delivery' ? 'ready_for_delivery' : 'ready_for_pickup',
                 'current_branch_id' => $jobOrder->branch_id,
                 'release_branch_id' => $jobOrder->branch_id,
                 'production_completed_at' => $jobOrder->production_completed_at ?: now(),

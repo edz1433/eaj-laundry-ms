@@ -54,6 +54,41 @@ class CycleMonitoringTest extends TestCase
         ]);
     }
 
+    public function test_delivery_order_can_be_marked_ready_for_delivery_from_cycle_monitoring(): void
+    {
+        $this->completeSystemSettings();
+        $this->activeTrial();
+
+        $branch = $this->createBranch();
+        $customer = $this->createCustomer($branch);
+        $user = User::factory()->create([
+            'role' => 'admin',
+            'branch_id' => $branch->id,
+            'access' => ['cycles', 'job_orders'],
+        ]);
+        $order = $this->createJobOrder($branch, $customer, 'JO-READY-DELIVERY');
+        $order->update(['transaction_type' => 'delivery']);
+
+        $this->actingAs($user)
+            ->get(route('admin.cycles.index'))
+            ->assertOk()
+            ->assertSee('Ready for Delivery')
+            ->assertSee('value="ready_for_delivery"', false);
+
+        $this->actingAs($user)
+            ->patch(route('admin.cycles.status', $order), ['status' => 'ready_for_delivery'])
+            ->assertRedirect();
+
+        $this->assertSame('ready_for_delivery', $order->fresh()->status);
+
+        $this->actingAs($user)
+            ->get(route('admin.job-orders.index', ['status' => 'ready_for_delivery']))
+            ->assertOk()
+            ->assertSee('JO-READY-DELIVERY')
+            ->assertSee('Ready for delivery')
+            ->assertSee('Awaiting delivery');
+    }
+
     public function test_cycle_monitoring_highlights_customer_name_above_job_order_number(): void
     {
         $this->completeSystemSettings();

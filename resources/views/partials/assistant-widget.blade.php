@@ -15,7 +15,7 @@
             ['key' => 'receivables', 'label' => 'Receivables', 'icon' => 'receivables', 'question' => 'How much receivables are still open?'],
             ['key' => 'unpaid_orders', 'label' => 'Unpaid orders', 'icon' => 'file-text', 'question' => 'Which job orders are unpaid?'],
             ['key' => 'active_cycles', 'label' => 'Active cycles', 'icon' => 'cycles', 'question' => 'What cycles are active right now?'],
-            ['key' => 'ready_pickup', 'label' => 'Ready pickup', 'icon' => 'laundry', 'question' => 'How many orders are ready for pickup?'],
+            ['key' => 'ready_pickup', 'label' => 'Ready orders', 'icon' => 'laundry', 'question' => 'How many orders are ready for pickup or delivery?'],
             ['key' => 'low_stock', 'label' => 'Low stock', 'icon' => 'inventory', 'question' => 'Which inventory items are low stock?'],
             ['key' => 'top_customers', 'label' => 'Top customers', 'icon' => 'customers', 'question' => 'Who are the top customers?'],
             ['key' => 'branch_compare', 'label' => 'Branch compare', 'icon' => 'branches', 'question' => 'Compare branch sales.'],

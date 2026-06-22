@@ -243,7 +243,7 @@
                 </div>
                 --}}
 
-                @if(! in_array($order->status, ['ready_for_pickup', 'completed'], true))
+                @if(! in_array($order->status, ['ready_for_pickup', 'ready_for_delivery', 'completed'], true))
                     <div class="mb-3 space-y-1">
                         @foreach($cycleTypes as $type => $label)
                             @if(in_array($type, ['fold', 'iron'], true))
@@ -303,14 +303,16 @@
                     <form method="POST" action="{{ route('admin.cycles.status', $order) }}" x-data>
                         @csrf
                         @method('PATCH')
-                        <input type="hidden" name="status" value="ready_for_pickup">
+                        @php($readyStatus = $order->transaction_type === 'delivery' ? 'ready_for_delivery' : 'ready_for_pickup')
+                        @php($readyLabel = $order->transaction_type === 'delivery' ? 'Ready for Delivery' : 'Ready for Pickup')
+                        <input type="hidden" name="status" value="{{ $readyStatus }}">
                         <button
                             type="submit"
-                            x-on:click.prevent="Swal.fire({ title: 'Laundry ready for pickup?', text: 'This will finish production and notify the customer that the laundry is ready.', icon: 'question', showCancelButton: true, confirmButtonColor: '#0f766e', confirmButtonText: 'Mark as Ready' }).then((result) => { if (result.isConfirmed) $el.closest('form').submit(); })"
+                            x-on:click.prevent="Swal.fire({ title: @js($readyLabel.'?'), text: 'This will finish production and notify the customer that the laundry is ready.', icon: 'question', showCancelButton: true, confirmButtonColor: '#0f766e', confirmButtonText: 'Mark as Ready' }).then((result) => { if (result.isConfirmed) $el.closest('form').submit(); })"
                             class="mb-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-teal-600 px-3 text-sm font-semibold text-white hover:bg-teal-700"
                         >
                             <span data-lucide="package-check" class="h-4 w-4"></span>
-                            Ready for Pickup
+                            {{ $readyLabel }}
                         </button>
                     </form>
 

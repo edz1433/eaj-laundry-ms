@@ -43,6 +43,7 @@ class SmsNotifier
 
             $message = match ($order->status) {
                 'ready_for_pickup' => "Hi {$customer->name}, your laundry {$order->job_order_number} is ready for pickup.",
+                'ready_for_delivery' => "Hi {$customer->name}, your laundry {$order->job_order_number} is ready for delivery.",
                 'completed' => "Hi {$customer->name}, your laundry {$order->job_order_number} has been completed. Thank you.",
                 default => null,
             };
