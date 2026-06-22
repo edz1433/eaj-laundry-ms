@@ -72,7 +72,9 @@ class CycleMonitoringTest extends TestCase
         $this->actingAs($user)
             ->get(route('admin.cycles.index'))
             ->assertOk()
+            ->assertSee('Ready for Pickup')
             ->assertSee('Ready for Delivery')
+            ->assertSee('value="ready_for_pickup"', false)
             ->assertSee('value="ready_for_delivery"', false);
 
         $this->actingAs($user)

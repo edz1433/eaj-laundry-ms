@@ -244,77 +244,62 @@
                 --}}
 
                 @if(! in_array($order->status, ['ready_for_pickup', 'ready_for_delivery', 'completed'], true))
-                    <div class="mb-3 space-y-1">
-                        @foreach($cycleTypes as $type => $label)
-                            @if(in_array($type, ['fold', 'iron'], true))
-                                @if($type === 'fold')
-                                    <div class="flex gap-1">
-                                @endif
-                                    <form method="POST" action="{{ route('admin.cycles.store', $order) }}" class="flex-1">
-                                        @csrf
-                                        <input type="hidden" name="cycle_type" value="{{ $type }}">
-                                        <div class="flex flex-col gap-1.5 rounded-md border border-border bg-white p-1.5 dark:border-gray-800 dark:bg-gray-950">
-                                            @if(in_array($type, ['wash', 'dry'], true) && (int) ($processingBranch?->machine_count ?? 0) > 0)
-                                                <div class="flex flex-wrap gap-1">
-                                                    @for($machine = 1; $machine <= (int) $processingBranch->machine_count; $machine++)
-                                                        @php($usingMachine = data_get($activeMachines, $type.'.'.$machine))
-                                                        <label class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium {{ $usingMachine ? 'bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400 opacity-50 cursor-not-allowed' : 'hover:bg-smoke dark:hover:bg-gray-900 cursor-pointer' }} border border-border dark:border-gray-700">
-                                                            <input type="checkbox" name="machine_numbers[]" value="{{ $machine }}" {{ $usingMachine ? 'disabled' : '' }} class="h-3 w-3 rounded border-border text-primary">
-                                                            <span>#{{ $machine }}</span>
-                                                        </label>
-                                                    @endfor
-                                                </div>
-                                            @endif
-                                            <button type="submit" title="Start {{ $label }}" class="inline-flex h-7 items-center justify-center gap-1 rounded bg-primary px-2 text-[11px] font-medium text-white hover:opacity-90">
-                                                <span data-lucide="plus" class="h-3 w-3"></span>
-                                                {{ $label }}
-                                            </button>
+                    <div class="mb-2 space-y-1">
+                        @foreach(['wash' => $cycleTypes['wash'], 'dry' => $cycleTypes['dry']] as $type => $label)
+                            <form method="POST" action="{{ route('admin.cycles.store', $order) }}">
+                                @csrf
+                                <input type="hidden" name="cycle_type" value="{{ $type }}">
+                                <div class="flex flex-col gap-1.5 rounded-md border border-border bg-white p-1.5 dark:border-gray-800 dark:bg-gray-950">
+                                    @if((int) ($processingBranch?->machine_count ?? 0) > 0)
+                                        <div class="flex flex-wrap gap-1">
+                                            @for($machine = 1; $machine <= (int) $processingBranch->machine_count; $machine++)
+                                                @php($usingMachine = data_get($activeMachines, $type.'.'.$machine))
+                                                <label class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium {{ $usingMachine ? 'bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400 opacity-50 cursor-not-allowed' : 'hover:bg-smoke dark:hover:bg-gray-900 cursor-pointer' }} border border-border dark:border-gray-700">
+                                                    <input type="checkbox" name="machine_numbers[]" value="{{ $machine }}" {{ $usingMachine ? 'disabled' : '' }} class="h-3 w-3 rounded border-border text-primary">
+                                                    <span>#{{ $machine }}</span>
+                                                </label>
+                                            @endfor
                                         </div>
-                                    </form>
-                                @if($type === 'iron')
-                                    </div>
-                                @endif
-                            @else
-                                <form method="POST" action="{{ route('admin.cycles.store', $order) }}">
-                                    @csrf
-                                    <input type="hidden" name="cycle_type" value="{{ $type }}">
-                                    <div class="flex flex-col gap-1.5 rounded-md border border-border bg-white p-1.5 dark:border-gray-800 dark:bg-gray-950">
-                                        @if(in_array($type, ['wash', 'dry'], true) && (int) ($processingBranch?->machine_count ?? 0) > 0)
-                                            <div class="flex flex-wrap gap-1">
-                                                @for($machine = 1; $machine <= (int) $processingBranch->machine_count; $machine++)
-                                                    @php($usingMachine = data_get($activeMachines, $type.'.'.$machine))
-                                                    <label class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium {{ $usingMachine ? 'bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400 opacity-50 cursor-not-allowed' : 'hover:bg-smoke dark:hover:bg-gray-900 cursor-pointer' }} border border-border dark:border-gray-700">
-                                                        <input type="checkbox" name="machine_numbers[]" value="{{ $machine }}" {{ $usingMachine ? 'disabled' : '' }} class="h-3 w-3 rounded border-border text-primary">
-                                                        <span>#{{ $machine }}</span>
-                                                    </label>
-                                                @endfor
-                                            </div>
-                                        @endif
-                                        <button type="submit" title="Start {{ $label }}" class="inline-flex h-7 items-center justify-center gap-1 rounded bg-primary px-2 text-[11px] font-medium text-white hover:opacity-90">
-                                            <span data-lucide="plus" class="h-3 w-3"></span>
-                                            {{ $label }}
-                                        </button>
-                                    </div>
-                                </form>
-                            @endif
+                                    @endif
+                                    <button type="submit" title="Start {{ $label }}" class="inline-flex h-7 items-center justify-center gap-1 rounded bg-primary px-2 text-[11px] font-medium text-white hover:opacity-90">
+                                        <span data-lucide="plus" class="h-3 w-3"></span>
+                                        {{ $label }}
+                                    </button>
+                                </div>
+                            </form>
                         @endforeach
                     </div>
 
-                    <form method="POST" action="{{ route('admin.cycles.status', $order) }}" x-data>
-                        @csrf
-                        @method('PATCH')
-                        @php($readyStatus = $order->transaction_type === 'delivery' ? 'ready_for_delivery' : 'ready_for_pickup')
-                        @php($readyLabel = $order->transaction_type === 'delivery' ? 'Ready for Delivery' : 'Ready for Pickup')
-                        <input type="hidden" name="status" value="{{ $readyStatus }}">
-                        <button
-                            type="submit"
-                            x-on:click.prevent="Swal.fire({ title: @js($readyLabel.'?'), text: 'This will finish production and notify the customer that the laundry is ready.', icon: 'question', showCancelButton: true, confirmButtonColor: '#0f766e', confirmButtonText: 'Mark as Ready' }).then((result) => { if (result.isConfirmed) $el.closest('form').submit(); })"
-                            class="mb-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-teal-600 px-3 text-sm font-semibold text-white hover:bg-teal-700"
-                        >
-                            <span data-lucide="package-check" class="h-4 w-4"></span>
-                            {{ $readyLabel }}
-                        </button>
-                    </form>
+                    <div class="mb-3 grid grid-cols-4 gap-1">
+                        @foreach(['fold' => $cycleTypes['fold'], 'iron' => $cycleTypes['iron']] as $type => $label)
+                            <form method="POST" action="{{ route('admin.cycles.store', $order) }}">
+                                @csrf
+                                <input type="hidden" name="cycle_type" value="{{ $type }}">
+                                <button type="submit" title="Start {{ $label }}" class="inline-flex h-9 w-full items-center justify-center gap-1 rounded-md bg-primary px-1 text-[11px] font-medium text-white hover:opacity-90">
+                                    <span data-lucide="plus" class="h-3 w-3"></span>
+                                    {{ $label }}
+                                </button>
+                            </form>
+                        @endforeach
+                        @foreach([
+                            'ready_for_pickup' => ['label' => 'Ready for Pickup', 'icon' => 'package-check', 'classes' => 'bg-teal-600 hover:bg-teal-700', 'color' => '#0f766e'],
+                            'ready_for_delivery' => ['label' => 'Ready for Delivery', 'icon' => 'truck', 'classes' => 'bg-orange-600 hover:bg-orange-700', 'color' => '#ea580c'],
+                        ] as $readyStatus => $readyAction)
+                            <form method="POST" action="{{ route('admin.cycles.status', $order) }}" x-data>
+                                @csrf
+                                @method('PATCH')
+                                <input type="hidden" name="status" value="{{ $readyStatus }}">
+                                <button
+                                    type="submit"
+                                    x-on:click.prevent="Swal.fire({ title: @js($readyAction['label'].'?'), text: 'This will finish production and notify the customer that the laundry is ready.', icon: 'question', showCancelButton: true, confirmButtonColor: @js($readyAction['color']), confirmButtonText: 'Mark as Ready' }).then((result) => { if (result.isConfirmed) $el.closest('form').submit(); })"
+                                    class="inline-flex h-9 w-full items-center justify-center gap-1 rounded-md px-1 text-[11px] font-semibold text-white {{ $readyAction['classes'] }}"
+                                >
+                                    <span data-lucide="{{ $readyAction['icon'] }}" class="h-4 w-4"></span>
+                                    {{ $readyAction['label'] }}
+                                </button>
+                            </form>
+                        @endforeach
+                    </div>
 
                 @endif
 
