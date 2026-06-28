@@ -1207,11 +1207,14 @@ class CycleMonitoringTest extends TestCase
         );
     }
 
-    public function test_job_order_is_saved_when_semaphore_rejects_sms(): void
+    public function test_job_order_is_saved_when_unisms_rejects_sms(): void
     {
         Http::fake([
-            'api.semaphore.co/*' => Http::response([
-                'message' => 'SMS service unavailable.',
+            'unismsapi.com/*' => Http::response([
+                'message' => [
+                    'status' => 'failed',
+                    'fail_reason' => 'SMS service unavailable.',
+                ],
             ], 503),
         ]);
 
@@ -1219,7 +1222,7 @@ class CycleMonitoringTest extends TestCase
         $this->activeTrial();
         SystemSetting::current()->update([
             'sms_enabled' => true,
-            'sms_provider' => 'semaphore',
+            'sms_provider' => 'unisms',
             'sms_api_key' => 'test-api-key',
         ]);
 
@@ -1261,7 +1264,7 @@ class CycleMonitoringTest extends TestCase
         $this->assertDatabaseHas('sms_logs', [
             'customer_id' => $customer->id,
             'status' => 'failed',
-            'response' => 'Semaphore error: SMS service unavailable.',
+            'response' => 'UniSMS error: SMS service unavailable.',
         ]);
     }
 

@@ -104,12 +104,9 @@ class SystemSettingController extends Controller
 
             if ($canManageSms) {
                 $rules = array_merge($rules, [
-                    'sms_provider' => ['nullable', Rule::in(['semaphore', 'twilio'])],
+                    'sms_provider' => ['nullable', Rule::in(['unisms'])],
                     'sms_api_key' => ['nullable', 'string'],
-                    'semaphore_sender_name' => ['nullable', 'string', 'max:50'],
-                    'twilio_account_sid' => ['nullable', 'string', 'max:255'],
-                    'twilio_auth_token' => ['nullable', 'string'],
-                    'twilio_from_number' => ['nullable', 'string', 'max:50'],
+                    'unisms_sender_id' => ['nullable', 'string', 'max:50'],
                     'sms_enabled' => ['nullable', 'boolean'],
                 ]);
             }

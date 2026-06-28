@@ -9,7 +9,7 @@
         logoPreview: null,
         vatEnabled: @js($settings->vat_enabled),
         smsEnabled: @js($settings->sms_enabled),
-        smsProvider: @js(old('sms_provider', $settings->sms_provider ?: 'semaphore')),
+        smsProvider: @js(old('sms_provider', $settings->sms_provider ?: 'unisms')),
         darkDefault: @js($settings->dark_mode_default)
     }"
     class="space-y-4"
@@ -257,35 +257,19 @@
                     <div>
                         <label class="block text-sm font-medium mb-2">SMS Provider</label>
                         <select name="sms_provider" x-model="smsProvider" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
-                            <option value="semaphore">Semaphore</option>
-                            <option value="twilio" @selected(old('sms_provider', $settings->sms_provider) === 'twilio')>Twilio</option>
+                            <option value="unisms">UniSMS</option>
                         </select>
                     </div>
 
-                    <div x-show="smsProvider === 'semaphore'">
-                        <label class="block text-sm font-medium mb-2">Semaphore API Key</label>
+                    <div x-show="smsProvider === 'unisms'">
+                        <label class="block text-sm font-medium mb-2">UniSMS API Secret Key</label>
                         <input type="password" name="sms_api_key" value="{{ old('sms_api_key', $settings->sms_api_key) }}" autocomplete="new-password" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
                     </div>
 
-                    <div x-show="smsProvider === 'semaphore'">
-                        <label class="block text-sm font-medium mb-2">Semaphore Sender Name</label>
-                        <input name="semaphore_sender_name" value="{{ old('semaphore_sender_name', $settings->semaphore_sender_name) }}" placeholder="Approved sender name" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
-                        <p class="mt-1 text-xs text-muted">Optional. Leave blank to use the default sender name in Semaphore.</p>
-                    </div>
-
-                    <div x-show="smsProvider === 'twilio'">
-                        <label class="block text-sm font-medium mb-2">Twilio Account SID</label>
-                        <input name="twilio_account_sid" value="{{ old('twilio_account_sid', $settings->twilio_account_sid) }}" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
-                    </div>
-
-                    <div x-show="smsProvider === 'twilio'">
-                        <label class="block text-sm font-medium mb-2">Twilio Auth Token</label>
-                        <input type="password" name="twilio_auth_token" value="{{ old('twilio_auth_token', $settings->twilio_auth_token) }}" autocomplete="new-password" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
-                    </div>
-
-                    <div x-show="smsProvider === 'twilio'">
-                        <label class="block text-sm font-medium mb-2">Twilio From Number</label>
-                        <input name="twilio_from_number" value="{{ old('twilio_from_number', $settings->twilio_from_number) }}" placeholder="+15551234567" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
+                    <div x-show="smsProvider === 'unisms'">
+                        <label class="block text-sm font-medium mb-2">UniSMS Sender ID</label>
+                        <input name="unisms_sender_id" value="{{ old('unisms_sender_id', $settings->unisms_sender_id) }}" placeholder="Optional approved sender ID" class="w-full h-9 rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 text-sm">
+                        <p class="mt-1 text-xs text-muted">Optional. Use only after UniSMS approves your business sender ID.</p>
                     </div>
 
                 </div>

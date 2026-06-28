@@ -9,7 +9,7 @@
 - Set `SESSION_ENCRYPT=true`, `SESSION_SECURE_COOKIE=true`, and `SESSION_SAME_SITE=lax` after HTTPS is active.
 - Replace the MySQL root account with a dedicated application database user and a strong password.
 - Configure a real mail transport if email delivery is required.
-- Configure the Semaphore API key and approved sender name in System Settings.
+- Configure the UniSMS API secret key and optional approved sender ID in System Settings.
 
 ## Deploy
 
@@ -39,7 +39,7 @@ php artisan queue:failed
 - Do not launch while `production:check` reports any failed checks.
 - Confirm `/up` returns HTTP 200 through the public HTTPS domain.
 - Submit a test Job Order and confirm cash, GCash, bank, expenses, Accounts Payable, Dashboard, Reports, and Z Reading reconcile.
-- Send one real Semaphore SMS to a non-PO test customer.
+- Send one real UniSMS SMS to a non-PO test customer.
 - Confirm PO customers do not create SMS attempts.
 - Create a database backup and test restoring it to a separate database.
 

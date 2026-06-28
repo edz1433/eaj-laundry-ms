@@ -25,10 +25,7 @@ class SystemSetting extends Model
         'invoice_prefix',
         'sms_provider',
         'sms_api_key',
-        'semaphore_sender_name',
-        'twilio_account_sid',
-        'twilio_auth_token',
-        'twilio_from_number',
+        'unisms_sender_id',
         'sms_enabled',
         'primary_color',
         'dark_mode_default',
@@ -56,7 +53,7 @@ class SystemSetting extends Model
                 'currency' => 'PHP',
                 'job_order_prefix' => 'JO',
                 'invoice_prefix' => 'INV',
-                'sms_provider' => 'semaphore',
+                'sms_provider' => 'unisms',
                 'primary_color' => '#2E7D32',
             ]
         );

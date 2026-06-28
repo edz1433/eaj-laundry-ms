@@ -83,103 +83,65 @@ class SmsNotifier
     private static function send(SmsLog $log, SystemSetting $settings): void
     {
         match (Str::lower((string) $settings->sms_provider)) {
-            'semaphore' => self::sendWithSemaphore($log, $settings),
-            'twilio' => self::sendWithTwilio($log, $settings),
+            'unisms' => self::sendWithUniSms($log, $settings),
             default => $log->update([
                 'status' => 'queued',
-                'response' => 'SMS provider is not configured for live sending.',
+                'response' => 'UniSMS is not configured for live sending.',
             ]),
         };
     }
 
-    private static function sendWithSemaphore(SmsLog $log, SystemSetting $settings): void
+    private static function sendWithUniSms(SmsLog $log, SystemSetting $settings): void
     {
-        $apiKey = trim((string) $settings->sms_api_key);
+        $secretKey = trim((string) $settings->sms_api_key);
 
-        if ($apiKey === '') {
+        if ($secretKey === '') {
             $log->update([
                 'status' => 'queued',
-                'response' => 'Semaphore is selected but the API key is missing.',
+                'response' => 'UniSMS is selected but the API secret key is missing.',
             ]);
 
             return;
         }
 
         $payload = [
-            'apikey' => $apiKey,
-            'number' => self::normalizeSemaphorePhone($log->recipient),
-            'message' => $log->message,
+            'recipient' => self::normalizePhone($log->recipient),
+            'content' => self::smsContent($log->message),
+            'metadata' => [
+                'sms_log_id' => (string) $log->id,
+                'branch_id' => (string) $log->branch_id,
+                'customer_id' => (string) $log->customer_id,
+            ],
         ];
-        $senderName = trim((string) $settings->semaphore_sender_name);
-        if ($senderName !== '') {
-            $payload['sendername'] = $senderName;
+        $senderId = trim((string) $settings->unisms_sender_id);
+        if ($senderId !== '') {
+            $payload['sender_id'] = $senderId;
         }
 
         try {
-            $response = Http::asForm()
+            $response = Http::withBasicAuth($secretKey, '')
+                ->acceptJson()
+                ->asJson()
                 ->timeout(10)
-                ->post('https://api.semaphore.co/api/v4/messages', $payload);
+                ->post('https://unismsapi.com/api/sms', $payload);
 
             $responsePayload = $response->json();
-            $messageResult = is_array($responsePayload) ? ($responsePayload[0] ?? $responsePayload) : [];
-            $messageId = $messageResult['message_id'] ?? null;
+            $messageResult = is_array($responsePayload) ? ($responsePayload['message'] ?? $responsePayload) : [];
+            $referenceId = $messageResult['reference_id'] ?? null;
             $providerStatus = Str::lower((string) ($messageResult['status'] ?? ''));
-            $accepted = $response->successful() && ! in_array($providerStatus, ['failed', 'refunded'], true);
-            $error = $messageResult['message'] ?? $response->body();
+            $accepted = $response->created() && ! in_array($providerStatus, ['failed'], true);
+            $error = $messageResult['fail_reason'] ?? $messageResult['message'] ?? $response->body();
 
             $log->update([
                 'status' => $accepted ? 'sent' : 'failed',
                 'response' => $accepted
-                    ? 'Semaphore message accepted'.($messageId ? " ({$messageId})" : '.')
-                    : Str::limit('Semaphore error: '.$error, 1000),
+                    ? 'UniSMS message accepted'.($referenceId ? " ({$referenceId})" : '.')
+                    : Str::limit('UniSMS error: '.$error, 1000),
             ]);
         } catch (\Throwable $exception) {
             $log->update([
                 'status' => 'failed',
-                'response' => Str::limit('Semaphore request failed: '.$exception->getMessage(), 1000),
-            ]);
-        }
-    }
-
-    private static function sendWithTwilio(SmsLog $log, SystemSetting $settings): void
-    {
-        $accountSid = trim((string) $settings->twilio_account_sid);
-        $authToken = trim((string) ($settings->twilio_auth_token ?: $settings->sms_api_key));
-        $from = trim((string) $settings->twilio_from_number);
-
-        if ($accountSid === '' || $authToken === '' || $from === '') {
-            $log->update([
-                'status' => 'queued',
-                'response' => 'Twilio is selected but credentials or from number are incomplete.',
-            ]);
-
-            return;
-        }
-
-        try {
-            $response = Http::asForm()
-                ->withBasicAuth($accountSid, $authToken)
-                ->timeout(10)
-                ->post("https://api.twilio.com/2010-04-01/Accounts/{$accountSid}/Messages.json", [
-                    'From' => $from,
-                    'To' => self::normalizePhone($log->recipient),
-                    'Body' => $log->message,
-                ]);
-
-            $payload = $response->json() ?? [];
-            $sid = $payload['sid'] ?? null;
-            $error = $payload['message'] ?? $response->body();
-
-            $log->update([
-                'status' => $response->successful() ? 'sent' : 'failed',
-                'response' => $response->successful()
-                    ? 'Twilio message sent'.($sid ? " ({$sid})" : '.')
-                    : Str::limit('Twilio error: '.$error, 1000),
-            ]);
-        } catch (\Throwable $exception) {
-            $log->update([
-                'status' => 'failed',
-                'response' => Str::limit('Twilio request failed: '.$exception->getMessage(), 1000),
+                'response' => Str::limit('UniSMS request failed: '.$exception->getMessage(), 1000),
             ]);
         }
     }
@@ -203,8 +165,8 @@ class SmsNotifier
         return $phone;
     }
 
-    private static function normalizeSemaphorePhone(string $phone): string
+    private static function smsContent(string $message): string
     {
-        return ltrim(self::normalizePhone($phone), '+');
+        return Str::limit($message, 160, '');
     }
 }

@@ -16,13 +16,15 @@ class SmsNotifierTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_semaphore_sends_sms_with_normalized_philippine_number(): void
+    public function test_unisms_sends_sms_with_normalized_philippine_number(): void
     {
         Http::fake([
-            'api.semaphore.co/*' => Http::response([[
-                'message_id' => 12345,
-                'status' => 'Pending',
-            ]], 200),
+            'unismsapi.com/*' => Http::response([
+                'message' => [
+                    'reference_id' => 'msg_12345',
+                    'status' => 'sent',
+                ],
+            ], 201),
         ]);
 
         [$order] = $this->readyOrder();
@@ -34,24 +36,25 @@ class SmsNotifierTest extends TestCase
             'job_order_prefix' => 'JO',
             'invoice_prefix' => 'INV',
             'sms_enabled' => true,
-            'sms_provider' => 'semaphore',
-            'sms_api_key' => 'semaphore-secret',
-            'semaphore_sender_name' => 'SPINKLEAN',
+            'sms_provider' => 'unisms',
+            'sms_api_key' => 'unisms-secret',
+            'unisms_sender_id' => 'SPINKLEAN',
             'is_completed' => true,
         ]);
 
         SmsNotifier::jobOrderStatus($order);
 
-        Http::assertSent(fn ($request) => $request->url() === 'https://api.semaphore.co/api/v4/messages'
-            && $request['apikey'] === 'semaphore-secret'
-            && $request['number'] === '639171234567'
-            && $request['sendername'] === 'SPINKLEAN'
-            && str_contains($request['message'], 'ready for pickup'));
+        Http::assertSent(fn ($request) => $request->url() === 'https://unismsapi.com/api/sms'
+            && $request->hasHeader('Authorization', 'Basic '.base64_encode('unisms-secret:'))
+            && $request['recipient'] === '+639171234567'
+            && $request['sender_id'] === 'SPINKLEAN'
+            && $request['metadata']['sms_log_id'] !== null
+            && str_contains($request['content'], 'ready for pickup'));
 
         $this->assertDatabaseHas('sms_logs', [
             'recipient' => '09171234567',
             'status' => 'sent',
-            'response' => 'Semaphore message accepted (12345)',
+            'response' => 'UniSMS message accepted (msg_12345)',
         ]);
     }
 
@@ -70,8 +73,8 @@ class SmsNotifierTest extends TestCase
             'job_order_prefix' => 'JO',
             'invoice_prefix' => 'INV',
             'sms_enabled' => true,
-            'sms_provider' => 'semaphore',
-            'sms_api_key' => 'semaphore-secret',
+            'sms_provider' => 'unisms',
+            'sms_api_key' => 'unisms-secret',
             'is_completed' => true,
         ]);
 
@@ -82,12 +85,15 @@ class SmsNotifierTest extends TestCase
         $this->assertDatabaseCount('sms_logs', 0);
     }
 
-    public function test_semaphore_failure_is_recorded_without_throwing(): void
+    public function test_unisms_failure_is_recorded_without_throwing(): void
     {
         Http::fake([
-            'api.semaphore.co/*' => Http::response([
-                'message' => 'Insufficient account balance.',
-            ], 400),
+            'unismsapi.com/*' => Http::response([
+                'message' => [
+                    'status' => 'failed',
+                    'fail_reason' => 'Insufficient account balance.',
+                ],
+            ], 422),
         ]);
 
         [$order] = $this->readyOrder();
@@ -99,8 +105,8 @@ class SmsNotifierTest extends TestCase
             'job_order_prefix' => 'JO',
             'invoice_prefix' => 'INV',
             'sms_enabled' => true,
-            'sms_provider' => 'semaphore',
-            'sms_api_key' => 'semaphore-secret',
+            'sms_provider' => 'unisms',
+            'sms_api_key' => 'unisms-secret',
             'is_completed' => true,
         ]);
 
@@ -109,7 +115,7 @@ class SmsNotifierTest extends TestCase
         $this->assertDatabaseHas('sms_logs', [
             'customer_id' => $order->customer_id,
             'status' => 'failed',
-            'response' => 'Semaphore error: Insufficient account balance.',
+            'response' => 'UniSMS error: Insufficient account balance.',
         ]);
         $this->assertDatabaseHas('job_orders', [
             'id' => $order->id,
@@ -117,7 +123,7 @@ class SmsNotifierTest extends TestCase
         ]);
     }
 
-    public function test_twilio_missing_config_keeps_sms_queued_without_throwing(): void
+    public function test_unisms_missing_secret_key_keeps_sms_queued_without_throwing(): void
     {
         [$order] = $this->readyOrder();
 
@@ -129,7 +135,7 @@ class SmsNotifierTest extends TestCase
             'job_order_prefix' => 'JO',
             'invoice_prefix' => 'INV',
             'sms_enabled' => true,
-            'sms_provider' => 'twilio',
+            'sms_provider' => 'unisms',
             'is_completed' => true,
         ]);
 
@@ -138,14 +144,19 @@ class SmsNotifierTest extends TestCase
         $this->assertDatabaseHas('sms_logs', [
             'recipient' => '09171234567',
             'status' => 'queued',
-            'response' => 'Twilio is selected but credentials or from number are incomplete.',
+            'response' => 'UniSMS is selected but the API secret key is missing.',
         ]);
     }
 
-    public function test_twilio_configured_sends_finish_sms(): void
+    public function test_unisms_configured_sends_finish_sms(): void
     {
         Http::fake([
-            'api.twilio.com/*' => Http::response(['sid' => 'SM123'], 201),
+            'unismsapi.com/*' => Http::response([
+                'message' => [
+                    'reference_id' => 'msg_finish',
+                    'status' => 'sent',
+                ],
+            ], 201),
         ]);
 
         [$order] = $this->readyOrder();
@@ -158,24 +169,21 @@ class SmsNotifierTest extends TestCase
             'job_order_prefix' => 'JO',
             'invoice_prefix' => 'INV',
             'sms_enabled' => true,
-            'sms_provider' => 'twilio',
-            'twilio_account_sid' => 'AC123',
-            'twilio_auth_token' => 'secret',
-            'twilio_from_number' => '+15551234567',
+            'sms_provider' => 'unisms',
+            'sms_api_key' => 'secret',
             'is_completed' => true,
         ]);
 
         SmsNotifier::jobOrderStatus($order);
 
-        Http::assertSent(fn ($request) => $request->url() === 'https://api.twilio.com/2010-04-01/Accounts/AC123/Messages.json'
-            && $request['From'] === '+15551234567'
-            && $request['To'] === '+639171234567'
-            && str_contains($request['Body'], 'ready for pickup'));
+        Http::assertSent(fn ($request) => $request->url() === 'https://unismsapi.com/api/sms'
+            && $request['recipient'] === '+639171234567'
+            && str_contains($request['content'], 'ready for pickup'));
 
         $this->assertDatabaseHas('sms_logs', [
             'recipient' => '09171234567',
             'status' => 'sent',
-            'response' => 'Twilio message sent (SM123)',
+            'response' => 'UniSMS message accepted (msg_finish)',
         ]);
     }
 
