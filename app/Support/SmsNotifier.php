@@ -14,17 +14,17 @@ class SmsNotifier
     {
         self::withoutInterruptingOperations(function () use ($order): void {
             $settings = SystemSetting::current();
-            $order->loadMissing('customer');
+            $order->loadMissing(['branch', 'customer']);
             $customer = $order->customer;
 
             if (! $settings->sms_enabled || ! $customer?->canReceiveSms()) {
                 return;
             }
 
-            $store = $settings->business_name ?: config('app.name');
-            $message = $order->transaction_type === 'delivery'
-                ? "Hi {$customer->name}, {$store} has picked up and received your laundry order {$order->job_order_number}. It is now recorded and queued for processing. We will notify you when it is ready."
-                : "Hi {$customer->name}, {$store} has received your laundry order {$order->job_order_number}. It is now recorded and queued for processing. We will notify you when it is ready.";
+            $template = $order->transaction_type === 'delivery'
+                ? 'sms_template_delivery_received'
+                : 'sms_template_order_received';
+            $message = self::renderTemplate($settings, $template, $order);
 
             self::queue($order, $message, $settings);
         });
@@ -34,23 +34,25 @@ class SmsNotifier
     {
         self::withoutInterruptingOperations(function () use ($order): void {
             $settings = SystemSetting::current();
-            $order->loadMissing('customer');
+            $order->loadMissing(['branch', 'customer']);
             $customer = $order->customer;
 
             if (! $settings->sms_enabled || ! $customer?->canReceiveSms()) {
                 return;
             }
 
-            $message = match ($order->status) {
-                'ready_for_pickup' => "Hi {$customer->name}, your laundry {$order->job_order_number} is ready for pickup.",
-                'ready_for_delivery' => "Hi {$customer->name}, your laundry {$order->job_order_number} is ready for delivery.",
-                'completed' => "Hi {$customer->name}, your laundry {$order->job_order_number} has been completed. Thank you.",
+            $template = match ($order->status) {
+                'ready_for_pickup' => 'sms_template_ready_for_pickup',
+                'ready_for_delivery' => 'sms_template_ready_for_delivery',
+                'completed' => 'sms_template_completed',
                 default => null,
             };
 
-            if (! $message) {
+            if (! $template) {
                 return;
             }
+
+            $message = self::renderTemplate($settings, $template, $order);
 
             self::queue($order, $message, $settings);
         });
@@ -168,5 +170,34 @@ class SmsNotifier
     private static function smsContent(string $message): string
     {
         return Str::limit($message, 160, '');
+    }
+
+    private static function renderTemplate(SystemSetting $settings, string $templateKey, JobOrder $order): string
+    {
+        $defaults = SystemSetting::defaultSmsTemplates();
+        $template = trim((string) ($settings->{$templateKey} ?? ''));
+        if ($template === '') {
+            $template = $defaults[$templateKey] ?? '';
+        }
+
+        return strtr($template, self::templateValues($settings, $order));
+    }
+
+    private static function templateValues(SystemSetting $settings, JobOrder $order): array
+    {
+        $customer = $order->customer;
+        $storeName = $settings->business_name ?: config('app.name');
+        $currency = $settings->currency ?: 'PHP';
+
+        return [
+            '{customer_name}' => (string) ($customer?->name ?? ''),
+            '{customer_phone}' => (string) ($customer?->phone ?? ''),
+            '{job_order_number}' => (string) $order->job_order_number,
+            '{store_name}' => (string) $storeName,
+            '{branch_name}' => (string) ($order->branch?->name ?? $storeName),
+            '{status}' => Str::headline((string) $order->status),
+            '{total}' => $currency.' '.number_format((float) $order->total, 2),
+            '{balance}' => $currency.' '.number_format((float) $order->balance, 2),
+        ];
     }
 }

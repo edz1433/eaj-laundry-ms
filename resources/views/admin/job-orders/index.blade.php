@@ -194,7 +194,7 @@
                                 <form method="POST" action="{{ route('admin.job-orders.release', $order) }}" class="inline">
                                     @csrf
                                     @method('PATCH')
-                                    <button type="submit" x-on:click.prevent="Swal.fire({ title: 'Complete laundry?', text: 'Confirm that this laundry was picked up or sent for delivery. This will mark the job order as completed.', icon: 'warning', showCancelButton: true, confirmButtonColor: '#0f766e', confirmButtonText: 'Complete' }).then((result) => { if (result.isConfirmed) $el.closest('form').submit(); })" title="Complete order" aria-label="Complete ready job order" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-teal-200 text-teal-700 hover:bg-teal-50 dark:border-teal-900/60 dark:text-teal-300 dark:hover:bg-teal-500/10">
+                                    <button type="submit" x-on:click.prevent="Swal.fire({ title: 'Complete laundry?', text: 'Confirm that this laundry was picked up or sent for delivery. This will mark the job order as completed.', icon: 'warning', showCancelButton: true, confirmButtonColor: '#0f766e', confirmButtonText: 'Complete' }).then((result) => { if (result.isConfirmed) $el.closest('form').submit(); })" title="Release job order to customer" aria-label="Release job order to customer" class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-teal-200 text-teal-700 hover:bg-teal-50 dark:border-teal-900/60 dark:text-teal-300 dark:hover:bg-teal-500/10">
                                         <span data-lucide="package-check" class="h-4 w-4"></span>
                                     </button>
                                 </form>

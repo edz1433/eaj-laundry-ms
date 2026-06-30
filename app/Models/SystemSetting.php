@@ -27,6 +27,11 @@ class SystemSetting extends Model
         'sms_api_key',
         'unisms_sender_id',
         'sms_enabled',
+        'sms_template_order_received',
+        'sms_template_delivery_received',
+        'sms_template_ready_for_pickup',
+        'sms_template_ready_for_delivery',
+        'sms_template_completed',
         'primary_color',
         'dark_mode_default',
         'is_completed',
@@ -57,6 +62,17 @@ class SystemSetting extends Model
                 'primary_color' => '#2E7D32',
             ]
         );
+    }
+
+    public static function defaultSmsTemplates(): array
+    {
+        return [
+            'sms_template_order_received' => 'Hi {customer_name}, {store_name} has received your laundry order {job_order_number}. It is now recorded and queued for processing. We will notify you when it is ready.',
+            'sms_template_delivery_received' => 'Hi {customer_name}, {store_name} has picked up and received your laundry order {job_order_number}. It is now recorded and queued for processing. We will notify you when it is ready.',
+            'sms_template_ready_for_pickup' => 'Hi {customer_name}, your laundry {job_order_number} is ready for pickup.',
+            'sms_template_ready_for_delivery' => 'Hi {customer_name}, your laundry {job_order_number} is ready for delivery.',
+            'sms_template_completed' => 'Hi {customer_name}, your laundry {job_order_number} has been completed. Thank you.',
+        ];
     }
 
     public function isComplete(): bool

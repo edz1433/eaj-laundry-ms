@@ -214,6 +214,133 @@ class SmsNotifierTest extends TestCase
         $this->assertStringContainsString('queued for processing', $message);
     }
 
+    public function test_custom_sms_template_replaces_order_placeholders(): void
+    {
+        [$order] = $this->readyOrder();
+
+        SystemSetting::query()->create([
+            'business_name' => 'EAJ Laundry',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'sms_enabled' => true,
+            'is_completed' => true,
+            'sms_template_ready_for_pickup' => '{customer_name}, claim {job_order_number} at {branch_name}. Balance {balance}.',
+        ]);
+
+        SmsNotifier::jobOrderStatus($order);
+
+        $this->assertDatabaseHas('sms_logs', [
+            'message' => 'Laundry Customer, claim JO-TEST-001 at Main Branch. Balance PHP 0.00.',
+        ]);
+    }
+
+    public function test_custom_sms_template_can_skip_customer_name(): void
+    {
+        [$order] = $this->readyOrder();
+
+        SystemSetting::query()->create([
+            'business_name' => 'EAJ Laundry',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'sms_enabled' => true,
+            'is_completed' => true,
+            'sms_template_ready_for_pickup' => 'Your laundry {job_order_number} is ready for pickup.',
+        ]);
+
+        SmsNotifier::jobOrderStatus($order);
+
+        $this->assertDatabaseHas('sms_logs', [
+            'message' => 'Your laundry JO-TEST-001 is ready for pickup.',
+        ]);
+    }
+
+    public function test_each_sms_event_uses_its_matching_template(): void
+    {
+        [$order] = $this->readyOrder();
+
+        SystemSetting::query()->create([
+            'business_name' => 'EAJ Laundry',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'sms_enabled' => true,
+            'is_completed' => true,
+            'sms_template_order_received' => 'Drop-off received {job_order_number}.',
+            'sms_template_delivery_received' => 'Pickup received {job_order_number}.',
+            'sms_template_ready_for_pickup' => 'Pickup ready {job_order_number}.',
+            'sms_template_ready_for_delivery' => 'Delivery ready {job_order_number}.',
+            'sms_template_completed' => 'Completed {job_order_number}.',
+        ]);
+
+        $order->update(['status' => 'pending', 'transaction_type' => 'walk_in']);
+        SmsNotifier::jobOrderReceived($order->fresh(['branch', 'customer']));
+
+        $order->update(['transaction_type' => 'delivery']);
+        SmsNotifier::jobOrderReceived($order->fresh(['branch', 'customer']));
+
+        $order->update(['status' => 'ready_for_pickup']);
+        SmsNotifier::jobOrderStatus($order->fresh(['branch', 'customer']));
+
+        $order->update(['status' => 'ready_for_delivery']);
+        SmsNotifier::jobOrderStatus($order->fresh(['branch', 'customer']));
+
+        $order->update(['status' => 'completed']);
+        SmsNotifier::jobOrderStatus($order->fresh(['branch', 'customer']));
+
+        $messages = SmsLog::query()->orderBy('id')->pluck('message')->all();
+
+        $this->assertSame([
+            'Drop-off received JO-TEST-001.',
+            'Pickup received JO-TEST-001.',
+            'Pickup ready JO-TEST-001.',
+            'Delivery ready JO-TEST-001.',
+            'Completed JO-TEST-001.',
+        ], $messages);
+    }
+
+    public function test_unisms_receives_rendered_template_content(): void
+    {
+        Http::fake([
+            'unismsapi.com/*' => Http::response([
+                'message' => [
+                    'reference_id' => 'msg_rendered',
+                    'status' => 'sent',
+                ],
+            ], 201),
+        ]);
+
+        [$order] = $this->readyOrder();
+
+        SystemSetting::query()->create([
+            'business_name' => 'EAJ Laundry',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'sms_enabled' => true,
+            'sms_provider' => 'unisms',
+            'sms_api_key' => 'secret',
+            'is_completed' => true,
+            'sms_template_ready_for_pickup' => 'Hi {customer_name}, claim {job_order_number} at {branch_name}.',
+        ]);
+
+        SmsNotifier::jobOrderStatus($order);
+
+        Http::assertSent(fn ($request) => $request->url() === 'https://unismsapi.com/api/sms'
+            && $request['content'] === 'Hi Laundry Customer, claim JO-TEST-001 at Main Branch.'
+            && ! str_contains($request['content'], '{customer_name}')
+            && ! str_contains($request['content'], '{job_order_number}'));
+    }
+
     private function readyOrder(): array
     {
         $branch = Branch::query()->create([

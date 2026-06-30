@@ -142,6 +142,58 @@ class SystemSettingsTest extends TestCase
             ->assertDontSee('attendance_radius_meters', false);
     }
 
+    public function test_super_admin_can_update_sms_templates(): void
+    {
+        $this->completeSystemSettings();
+        $this->activeTrial();
+
+        $branch = $this->createBranch();
+        $admin = User::factory()->create([
+            'role' => 'super_admin',
+            'branch_id' => $branch->id,
+            'access' => ['settings'],
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.settings.edit', ['branch_id' => $branch->id]))
+            ->assertOk()
+            ->assertSee('Order Received Template')
+            ->assertSee('{customer_name}', false);
+
+        $this->actingAs($admin)
+            ->put(route('admin.settings.update'), [
+                'branch_id' => $branch->id,
+                'branch_name' => $branch->name,
+                'branch_code' => $branch->code,
+                'branch_address' => $branch->address,
+                'branch_contact' => $branch->contact_number,
+                'branch_type' => 'full_service',
+                'machine_count' => 5,
+                'business_name' => 'Template Laundry',
+                'contact_number' => '09171234567',
+                'business_address' => 'Manila',
+                'currency' => 'PHP',
+                'primary_color' => '#0EA5E9',
+                'sms_enabled' => '1',
+                'sms_provider' => 'unisms',
+                'sms_api_key' => 'secret',
+                'unisms_sender_id' => 'SPINKLEAN',
+                'sms_template_order_received' => 'Hello {customer_name}, order {job_order_number} is received.',
+                'sms_template_delivery_received' => 'Pickup received for {job_order_number}.',
+                'sms_template_ready_for_pickup' => 'Claim {job_order_number} at {branch_name}.',
+                'sms_template_ready_for_delivery' => 'Delivery ready for {job_order_number}.',
+                'sms_template_completed' => 'Completed {job_order_number}. Thank you.',
+            ])
+            ->assertRedirect(route('admin.settings.edit', ['branch_id' => $branch->id]));
+
+        $this->assertDatabaseHas('system_settings', [
+            'id' => 1,
+            'sms_enabled' => true,
+            'sms_template_order_received' => 'Hello {customer_name}, order {job_order_number} is received.',
+            'sms_template_ready_for_pickup' => 'Claim {job_order_number} at {branch_name}.',
+        ]);
+    }
+
     public function test_settings_rejects_too_long_branch_address_cleanly(): void
     {
         $this->completeSystemSettings();

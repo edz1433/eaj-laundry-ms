@@ -246,6 +246,7 @@
 
                 {{-- SMS Tab - ONLY for Super Admin --}}
                 @if($canManageSms)
+                @php($smsTemplateDefaults = \App\Models\SystemSetting::defaultSmsTemplates())
                 <div x-show="tab === 'sms'" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div class="lg:col-span-2">
                         <label class="flex items-center gap-3">
@@ -272,6 +273,34 @@
                         <p class="mt-1 text-xs text-muted">Optional. Use only after UniSMS approves your business sender ID.</p>
                     </div>
 
+                    <div class="lg:col-span-2 rounded-md border border-border p-3 text-xs text-muted dark:border-gray-700">
+                        Available placeholders: <span class="font-medium text-foreground">{customer_name}</span>, <span class="font-medium text-foreground">{customer_phone}</span>, <span class="font-medium text-foreground">{job_order_number}</span>, <span class="font-medium text-foreground">{store_name}</span>, <span class="font-medium text-foreground">{branch_name}</span>, <span class="font-medium text-foreground">{status}</span>, <span class="font-medium text-foreground">{total}</span>, <span class="font-medium text-foreground">{balance}</span>.
+                    </div>
+
+                    <div class="lg:col-span-2">
+                        <label class="block text-sm font-medium mb-2">Order Received Template</label>
+                        <textarea name="sms_template_order_received" rows="3" class="w-full rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 py-2 text-sm">{{ old('sms_template_order_received', $settings->sms_template_order_received ?: $smsTemplateDefaults['sms_template_order_received']) }}</textarea>
+                    </div>
+
+                    <div class="lg:col-span-2">
+                        <label class="block text-sm font-medium mb-2">Delivery/Pickup Received Template</label>
+                        <textarea name="sms_template_delivery_received" rows="3" class="w-full rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 py-2 text-sm">{{ old('sms_template_delivery_received', $settings->sms_template_delivery_received ?: $smsTemplateDefaults['sms_template_delivery_received']) }}</textarea>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Ready for Pickup Template</label>
+                        <textarea name="sms_template_ready_for_pickup" rows="3" class="w-full rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 py-2 text-sm">{{ old('sms_template_ready_for_pickup', $settings->sms_template_ready_for_pickup ?: $smsTemplateDefaults['sms_template_ready_for_pickup']) }}</textarea>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Ready for Delivery Template</label>
+                        <textarea name="sms_template_ready_for_delivery" rows="3" class="w-full rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 py-2 text-sm">{{ old('sms_template_ready_for_delivery', $settings->sms_template_ready_for_delivery ?: $smsTemplateDefaults['sms_template_ready_for_delivery']) }}</textarea>
+                    </div>
+
+                    <div class="lg:col-span-2">
+                        <label class="block text-sm font-medium mb-2">Completed Template</label>
+                        <textarea name="sms_template_completed" rows="3" class="w-full rounded-md border border-border dark:border-gray-700 bg-white dark:bg-gray-950 px-3 py-2 text-sm">{{ old('sms_template_completed', $settings->sms_template_completed ?: $smsTemplateDefaults['sms_template_completed']) }}</textarea>
+                    </div>
                 </div>
                 @endif
 
