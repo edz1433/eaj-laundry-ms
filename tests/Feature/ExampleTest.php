@@ -523,7 +523,9 @@ class ExampleTest extends TestCase
                 'record' => $record,
                 'type' => 'clock-out',
                 'index' => 0,
-            ]), false);
+            ]), false)
+            ->assertDontSee('/storage/attendance-proofs/in.jpg', false)
+            ->assertDontSee('/storage/attendance-proofs/out.jpg', false);
 
         $this
             ->actingAs($manager)
@@ -551,6 +553,78 @@ class ExampleTest extends TestCase
                 'index' => 0,
             ]))
             ->assertForbidden();
+    }
+
+    public function test_attendance_module_keeps_logged_employees_visible_after_deactivation_or_delete(): void
+    {
+        Storage::fake('uploads');
+
+        SystemSetting::query()->create([
+            'business_name' => 'EAJ Laundry',
+            'contact_number' => '09171234567',
+            'business_address' => 'Manila',
+            'currency' => 'PHP',
+            'job_order_prefix' => 'JO',
+            'invoice_prefix' => 'INV',
+            'primary_color' => '#2E7D32',
+            'is_completed' => true,
+        ]);
+
+        $branch = Branch::query()->create(['name' => 'Branch A', 'code' => 'A', 'is_active' => true]);
+        $manager = User::factory()->create([
+            'role' => 'branch_manager',
+            'branch_id' => $branch->id,
+            'access' => ['attendance'],
+        ]);
+        $inactiveEmployee = AttendanceEmployee::query()->create([
+            'branch_id' => $branch->id,
+            'first_name' => 'Inactive',
+            'last_name' => 'With Logs',
+            'username' => 'inactive-logs',
+            'password' => Hash::make('password'),
+            'status' => 'inactive',
+        ]);
+        $deletedEmployee = AttendanceEmployee::query()->create([
+            'branch_id' => $branch->id,
+            'first_name' => 'Deleted',
+            'last_name' => 'With Logs',
+            'username' => 'deleted-logs',
+            'password' => Hash::make('password'),
+            'status' => 'active',
+        ]);
+
+        $inactiveRecord = EmployeeAttendanceRecord::query()->create([
+            'attendance_employee_id' => $inactiveEmployee->id,
+            'branch_id' => $branch->id,
+            'work_date' => today()->toDateString(),
+            'clock_in' => ['08:00:00'],
+            'clock_in_photos' => ['attendance-proofs/inactive.jpg'],
+        ]);
+        EmployeeAttendanceRecord::query()->create([
+            'attendance_employee_id' => $deletedEmployee->id,
+            'branch_id' => $branch->id,
+            'work_date' => today()->toDateString(),
+            'clock_in' => ['09:00:00'],
+        ]);
+        Storage::disk('uploads')->put('attendance-proofs/inactive.jpg', $this->tinyJpeg());
+        $deletedEmployee->delete();
+
+        $this
+            ->actingAs($manager)
+            ->get(route('admin.attendance.index', ['date' => today()->toDateString()]))
+            ->assertOk()
+            ->assertSee('Inactive With Logs')
+            ->assertSee('inactive-logs')
+            ->assertSee('Deleted With Logs')
+            ->assertSee('deleted-logs')
+            ->assertSee('08:00 AM')
+            ->assertSee('09:00 AM')
+            ->assertSee(route('admin.attendance.proof', [
+                'record' => $inactiveRecord,
+                'type' => 'clock-in',
+                'index' => 0,
+            ]), false)
+            ->assertDontSee('/storage/attendance-proofs/inactive.jpg', false);
     }
 
     public function test_employee_kiosk_can_upload_daily_task_proof_for_assigned_branch(): void

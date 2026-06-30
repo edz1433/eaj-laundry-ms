@@ -28,6 +28,6 @@ class EmployeeAttendanceRecord extends Model
         'clock_out_locations' => 'array',
     ];
 
-    public function employee() { return $this->belongsTo(AttendanceEmployee::class, 'attendance_employee_id'); }
+    public function employee() { return $this->belongsTo(AttendanceEmployee::class, 'attendance_employee_id')->withTrashed(); }
     public function branch() { return $this->belongsTo(Branch::class); }
 }

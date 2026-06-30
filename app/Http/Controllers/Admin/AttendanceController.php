@@ -85,6 +85,10 @@ class AttendanceController extends Controller
         $selectedEmployeeId = $request->integer('employee_id') ?: null;
         [$dateFrom, $dateTo] = $this->dateRange($request);
         $workDate = $dateFrom === $dateTo ? $dateFrom : $dateFrom.' to '.$dateTo;
+        $matchingAttendanceRecords = fn ($query) => $query
+            ->when($selectedBranchId, fn ($query) => $query->where('branch_id', $selectedBranchId))
+            ->whereDate('work_date', '>=', $dateFrom)
+            ->whereDate('work_date', '<=', $dateTo);
 
         $branches = Branch::query()
             ->where('is_active', true)
@@ -93,14 +97,16 @@ class AttendanceController extends Controller
             ->get();
 
         $employeesQuery = AttendanceEmployee::query()
+            ->withTrashed()
             ->with('branch')
-            ->where('status', 'active')
+            ->where(fn ($query) => $query
+                ->where(fn ($query) => $query
+                    ->whereNull('deleted_at')
+                    ->where('status', 'active'))
+                ->orWhereHas('attendanceRecords', $matchingAttendanceRecords))
             ->when($selectedBranchId, fn ($query) => $query->where(fn ($query) => $query
                 ->where('branch_id', $selectedBranchId)
-                ->orWhereHas('attendanceRecords', fn ($records) => $records
-                    ->where('branch_id', $selectedBranchId)
-                    ->whereDate('work_date', '>=', $dateFrom)
-                    ->whereDate('work_date', '<=', $dateTo))))
+                ->orWhereHas('attendanceRecords', $matchingAttendanceRecords)))
             ->when($selectedEmployeeId, fn ($query) => $query->whereKey($selectedEmployeeId))
             ->orderBy('first_name')
             ->orderBy('last_name');
@@ -115,6 +121,7 @@ class AttendanceController extends Controller
         $attendanceByEmployee = EmployeeAttendanceRecord::query()
             ->with(['employee', 'branch'])
             ->whereIn('attendance_employee_id', $records->getCollection()->pluck('id'))
+            ->when($selectedBranchId, fn ($query) => $query->where('branch_id', $selectedBranchId))
             ->whereDate('work_date', '>=', $dateFrom)
             ->whereDate('work_date', '<=', $dateTo)
             ->latest('work_date')
