@@ -289,14 +289,26 @@
                                 @csrf
                                 @method('PATCH')
                                 <input type="hidden" name="status" value="{{ $readyStatus }}">
-                                <button
-                                    type="submit"
-                                    x-on:click.prevent="Swal.fire({ title: @js($readyAction['label'].'?'), text: 'This will finish production and notify the customer that the laundry is ready.', icon: 'question', showCancelButton: true, confirmButtonColor: @js($readyAction['color']), confirmButtonText: 'Mark as Ready' }).then((result) => { if (result.isConfirmed) $el.closest('form').submit(); })"
-                                    class="inline-flex h-9 w-full items-center justify-center gap-1 rounded-md px-1 text-[11px] font-semibold text-white {{ $readyAction['classes'] }}"
-                                >
-                                    <span data-lucide="{{ $readyAction['icon'] }}" class="h-4 w-4"></span>
-                                    {{ $readyAction['label'] }}
-                                </button>
+                                @if((int) $order->active_cycles_count > 0)
+                                    <button
+                                        type="button"
+                                        x-on:click="Swal.fire({ title: 'Cycle still running', text: @js('This job order still has '.$order->active_cycles_count.' active '.\Illuminate\Support\Str::plural('cycle', $order->active_cycles_count).'. End all cycles before marking it as '.$readyAction['label'].'.'), icon: 'warning', confirmButtonColor: '#dc2626' })"
+                                        class="inline-flex h-9 w-full cursor-not-allowed items-center justify-center gap-1 rounded-md px-1 text-[11px] font-semibold text-white opacity-50 {{ $readyAction['classes'] }}"
+                                        title="End all active cycles first"
+                                    >
+                                        <span data-lucide="{{ $readyAction['icon'] }}" class="h-4 w-4"></span>
+                                        {{ $readyAction['label'] }}
+                                    </button>
+                                @else
+                                    <button
+                                        type="submit"
+                                        x-on:click.prevent="Swal.fire({ title: @js($readyAction['label'].'?'), text: 'This will finish production and notify the customer that the laundry is ready.', icon: 'question', showCancelButton: true, confirmButtonColor: @js($readyAction['color']), confirmButtonText: 'Mark as Ready' }).then((result) => { if (result.isConfirmed) $el.closest('form').submit(); })"
+                                        class="inline-flex h-9 w-full items-center justify-center gap-1 rounded-md px-1 text-[11px] font-semibold text-white {{ $readyAction['classes'] }}"
+                                    >
+                                        <span data-lucide="{{ $readyAction['icon'] }}" class="h-4 w-4"></span>
+                                        {{ $readyAction['label'] }}
+                                    </button>
+                                @endif
                             </form>
                         @endforeach
                     </div>

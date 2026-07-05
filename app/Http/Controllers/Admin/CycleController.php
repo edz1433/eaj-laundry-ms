@@ -264,6 +264,22 @@ class CycleController extends Controller
             'status' => ['required', Rule::in(array_keys(self::COMPLETION_STATUSES))],
         ]);
 
+        $activeCycles = $jobOrder->cycles()
+            ->whereNull('ended_at')
+            ->get(['id', 'cycle_type', 'machine_number', 'cycle_number']);
+
+        if ($activeCycles->isNotEmpty()) {
+            $labels = $activeCycles
+                ->map(fn (CycleRecord $cycle) => (self::CYCLE_TYPES[$cycle->cycle_type] ?? ucfirst($cycle->cycle_type))
+                    .($cycle->machine_number ? " (Machine #{$cycle->machine_number})" : ''))
+                ->unique()
+                ->implode(', ');
+
+            $message = "Cannot mark {$jobOrder->job_order_number} as ".self::COMPLETION_STATUSES[$validated['status']].". End the active cycle(s) first: {$labels}.";
+
+            return back()->with('error', $message)->withErrors(['status' => $message]);
+        }
+
         $processingBranchId = $jobOrder->processing_branch_id ?: $jobOrder->branch_id;
         $jobOrder->update([
             'status' => $validated['status'],
@@ -318,6 +334,8 @@ class CycleController extends Controller
         }
 
         abort_unless((int) ($jobOrder->release_branch_id ?: $jobOrder->current_branch_id ?: $jobOrder->branch_id) === (int) $request->user()->branch_id || $request->user()->canManageAllBranches(), 403);
+
+        $jobOrder->endActiveCycles();
 
         $jobOrder->update([
             'status' => 'completed',

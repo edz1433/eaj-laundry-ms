@@ -547,6 +547,10 @@ class JobOrderController extends Controller
                 ];
             }
 
+            if (in_array($validated['status'], ['ready_for_pickup', 'ready_for_delivery', 'completed', 'cancelled'], true)) {
+                $jobOrder->endActiveCycles();
+            }
+
             $jobOrder->update($orderUpdates);
 
             $shouldDeductInventory = $validated['status'] !== 'cancelled'
@@ -611,6 +615,10 @@ class JobOrderController extends Controller
             'status' => ['required', Rule::in(['pending', 'washing', 'drying', 'folding', 'ready_for_pickup', 'ready_for_delivery', 'completed'])],
         ]);
 
+        if (in_array($validated['status'], ['ready_for_pickup', 'ready_for_delivery', 'completed'], true)) {
+            $jobOrder->endActiveCycles();
+        }
+
         $jobOrder->update([
             'status' => $validated['status'],
             'completed_at' => $validated['status'] === 'completed' ? now() : null,
@@ -632,6 +640,8 @@ class JobOrderController extends Controller
         $this->authorizeJobOrder($request, $jobOrder);
 
         abort_if(in_array($jobOrder->status, ['completed', 'cancelled'], true), 422, 'Completed or cancelled job orders cannot be cancelled.');
+
+        $jobOrder->endActiveCycles();
 
         $jobOrder->update([
             'status' => 'cancelled',
@@ -697,6 +707,8 @@ class JobOrderController extends Controller
 
         abort_unless(in_array($jobOrder->status, ['ready_for_pickup', 'ready_for_delivery'], true), 422);
         abort_unless((int) ($jobOrder->release_branch_id ?: $jobOrder->current_branch_id ?: $jobOrder->branch_id) === (int) $request->user()->branch_id || $request->user()->canManageAllBranches(), 403);
+
+        $jobOrder->endActiveCycles();
 
         $jobOrder->update([
             'status' => 'completed',

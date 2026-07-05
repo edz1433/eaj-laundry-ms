@@ -35,4 +35,9 @@ class JobOrder extends Model
     {
         return ! $this->cycles()->whereNull('ended_at')->exists();
     }
+
+    public function endActiveCycles(): int
+    {
+        return $this->cycles()->whereNull('ended_at')->update(['ended_at' => now()]);
+    }
 }
